@@ -133,7 +133,9 @@ export const NOTIFICATION_TYPE_CATALOG = {
   },
   rating_request: {
     severity: "informational",
-    defaultChannels: ["in_app"],
+    // 施工店の顧客宛（DECISION_LOG 2026-09-27）。customer 宛の in_app は dispatch が常にスキップする
+    // （顧客のアプリ内受信箱が無い）ため、叩き台の ["in_app"] では一度も届かなかった。
+    defaultChannels: ["email", "line"],
     category: "customer",
     targetRole: "customer",
   },
@@ -162,6 +164,13 @@ export const NOTIFICATION_TYPE_CATALOG = {
     severity: "informational",
     defaultChannels: ["in_app"],
     category: "system",
+  },
+  // 帳票メールの送付失敗（share-email.ts）。メールが壊れている時に出るので email は使わない。
+  document_email_failed: {
+    severity: "action_required",
+    defaultChannels: ["in_app"],
+    category: "system",
+    targetRole: "admin",
   },
 
   // ── AI ──
@@ -215,6 +224,9 @@ export const NOTIFICATION_TYPE_CATALOG = {
     severity: "action_required",
     defaultChannels: ["in_app", "email"],
     category: "job",
+    // 宛先未指定だと dispatch はメールを誰にも送らない（userIds が無い）。
+    // メーカーが報告した不具合は施工店の管理者に届ける（DECISION_LOG 2026-10-03）。
+    targetRole: "admin",
   },
   ft_recruitment_opened: {
     severity: "informational",

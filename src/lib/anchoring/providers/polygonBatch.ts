@@ -16,6 +16,7 @@
  */
 
 import type { PolygonNetwork } from "./types";
+import { tls13HttpsFetch } from "@/lib/net/tls13Fetch";
 import { withRetry } from "@/lib/http/withRetry";
 
 export interface BatchAnchorResult {
@@ -126,8 +127,12 @@ export async function anchorBatchToPolygon(merkleRoot: string, leafCount: number
     const chain = config.network === "amoy" ? polygonAmoy : polygon;
     // 署名器抽象(POLYGON_SIGNER_PROVIDER=local 既定 / aws-kms で KMS)。既定は現行と同一挙動。
     const account = await getPolygonAccount(config.privateKey);
-    const publicClient = createPublicClient({ chain, transport: http(config.rpcUrl) });
-    const walletClient = createWalletClient({ account, chain, transport: http(config.rpcUrl) });
+    const publicClient = createPublicClient({ chain, transport: http(config.rpcUrl, { fetchFn: tls13HttpsFetch }) });
+    const walletClient = createWalletClient({
+      account,
+      chain,
+      transport: http(config.rpcUrl, { fetchFn: tls13HttpsFetch }),
+    });
 
     // writeContract は retry しない (nonce 進行 = 別 tx submit のリスク)。
     const txHash = await walletClient.writeContract({
@@ -179,7 +184,7 @@ export async function verifyBatchAnchor(merkleRoot: string, network?: PolygonNet
     const { polygon, polygonAmoy } = await import("viem/chains");
 
     const chain = config.network === "amoy" ? polygonAmoy : polygon;
-    const client = createPublicClient({ chain, transport: http(config.rpcUrl) });
+    const client = createPublicClient({ chain, transport: http(config.rpcUrl, { fetchFn: tls13HttpsFetch }) });
 
     const isAnchored = await withRetry("polygon-rpc", () =>
       client.readContract({

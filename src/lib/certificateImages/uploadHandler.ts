@@ -16,6 +16,8 @@ import { isPhotoTsaEnabled } from "@/lib/anchoring/providers/photoTsa";
 import { verifyDeviceAttestation } from "@/lib/anchoring/providers/deviceAttestation";
 import { consumeCaptureNonce, type ConsumeNonceResult } from "@/lib/certificates/captureNonce";
 import { processUploadedPhoto } from "@/lib/certificateImages/processUploadedPhoto";
+import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2pa";
+import { createC2paSigner } from "@/lib/anchoring/providers/c2paSigner";
 import { normalizeStage } from "@/lib/certificateImages/stage";
 import { maybeAutoTamperingCheckForCertificate } from "@/lib/ai/automation/photoTamperingAuto";
 import { maybeAutoQualityCheckForCertificate } from "@/lib/ai/automation/photoQualityAuto";
@@ -24,6 +26,8 @@ import { maybeAutoWorkStampForCertificate } from "@/lib/ai/automation/workStampA
 import { maybeAutoDraftContentForCertificate } from "@/lib/ai/automation/photoContentDraftAuto";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { detectMagicByteMime } from "@/lib/media/magicBytes";
+import { fromCloudflareEdge } from "@/lib/edgeOrigin";
+import { watchGateReadyTransition } from "@/lib/certificates/gateReadyNotify";
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB per file
 
@@ -37,7 +41,20 @@ function validateMagicBytes(buffer: Buffer): string | null {
  * 認証済みテナントの証明書に写真をアップロードする共通処理。呼び出し側は認証・レート制限を
  * 済ませたうえで tenantId を渡す。Response を返す。
  */
+/**
+ * C2PA TOE の入口（写真アップロード）は、最低 TLS 1.3 を強制する Cloudflare 経由の通信だけを受ける
+ * （GPSA O.5。Vercel 単体では TLS 1.2 を拒否できない）。Cloudflare の Transform Rule が付ける
+ * `x-ledra-origin-secret` を照合し、`*.vercel.app` への直アクセス（TLS 1.2 可）を弾く。
+ * `CF_ORIGIN_SECRET` 未設定＝Cloudflare 前段なしの構成では照合しない。
+ */
+export function viaTls13Edge(req: Request, secret = process.env.CF_ORIGIN_SECRET): boolean {
+  return !secret || fromCloudflareEdge(req, secret);
+}
+
 export async function handleCertificateImageUpload(req: NextRequest, tenantId: string): Promise<Response> {
+  if (!viaTls13Edge(req)) {
+    return apiError({ code: "forbidden", message: "Uploads must arrive through the TLS 1.3 edge.", status: 403 });
+  }
   try {
     // ── Plan tier → photo limit（billing guard と共有の 60 秒キャッシュ）──
     const billing = await getCachedTenantBilling(tenantId);
@@ -91,7 +108,7 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
     const { admin } = createTenantScopedAdmin(tenantId);
     const { data: cert } = await admin
       .from("certificates")
-      .select("id, tenant_id, vehicle_id, reservation_id")
+      .select("id, tenant_id, vehicle_id, reservation_id, status, service_type")
       .eq("public_id", publicId)
       .eq("tenant_id", tenantId)
       .limit(1)
@@ -171,6 +188,22 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
       provider: deviceProvider,
       expectedNonce: captureNonce,
     });
+    // **本番 C2PA の先行検査。** `C2PA_MODE=production` なのに署名器が作れないなら、
+    // 1枚も処理せずここで落とす。署名器が作れない原因（モジュール不在・env 未投入・鍵/証明書不正）は
+    // 写真に依らず全枚数で同じなので、後段で1枚ずつ弾く意味が無い。**ここより後ろには
+    // nonce の単回消費・sharp の再エンコード・TSA・Polygon のオンチェーン送信があり、
+    // どれも写真を保存しないのに消費される**（Polygon は不可逆・ガス消費）。
+    // /code-review 指摘 #3・#6。
+    if (getC2paMode() === "production" && !(await createC2paSigner("production"))) {
+      console.error("[c2pa] production signer unavailable — rejecting upload request before any work");
+      return apiError({
+        code: "internal_error",
+        message:
+          "写真の来歴署名（C2PA）を行う準備ができていないため、アップロードを受け付けられません。未署名の写真は保存しません。管理者にご連絡ください。",
+        status: 503,
+      });
+    }
+
     // nonce は cert 束縛の行ロックで単回消費。1リクエスト内の全写真がこのセッション nonce を共有。
     // ponytail: 全ファイルが後段で検証落ちしても nonce は消費される（同 cert の再送は
     // consumed → basic）。実害は「不正アップロードで nonce を1つ焼く」程度で稀、担保も弱めない。
@@ -184,11 +217,25 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
       : null;
     const nonceOk = nonceResult === "ok";
 
+    // IMP-029 certificate_gate_ready: INSERT 前の Gate 状態を控える（draft かつ未 READY のときだけ
+    // 後で再評価する）。遷移検知は gateReadyNotify.ts。失敗してもアップロードは止めない。
+    const notifyIfGateBecameReady = await watchGateReadyTransition(admin, tenantId, {
+      id: certId,
+      public_id: publicId,
+      status: (cert.status as string | null) ?? null,
+      service_type: (cert.service_type as string | null) ?? null,
+      reservation_id: (cert.reservation_id as string | null) ?? null,
+    });
+
     // ── Upload files ───────────────────────────────────────────────
     const toUpload = files.slice(0, remaining);
     let uploaded = 0;
     const uploadedImages: { id: string; file_name: string | null; upload_index: number }[] = [];
     let lastFailure: { code: "validation_error" | "db_error" | "internal_error"; message: string } | null = null;
+    // **C2PA 署名の失敗で弾いた写真**。`lastFailure` は uploaded===0 のときしか表に出ないので、
+    // これを別に数える。一部成功で 200 を返すと「証明書は揃った」と見えるのに写真が黙って
+    // 欠けるため、未署名を黙らせない目的が裏返る（/code-review 指摘 #1）。
+    const c2paRefused: number[] = [];
 
     // 写真 TSA のリクエスト全体予算。processUploadedPhoto がこの予算を共有し、失敗/累計超過で
     // 以降の写真は TSA を打ち切って封印なしで続行する（fail-open / 504 防止）。
@@ -238,6 +285,7 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
 
       if (!result.ok) {
         lastFailure = { code: result.code, message: result.message };
+        if (result.c2paRefused) c2paRefused.push(i + 1);
         continue;
       }
 
@@ -254,6 +302,20 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
         status: 422,
       });
     }
+
+    // **署名できずに弾いた写真が1枚でもあれば、一部成功でもエラーで返す。** 200 で返すと
+    // 「N枚アップロードしました」しか出ず、欠けた写真に誰も気づかない（/code-review 指摘 #1）。
+    // 保存済みの写真はそのまま残る（あちらは署名済みなので消す理由が無い）。
+    if (c2paRefused.length > 0) {
+      return apiError({
+        code: "internal_error",
+        message: `${uploaded}枚を保存しましたが、${c2paRefused.length}枚（${c2paRefused.join("・")}枚目）は写真の来歴署名（C2PA）に失敗したため保存していません。未署名の写真は保存しません。保存できた写真はそのまま残っています。管理者にご連絡ください。`,
+        status: 422,
+      });
+    }
+
+    // 写真追加で Gate が未 READY→READY に変わったら admin へ通知（レスポンス後・AI 処理とは独立）。
+    after(notifyIfGateBecameReady);
 
     // 写真追加後に改ざんスクリーニング → 品質監査を after() で **順次** 実行
     // (fire-and-forget / レスポンス後 / 注釈のみ)。両者とも certificates.meta を read-merge-write

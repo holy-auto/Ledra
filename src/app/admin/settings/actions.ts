@@ -60,6 +60,11 @@ export async function updateTenantSettingsAction(formData: FormData): Promise<Se
   if (formData.has("address")) payload.address = v.address || null;
   if (formData.has("website_url")) payload.website_url = v.website_url || null;
   if (formData.has("registration_number")) payload.registration_number = v.registration_number || null;
+  // 完成検査の実施者資格の強制（G1/#1）。チェックボックスは未チェック時に送信されないため、
+  // 常に送られる hidden マーカーの有無で「この列を更新するか」を判定する（columnsExist 方式）。
+  if (formData.has("require_inspector_qualification_present")) {
+    payload.require_inspector_qualification = formData.get("require_inspector_qualification") === "on";
+  }
 
   // レバーレート (工賃単価、円/時)。空欄 = 未設定 (null)
   let laborRate: number | null | undefined;

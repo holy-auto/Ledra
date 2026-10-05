@@ -1,4 +1,3 @@
-
 import { z } from "zod";
 
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
@@ -7,6 +6,8 @@ import { executeOrderPayout } from "@/lib/orders/orderPayout";
 import { markOrderInvoicePaid } from "@/lib/orders/markOrderInvoicePaid";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
+
 const confirmPaymentSchema = z.object({
   payment_method: z.string().trim().max(50).optional(),
   amount: z.coerce.number().int().min(0).optional(),
@@ -129,6 +130,24 @@ export const POST = withCaller<{ id: string }>(
           new_value: { payment_status: updateData.payment_status ?? order.payment_status },
         })
         .then(() => {}, console.error);
+
+      // 取引相手へ通知（IMP-029）。双方確認で完了した回は order_completed だけを送る
+      // （相手は先に確認済みなので「支払確認」と「完了」を同時に2通送らない）。
+      // 既に確認済みの側が再送しただけのときは通知しない。
+      const counterparty = isFrom ? order.to_tenant_id : order.from_tenant_id;
+      const newlyConfirmed =
+        (isFrom && !order.payment_confirmed_by_client) || (isTo && !order.payment_confirmed_by_vendor);
+      if (counterparty && newlyConfirmed) {
+        const completed = updateData.status === "completed";
+        await dispatchNotification({
+          tenantId: counterparty,
+          type: completed ? "order_completed" : "payment_confirmed",
+          title: completed ? "取引が完了しました" : "取引先が支払いを確認しました",
+          body: `「${data.title}」${completed ? "の支払いが双方確認され、取引が完了しました。" : "の支払いを取引先が確認しました。"}`,
+          linkPath: `/admin/orders/${id}`,
+          jobOrderId: id,
+        });
+      }
 
       return apiJson({ ok: true, order: data });
     } catch (e: unknown) {

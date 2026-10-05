@@ -22,8 +22,11 @@ DECLARE
   v_public_id text;
 BEGIN
   -- public_id を**省いて**入れる（アプリの通常経路と同じ）。
-  INSERT INTO public.vehicles (id, tenant_id)
-  VALUES ('00000000-0000-4000-8000-0000000000d2', '00000000-0000-4000-8000-0000000000d1')
+  -- maker / model は 20261002120100 で NULL 可に戻した（代表判断 2026-10-02）が、
+  -- この検査が見たいのは public_id の既定だけなので、紛れを避けて明示で渡しておく。
+  -- 省いた insert が通ることは vehicle_insert_without_maker_model.sql が見る。
+  INSERT INTO public.vehicles (id, tenant_id, maker, model)
+  VALUES ('00000000-0000-4000-8000-0000000000d2', '00000000-0000-4000-8000-0000000000d1', '検査用', '検査用')
   RETURNING public_id INTO v_public_id;
 
   IF v_public_id IS NULL THEN

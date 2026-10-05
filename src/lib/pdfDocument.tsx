@@ -1,5 +1,6 @@
 import React from "react";
 import { Document, Page, Text, View, Image, StyleSheet, Font } from "@react-pdf/renderer";
+import type { ConsolidatedSource } from "@/lib/documents/consolidatedSources";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { createSignedAssetUrl } from "@/lib/signedUrl";
 import { notoSansJpDataUrl } from "@/lib/marketing/pdfFonts";
@@ -311,6 +312,8 @@ export async function renderDocumentPdf(
   tenant: TenantForDocPdf,
   customerName: string | null,
   layoutOverride?: Partial<LayoutConfig>,
+  /** 合算請求書の元帳票。渡されたら2ページ目以降に「合算内訳」として元帳票ごとの明細を載せる。 */
+  consolidatedSources: ConsolidatedSource[] = [],
 ) {
   const layout: LayoutConfig = mergeLayout(DEFAULT_LAYOUT, layoutOverride);
   const s = buildStyles(layout);
@@ -605,6 +608,79 @@ export async function renderDocumentPdf(
           </View>
         )}
       </Page>
+      {consolidatedSources.length > 0 && (
+        <Page size="A4" style={s.page}>
+          <View style={s.titleRow}>
+            <Text style={{ fontSize: 14, fontWeight: 700 }}>合算内訳（{consolidatedSources.length}件）</Text>
+          </View>
+          <Text style={{ ...s.metaBox, marginBottom: 8 }}>
+            {docLabel} No：{doc.doc_number}
+          </Text>
+          {consolidatedSources.map((src) => {
+            const srcVehicle = [src.vehicle_info_json?.model, src.vehicle_info_json?.plate].filter(Boolean).join(" / ");
+            return (
+              <View key={src.id} style={{ marginTop: 14 }}>
+                <View wrap={false} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 10, fontWeight: 700 }}>
+                    {DOC_TYPE_LABELS[src.doc_type] ?? src.doc_type} {src.doc_number}
+                  </Text>
+                  <Text style={{ fontSize: 10, fontWeight: 700 }}>{fmtJpy(src.total)}</Text>
+                </View>
+                <Text style={s.recipientLine}>
+                  {[
+                    `発行日：${fmtDate(src.issued_at)}`,
+                    src.subject ? `件名：${src.subject}` : null,
+                    srcVehicle ? `車両：${srcVehicle}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join("　")}
+                </Text>
+                <View style={s.tableHead}>
+                  <Text style={{ ...s.thText, ...s.colDesc }}>摘要</Text>
+                  <Text style={{ ...s.thText, ...s.colQty }}>数量</Text>
+                  {layout.items.showUnit && <Text style={{ ...s.thText, ...s.colUnit }}>単位</Text>}
+                  <Text style={{ ...s.thText, ...s.colPrice }}>単価</Text>
+                  <Text style={{ ...s.thText, ...s.colAmount }}>金額</Text>
+                </View>
+                {(src.items_json ?? []).map((item, idx) => {
+                  const type = item.item_type ?? "item";
+                  const content = itemContentLines(item);
+                  if (type === "heading") {
+                    return (
+                      <View key={idx} style={s.headingRow}>
+                        <Text style={s.headingText}>{content.primary}</Text>
+                      </View>
+                    );
+                  }
+                  if (type === "subtotal") {
+                    return (
+                      <View key={idx} style={s.subtotalRow}>
+                        <Text style={s.subtotalLabel}>{item.description || "小計"}</Text>
+                        <Text style={s.subtotalValue}>{fmtJpy(item.amount)}</Text>
+                      </View>
+                    );
+                  }
+                  return (
+                    <View key={idx} style={s.tableRow} wrap={false}>
+                      <Text style={s.colDesc}>
+                        {content.primary}
+                        {layout.items.showTaxLabel && item.tax_category === 8 ? " ※軽減" : ""}
+                      </Text>
+                      <Text style={s.colQty}>{item.quantity}</Text>
+                      {layout.items.showUnit && <Text style={s.colUnit}>{item.unit ?? ""}</Text>}
+                      <Text style={s.colPrice}>{fmtJpy(item.unit_price)}</Text>
+                      <Text style={s.colAmount}>{fmtJpy(item.amount)}</Text>
+                    </View>
+                  );
+                })}
+                <Text style={{ ...s.metaBox, marginTop: 4 }}>
+                  小計 {fmtJpy(src.subtotal)}　消費税（{src.tax_rate}%） {fmtJpy(src.tax)}
+                </Text>
+              </View>
+            );
+          })}
+        </Page>
+      )}
     </Document>
   );
 

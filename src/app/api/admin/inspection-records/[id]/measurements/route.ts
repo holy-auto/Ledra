@@ -1,6 +1,7 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { measurementsPutSchema } from "@/lib/validations/indicated-inspection";
+import { loadCompletionRecord } from "@/lib/inspection/loadCompletionRecord";
 import { withCaller } from "@/lib/api/withCaller";
 
 export const dynamic = "force-dynamic";
@@ -10,34 +11,15 @@ export const runtime = "nodejs";
  * 指定整備記録簿（完成検査）の測定値 API。 [G5 / Phase 1b]
  *
  *   GET  /api/admin/inspection-records/:id/measurements  … 測定値一覧
- *   PUT  /api/admin/inspection-records/:id/measurements  … 測定値の置換保存（手入力）
+ *   PUT  /api/admin/inspection-records/:id/measurements  … 測定値の置換保存（手入力, source='manual'）
  *
  * `:id` の inspection_record が自テナントの完成検査(inspection_type='completion')である
  * ことを検証してから、inspection_measurements を upsert する。外部テスタ取込(Phase 2)は
- * source='imported' で同じテーブルに書き込むため、本 API は source='manual' 固定とする。
+ * `measurements/import`（source='imported'・マージ）が担当し、本 API は source='manual' 固定とする。
  */
 
 const SELECT_COLUMNS =
   "id, field_code, num_value, text_value, unit, judgment, source, device, measured_at, created_at, updated_at";
-
-async function loadCompletionRecord(
-  admin: ReturnType<typeof createTenantScopedAdmin>["admin"],
-  tenantId: string,
-  recordId: string,
-): Promise<{ ok: true } | { ok: false; message: string }> {
-  const { data, error } = await admin
-    .from("inspection_records")
-    .select("id, inspection_type")
-    .eq("tenant_id", tenantId)
-    .eq("id", recordId)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) return { ok: false, message: "対象の点検記録が見つかりません。" };
-  if ((data as { inspection_type: string }).inspection_type !== "completion") {
-    return { ok: false, message: "完成検査以外の記録には測定値を保存できません。" };
-  }
-  return { ok: true };
-}
 
 export const GET = withCaller<{ id: string }>(
   async (_req, { caller, params }) => {
@@ -82,7 +64,9 @@ export const PUT = withCaller<{ id: string }>(
         text_value: m.text_value ?? null,
         unit: m.unit ?? null,
         judgment: m.judgment ?? null,
-        source: "manual" as const,
+        // 既定は手入力だが、フォームが読み込んだ取込(imported)セルを再保存で manual に化けさせないよう
+        // 行ごとの source を尊重する（フォームは未変更の imported セルに 'imported' を付けて送る）。
+        source: m.source ?? "manual",
         device: m.device ?? null,
         measured_at: m.measured_at ?? now,
         created_by: caller.userId,

@@ -1,0 +1,30 @@
+import { Agent } from "undici";
+
+/**
+ * TLS 1.3 未満を拒否する fetch。Backend → Supabase（Postgres REST / Storage / Auth）と、外部連携
+ * （Hive・Pinata の multipart・Polygon RPC の viem `fetchFn`）に使う（C2PA GPSA O.5 / Req 5.1: TLS v1.3 以上で保護）。
+ * 経路の一覧は src/lib/anchoring/__tests__/integrationsTls13.test.ts が守る。
+ * 相手が 1.2 までしか話さなければハンドシェイクで失敗し、旧版へは落ちない。
+ *
+ * fetch 本体は差し替えず、グローバル fetch（Next がパッチした版）に **dispatcher だけ**を渡す。
+ * undici パッケージの fetch を使うと、Node 組み込みの FormData / Request を解釈できず
+ * multipart が "[object FormData]" に化ける（Storage の Blob/File アップロードが壊れる）。
+ * Next の patch-fetch は init を展開して元の fetch に渡すので dispatcher は届き、
+ * Next の計測・メモ化もそのまま効く。
+ * ponytail: Node ランタイム専用（Edge では undici を読めない）。proxy.ts は Next 16 で常に Node。
+ */
+const agent = new Agent({ connect: { minVersion: "TLSv1.3" } });
+
+export const tls13Fetch: typeof fetch = (input, init) => fetch(input, { ...init, dispatcher: agent } as RequestInit);
+
+/**
+ * 外部連携用。tls13Fetch は平文 http も通す（ローカル Supabase のため）ので、設定ミスの `http://` で
+ * TLS ごと外れないよう、https 以外は送らずに失敗させる（Codex 指摘 #1215）。
+ */
+export const tls13HttpsFetch: typeof fetch = (input, init) => {
+  const href = input instanceof Request ? input.url : String(input);
+  if (new URL(href).protocol !== "https:") {
+    return Promise.reject(new TypeError(`refusing non-HTTPS request to ${new URL(href).host}`));
+  }
+  return tls13Fetch(input, init);
+};

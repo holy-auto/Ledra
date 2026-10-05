@@ -99,6 +99,8 @@ export const inspectionRecordCreateSchema = z.object({
   answers: inspectionAnswersSchema,
   photo_urls: photoUrlsSchema,
   inspector_name: optionalText(80),
+  // 完成検査の実施者（staff_members）。自由入力 inspector_name と併存。資格ゲートはこの ID で判定する（G1/#3）。
+  inspector_staff_id: optionalUuid,
   inspected_at: optionalIso,
   notes: optionalText(2000),
 });
@@ -117,6 +119,7 @@ export const inspectionRecordUpdateSchema = z.object({
     .max(20, "写真は最大 20 枚までです。")
     .optional(),
   inspector_name: optionalText(80),
+  inspector_staff_id: optionalUuid,
   inspected_at: optionalIso,
   notes: optionalText(2000),
 });

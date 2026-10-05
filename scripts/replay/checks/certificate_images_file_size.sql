@@ -12,6 +12,13 @@
 -- 既定が復活すると 0 が入って CHECK に進み 23514 になり、NOT NULL が外れると
 -- NULL のまま CHECK を素通りして外部キー 23503 になる。**どちらもここで落ちる。**
 --
+-- 取りこぼし: 2026-09-25 に 20260925142800 が `file_name` / `content_type` を
+-- NOT NULL にした時点で、**この検査は file_size を見なくなっていた**。
+-- 列を3つとも省いた insert は、どの NOT NULL で落ちても 23502 なので、
+-- 20260922141100 を丸ごと戻しても通ってしまう状態だった（/code-review 指摘）。
+-- だから insert は file_size 以外の NOT NULL 列を明示で渡す。
+-- 同表に NOT NULL 列を足す PR は、この insert にもその列を足すこと。
+--
 -- 最後に ROLLBACK するので DB には何も残らない。
 -- 走らせ方: npm run check:migrations（再生の最後に自動で走る）
 
@@ -22,11 +29,16 @@ DECLARE
   v_state text;
 BEGIN
   BEGIN
-    INSERT INTO public.certificate_images (certificate_id, tenant_id, storage_path)
+    -- file_size **以外**の NOT NULL 列はすべて渡す。渡さないと 20260925142800 で
+    -- NOT NULL になった file_name / content_type が先に 23502 を出し、
+    -- この検査が file_size とは無関係に通ってしまう（冒頭の「取りこぼし」参照）。
+    INSERT INTO public.certificate_images (certificate_id, tenant_id, storage_path, file_name, content_type)
     VALUES (
       '00000000-0000-4000-8000-0000000000e1',
       '00000000-0000-4000-8000-0000000000e2',
-      'certificates/e1/photo.jpg'
+      'certificates/e1/photo.jpg',
+      'photo.jpg',
+      'image/jpeg'
     );
     v_state := 'INSERTED';
   EXCEPTION WHEN others THEN

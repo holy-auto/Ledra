@@ -11,7 +11,7 @@ import {
   apiNotFound,
   apiInternalError,
 } from "@/lib/api/response";
-import { notifyFtTenant } from "@/lib/fieldTest/ftNotify";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -127,13 +127,13 @@ export async function POST(req: NextRequest) {
     if (error) return apiInternalError(error, "ft jobs POST");
 
     after(async () => {
-      await notifyFtTenant({
+      // カタログ（in_app + email、宛先=管理者）どおり中央 dispatch で配信する（#1176）。
+      await dispatchNotification({
         tenantId: parsed.data.tenant_id,
         type: "ft_job_assigned",
         title: "実証テスト案件が割り当てられました",
         body: `「${parsed.data.title}」が割り当てられました。`,
         linkPath: "/admin/field-test",
-        priority: "high",
       });
     });
 

@@ -4,7 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
-import { notifyFtTenant } from "@/lib/fieldTest/ftNotify";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -99,13 +99,13 @@ export async function POST(req: NextRequest) {
     const targetTenantId = (data.tenant_id ?? parsed.data.tenant_id) as string | null;
     if (targetTenantId) {
       after(async () => {
-        await notifyFtTenant({
+        // カタログ（in_app + email、宛先=管理者）どおり中央 dispatch で配信する（#1176）。
+        await dispatchNotification({
           tenantId: targetTenantId,
           type: "ft_defect_reported",
           title: "不具合が報告されました",
           body: `「${parsed.data.title}」（${parsed.data.severity ?? "medium"}）`,
           linkPath: "/admin/field-test",
-          priority: "high",
         });
       });
     }

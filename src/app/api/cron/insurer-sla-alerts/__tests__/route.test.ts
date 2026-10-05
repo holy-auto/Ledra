@@ -51,6 +51,8 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
+vi.mock("@/lib/notifications/dispatch", () => ({ sendNotificationEmail: vi.fn() }));
+
 import { GET, __testing } from "@/app/api/cron/insurer-sla-alerts/route";
 import { NextRequest } from "next/server";
 

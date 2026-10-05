@@ -3,6 +3,268 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 実証テスト: 契約同意の控えが ft_job_assigned を流用している（2026-10-03）
+
+`/api/{admin,mobile}/field-test/agreements/[id]` は、同意した施工店自身へ「契約に同意しました」を `ft_job_assigned` で出している
+（#1176 の調査で判明）。カタログ上 `ft_job_assigned` は「メーカーからの案件割当」で管理者宛メールを伴うため、控えは in_app のみの
+`notifyFtTenant` に残してある。専用タイプ（例 `ft_agreement_accepted`）を足すか、控え自体が要るか（本人の操作の通知）は未決。
+通知一覧のアイコン・カテゴリも `ft_job_assigned` として表示される。
+
+## 実証テスト: メーカーは任意のテナントに案件割当・不具合報告ができる（2026-10-03）
+
+`POST /api/manufacturer/field-test/{jobs,defects}` は body の `tenant_id` を検証しない（応募 `ft_applications` が approved か等を見ない）。
+#1176 でこの2経路が施工店管理者へのメールを出すようになったため、メーカー admin が任意テナントの管理者へ、自由文の件名入りメールを
+Ledra ドメインから送れる。テナント UUID は推測しにくく、メーカーは審査済み B2B アカウントなので即時の実害は小さいと判断し、
+#1176 では広げていない。「approved の応募があるテナントにだけ割当可」にするか（直接割当の運用が要るか）は業務判断が要る。
+
+## Japan Mobility Show Bizweek 2026 出展: 残る2点（2026-10-02）
+
+1. **開催概要の公式サイト突合**: 日時・会場は JAMA 発表と報道の検索結果から書いた。公式ページを直接開けていないので、
+   代表が公式サイトと突き合わせるまで未確認。
+2. **展示の中身**: 出展内容は「Ledra」までしか決まっていない。デモの構成・配布物・当日の体制は【要確認】。
+
+## G3/G4 電子交付の承諾: 撤回後ブロック・撤回UIは実装、残る2点（2026-10-02）
+
+`delivery_consents` ＋ 承諾記録/撤回 ＋ 証明書電子交付の撤回後ブロックを実装（RELEASE_LOG 2026-10-02）。
+使用者ポータルの撤回 UI も配線済み（RELEASE_LOG 2026-10-03・`DeliveryConsentRevokePanel`）。残り。
+
+1. **未承諾（none）のハードブロック**: 規制(4)は「承諾が得られない場合も電磁的交付をしてはならない」だが、
+   既定で none をブロックすると既存の証明書交付が一斉に止まる（誰も承諾記録を持たない）。今回は**撤回のみブロック**し、
+   未承諾は通す非破壊既定にした。テナント opt-in のフラグ（例 `tenants.require_delivery_consent`）で none もブロックする
+   厳格運用を選べるようにするのが筋。導入時は既存顧客への承諾記録の移行（バックフィル or 初回交付時取得）とセット。
+2. **顧客未紐付け（customer_id 無し）の証明書**: 顧客単位の承諾判定ができず従来どおり交付される。証明書作成時に
+   customers を必須紐付けにするか、電話番号ハッシュ単位の承諾を持つかは要検討。
+3. **inspection_records（指定整備記録簿）の顧客向け電子交付**: 現状アプリに経路が無い（管理PDFのみ）。顧客へ電子交付する
+   経路を設ける場合は同じ `delivery_consents` ゲートを通すこと。
+
+## G2 監査ログ: 作成/更新は inspection_records・documents・body_repair_jobs とも対応、残るは消去 cron（2026-10-02）
+
+`inspection_records`（完成検査）に加え、`documents` / `body_repair_jobs` の作成/更新（documents は削除も）を
+`audit_logs` に記録した（RELEASE_LOG 2026-10-02・2026-10-03）。残り。
+
+1. **消去経路（保持期限後）**: 完成検査は `record_retention_until`＝2年保存で、保持期間中はアプリに消去経路を
+   持たない（保存義務に沿う）。保持期限後に管理者が消去できる経路を設けるなら、(a) `record_retention_until`
+   経過の確認を必須にし、(b) 消去を `logTenantAuditEvent`（`inspection_record_deleted`）で残すこと。
+   当初この PR で owner/admin 消去＋UI を入れたが、保持期間中は常にブロックされ無意味で保持義務とも衝突するため
+   撤回した（MISTAKE_LEDGER M-20261002-delete-ignored-legal-retention）。
+2. **保持期限 cron（`data-retention`）の横断監査**: cron は認証コード/セッション/通知ログ等の**非・記録簿**を
+   全テナント横断で削除する。`audit_logs.tenant_id` が NOT NULL なので単一行では残せない。テナント別に集計するか
+   cron 専用の削除サマリ表を設けるか未決（運用ログの充実・優先度中。記録簿の消去要件には無関係）。
+
+## G1 法定資格ロール: 強制・番号/有効期限・実施者紐付けは実装、残る運用判断（2026-10-02）
+
+G1 の3点（操作強制・資格番号/有効期限・記録簿への実施者紐付け）は実装した（RELEASE_LOG 2026-10-02・
+DECISION_LOG 2026-10-02・`20261002160000`）。完成検査の実施者に有効な自動車検査員を必須化（テナント
+opt-in `tenants.require_inspector_qualification`・既定 false）。残っているのは次の運用・拡張判断。
+
+1. **opt-in 有効化時の既存完成検査記録の扱い**: 強制を ON にすると、`inspector_staff_id` 未設定の既存
+   完成検査記録は**編集時にブロック**される（実施者の指定を促す仕様）。既存記録への実施者バックフィルや、
+   既存記録の編集だけ猶予する経過措置が要るかは代表判断（現状は「編集時に実施者を指定し直す」運用）。
+2. **強制対象の操作の範囲**: 現状は完成検査（`completion`）の作成/更新のみ。証明書の確定や他の記録簿操作にも
+   資格ゲートを広げるか、`maintenance_supervisor` 固有の操作強制を設けるかは、規制の求める範囲と運用現実
+   （有資格者が1人のときの回避策）を見て代表が決める。
+3. **自動車検査員番号の様式への印字**: 記録簿 PDF（指定整備記録簿）に実施者の資格番号を印字するか。
+   スナップショット（`inspector_qualification_snapshot`）は保持済みだが PDF 出力への反映は未配線。
+
+## `@contentauth/c2pa-node` の固定（0.9.7）をいつ外すか（2026-10-02）
+
+- 0.9.8 で署名したマニフェストを同じライブラリが読めず（`claim_cbor: unexpected trailing data`）、0.9.7 に固定して
+  Dependabot の対象から外した（DECISION_LOG 2026-10-02）。
+- 確認したいこと: (a) 上流で報告・修正されているか【要確認】、(b) 修正版が出たら `package.json` を上げて
+  `src/lib/anchoring/providers/__tests__/c2paSignValidate.test.ts` と `providers.test.ts` が通るか。
+  通ったら固定と `.github/dependabot.yml` の ignore を外す。
+- 起票日: 2026-10-02
+- 判断者: 開発（Claude）。上流への報告をするかは代表
+
+## Enhanced Builds（16GB）に切り替わった後のビルドが、実際に 16GB 機で走っているか（2026-10-02）
+
+- #1184 のマージ後の本番デプロイ（`5f54e29`、13:08 UTC 開始）は、ビルドログで**メモリ不足（OOM）**と確定した
+  （`Build machine configuration: 4 cores, 8 GB`、ビルドキャッシュ破棄、`exited with SIGKILL`、OOM 検出）。
+  2026-09-29 の #1172 と同じ形。代表は 2026-10-01 に「切り替えた」と回答していたが、このビルドはまだ 8GB 機だった。
+- **2026-10-02: プロジェクト設定は Enhanced（Elastic・8 vCPU・16 GB Memory）になっていることを、代表が共有した設定画面で確認した。**
+- ただし設定画面は「実際のデプロイがその設定で走ったか」の証拠にならない（「切り替えた」後に 8GB で走った前例がある）。
+- 確認したいこと: 次にフルビルド（キャッシュ破棄）になったデプロイのログで、`Build machine configuration` 行が 16 GB に
+  なっているか【要確認】。16 GB ならこの項を閉じる。8 GB なら、設定が効いていない（プラン・チーム設定を見直す）。
+- 起票日: 2026-10-02
+- 判断者: 代表（ビルドログの確認）
+
+## rating_request の送信条件を「follow_up_settings.enabled のテナントのみ・発行7日後固定」で仮置きした（2026-09-27）
+
+- 実装（RELEASE_LOG 2026-09-27）で、評価依頼は `follow_up_settings.enabled = true` のテナントにだけ
+  送る形にした。代表判断の「follow_up_settings に準じてテナント設定可能」を、新しい設定 UI を作らず
+  既存の顧客フォロー用スイッチで代用したもの。フォローを有効にしていないテナントの顧客には届かない。
+- 日数は全テナント共通で7日（`RATING_REQUEST_DELAY_DAYS`）。テナント別に変えるなら
+  `follow_up_settings` に列を足す。
+- 確認したいこと: (a) スイッチを顧客フォローと共用してよいか（評価依頼だけ止めたいテナントがいるか）、
+  (b) 7日でよいか。
+- 起票日: 2026-09-27
+- 判断者: 代表
+
+## 発行直後フォロー（post_issue）が cron から一度も送られていない疑い（2026-09-27）
+
+- `triggerCertificateIssued` → `triggerPostIssueFollowUp` が発行時に `notification_logs`
+  （type=post_issue, status=queued）を1行入れるが、`queued` を読んで送る処理がコードに無い。
+  一方 cron の `processPostIssueFollowUps` は「post_issue のログが既にある証明書」を送信済みとして
+  飛ばすので、発行時に入れた queued 行が送信を止めている可能性がある。
+- コードを追っただけで、本番ログ（status=queued のまま残る post_issue 行の件数）は未確認。
+  【要確認】本番で `select count(*) from notification_logs where type='post_issue' and status='queued'`。
+- rating_request の実装中に気づいた。今回の変更範囲外なので手を入れていない。
+- 起票日: 2026-09-27
+
+## プライバシー整合5件の決定後に残ったこと（2026-09-27）
+
+5件は代表が決めて実装した（DECISION_LOG 2026-09-27「プライバシー整合5件」）。実装してみて、次が残った。
+
+1. **保険会社へ同意前に渡す車台番号・ナンバーと、ポリシー「3. 第三者提供」の関係【要確認：法務】。**
+   「2. 利用目的」は実態に合わせて書き直した。一方「3. 第三者提供」は「本人の同意がある場合を除き提供しない」のままである。
+   ナンバーはコード上 PII に分類している（`VEHICLE_TABLE_PII_COLUMNS`）。同意前の提供がこの例外のどれに当たるのか、
+   あるいはそもそも個人情報に当たらないと整理するのかを、法務に確認する必要がある。
+2. **契約条件を11条版にしたので、匿名加工情報・統計利用の契約上の根拠が無くなった【要確認】。**
+   不採用にした27条版の第10条・第11条にしか書かれていない。AI 学習・統計に施工データを使う機能があるなら、
+   /terms に条項を足すか、プライバシーポリシー側で手当てする必要がある。
+3. **移転後に旧オーナーの顧客に紐付いたまま発行された証明書は、旧オーナーに見える。**
+   非表示の印は「受諾の時点までに作られた証明書」にだけ付く。施工店が `vehicles.customer_id` を新オーナーに付け替えないまま
+   次の施工証明を発行すると、その証明書は旧オーナーのマイページに出る。移転時に車両の顧客紐付けをどうするかは未決。
+
+- 起票日: 2026-09-27
+- 判断者: 代表（1・2 は法務確認込み）
+- 2026-09-27 追記: 施工店の承認画面の件は「オーナー同意だけ」に決まり、解消した（DECISION_LOG）。
+
+## 【解決済み 2026-09-27】通知2タイプ（`certificate_gate_ready` / `rating_request`）は該当イベントの実処理が見つからないため未配線（2026-09-25）
+
+## 【判断待ち】ナンバーも VIN も無い車両を、何で同一と見なすか（2026-10-02 起票）
+
+`/code-review` が PR #1212 で指摘した。`src/lib/certificates/create.ts:270-286` の車両の
+重複排除は **`plate_display` の一致だけ**で、`plate` が無ければ照合そのものを行わず常に
+`vehicles` へ新規行を作る。同じ車に2回発行すると2行できる。
+
+**この PR で作った穴ではない。** ナンバーが無ければ maker / model が揃っていても前から同じだった。
+ただし `maker` / `model` の NOT NULL を外して**片方だけの発行が通るようになった**ので、
+「ナンバーも車種も曖昧な車両」で当たる範囲は広がる。
+
+**決めてほしいこと**: ナンバーも VIN も無い車両を、何で同一と見なすか。
+- (a) 何でも同一と見なさない（現状）＝ 発行ごとに別行。車両パスポート・走行距離の時系列が分かれる
+- (b) `maker` + `model` + 顧客で照合する ＝ 同じ顧客の同車種が1台に統合される（別の車かもしれない）
+- (c) ナンバーか VIN が無ければ車両を作らない ＝ 発行はできるが車両マスタに残らない
+- (d) 発行時にナンバーか VIN のどちらかを必須にする ＝ 2026-10-02 の「発行させる」判断と逆向き
+
+走行距離は「入庫のたびに読める唯一の客観値」で、車両パスポート・残価判定・整備リマインダー・
+劣化予測がすべてこの時系列を入力にしている（`create.ts:199-201` のコメント）。
+行が分かれると**その時系列が切れる**ので、(a) のままにするかは効き方を見てから決めたい。
+
+- 起票日: 2026-10-02
+- 判断者: 代表
+
+## 【判断済み 2026-10-02】本番の NOT NULL とコードが噛み合っていない2経路（2026-09-27 起票）
+
+`/code-review` が PR #1174 で見つけた。**本番の `vehicles.maker` / `model` は NOT NULL・既定なし**
+なのに、次の2経路は**明示 NULL を送りうる**。つまり**本番で今日すでに 23502 で落ちる**
+（マイグレーションが作った不具合ではない。揃えたことで新しい環境にも同じ挙動が出るだけ）。
+
+| 経路 | 何が起きるか |
+|---|---|
+| `src/lib/certificates/create.ts:291-292` | 発行のガード（同 197 行）は「`maker` か `model` のどちらか一方」で通すが、本番は**両方 NOT NULL**。片方だけの発行が 23502 で落ちる |
+| `src/app/api/admin/hearings/route.ts:136-137` | 同じ形。ただし `if (!vehErr && vehicle)` で**エラーを握り潰す**ので、ヒアリングは成立して**車両の紐付けだけが黙って落ちる** |
+
+`certificates.expiry_type` にも同じ形（明示 NULL）が2箇所あったが、**本番に既定 `'text'` がある**ので
+未指定ならキーごと落とす形に直した（#1174）。`maker` / `model` は**既定が無い**ので直せない。
+
+**決まったこと（2026-10-02・代表判断）**: **発行させる。** `20261002120100` で
+`maker` / `model` の NOT NULL を外し、**NULL を「不明」として許す**形にした。
+アプリ側のコード変更は無い（ガードと画面はもともと「どれか1つ」で通す形だった）。
+空文字案は採らない —— `''` は「不明」ではなく未入力と区別できなくなる。
+**車両の直接登録 API（`vehicleCreateSchema`）は両方必須のまま緩めていない。**
+`scripts/replay/checks/vehicle_insert_without_maker_model.sql`（陰性対照つき）で再発を止める。
+経緯は DECISION_LOG / RELEASE_LOG 2026-10-02。
+
+**残る未決**: `src/app/api/admin/hearings/route.ts:136-137` の**エラー握り潰し**
+（`if (!vehErr && vehicle)`）はこの判断と独立した不具合で未修正。NOT NULL が外れて 23502 は
+消えるが、FK や RLS で落ちた場合は今も黙って車両の紐付けだけが落ちる。
+
+（以下は起票時の選択肢。記録として残す）
+**決めてほしかったこと**: 「メーカーが分からない車両」をどう保存するか。
+- (a) 空文字 `''` を入れる ＝ NOT NULL は満たす。本番に現在 `''` の行は 0 件（実測・27 行中）
+- (b) `maker` / `model` を両方必須にする ＝ 発行のガード（片方でよい）を変えることになる
+- (c) 本番の NOT NULL を外す ＝ 実データ 27 行はすべて両方埋まっているので、緩める理由が弱い
+
+**実測（2026-09-27）**: 本番 `vehicles` 27 行・`maker` / `model` が空文字の行は 0 件。
+つまりこの経路を通った発行は本番に1件も残っていない（落ちていたか、UI が両方を必須にしていた）【要確認】。
+
+あわせて: **`insurers.plan_tier` の既定をどうするか。** 本番は既定なし・NULL 可で、
+`insurer_self_register_v3`（`20260325300000`）が列を渡さないため自己登録の保険会社は NULL になる
+（本番 2 行のうち 1 行が NULL・実測）。審査画面（`InsurerReviewClient.tsx:149`）のプラン選択が
+空で出る。既定 `'basic'` を入れるかは商流の判断。
+
+## 列属性のドリフトを全表で洗い出した（2026-09-27・ほぼ解決）
+
+**結論: 280 表のうち 268 表は完全一致。差は 12 表・310 セル中 25 セル・属性単位で 39 件だった。**
+`20260929150200` / `20260929150300` で 19 件を解消し、**残り 20 件は下の2種類だけ**。
+
+調べ方: 本番と `--keep` で残した再生 DB の `information_schema.columns` を**同じクエリで**引き、
+列ごとに（型・udt・長さ・精度・位取り・NULL 可否・既定値）の digest を取って突き合わせた。
+検出器（`check-schema-drift.mjs`）は列の**名前**しか見ないので、この差はどちらの検査にも映らない
+（検出器の「ponytail: 上限その2」）。**本 PR の調査はその穴を一度だけ手で埋めたもので、
+検出器自体は広げていない**（Management API の資格情報がこの作業環境に無く、変更を検証できないため）。
+
+### 直したもの（19 件）
+
+| 種類 | 件数 | 向き |
+|---|---|---|
+| 本番が NOT NULL・再生が NULL 可 | 12 列 | 再生を厳しく（**本番では no-op**） |
+| 再生が NOT NULL・本番が NULL 可 | 2 列 | 再生を緩める（**実害あり・下記**） |
+| 既定値の有無・値 | 4 列 | 本番へ寄せる |
+| 既定値が自表の CHECK に弾かれる | 2 列 | **本番を直す**（寄せる先が無い） |
+
+**一番効いたのは「再生のほうが厳しい」2列。** `audit_logs.tenant_id` は本番 349 行のうち
+**337 行が NULL**（実測）なのに再生側が NOT NULL だったので、`INSERT INTO audit_logs (action)` は
+プレビュー DB・手元の再生で 23502 になっていた（実測）。本番で通る監査ログの書き込みの大半が、
+新しい環境では落ちていた。`insurers.plan_tier` も同型（本番 2 行のうち 1 行が NULL）。
+
+### 残っている 20 件
+
+1. **enum か text か（18 件 / 7 列）** —— 「列の型が本番とマイグレーションで違う」の節を参照。
+   **IMP-015 の判断待ち**（CLAUDE.md / docs/adr/0002）。既定値の差（`'active'::certificate_status_enum`
+   vs `'active'::text`）も値は同じで、型が揃えば自然に消える。
+2. **`insurer_users.role` と `job_orders.status` の既定値（2 件）** —— `20260929150200` が本番を直すので、
+   **本番へ適用された時点で消える**。適用前は差として出る。
+
+### まだやっていないこと
+
+- ~~検出器を属性（NULL 可否・既定値・型）まで見るように広げる。~~ **NULL 可否は 2026-10-02 に
+  検出器へ入れた（報告のみ・両方向）。** `columnRowsFromDump` に notnull を足し、`nullabilityDrift` で
+  本番⇄再生を両方向に仕分けて出す（実害の向き＝再生 NOT NULL / 本番 NULL 可 には印）。解析は
+  `scripts/__tests__/dumpParse.test.ts` で単体検査、実スキーマ再生ダンプ（3604 列）で実測確認済み。
+  - **残り**: 既定値・型の深い比較（型＝enum/text は既存の報告のみ節が別途カバー、既定値は
+    `pg_get_expr` と pg_dump の表記差でノイズが出やすく未着手）。NULL 可否ドリフトの**赤化**（今は
+    報告のみ）は、Management API 秘密のある環境で本番 1 回を実測し残差 0 を確認してから。
+- 索引名・ポリシー名までの突き合わせ（表ごとの件数までは 2026-09-25 に実測）。
+
+## 通知2タイプ（`certificate_gate_ready` / `rating_request`）は該当イベントの実処理が見つからないため未配線（2026-09-25）
+
+IMP-029 の15タイプ配線（DECISION_LOG 2026-09-25 の決定に基づく）のうち、この2タイプだけは
+「発火させる場所」がコードに存在しないため、憶測で作らず見送った。
+
+- **`certificate_gate_ready`**（admin 宛・in_app）: Certificate Gate は発行（draft→active）の
+  その瞬間にしか評価されない（`evaluateCertificateActivationGate` の呼び出しは
+  admin status / activate-by-key / mobile activate / certificateRecordAuto の4箇所で、
+  どれも「READY なら即 active 化」）。写真アップロードや懸念解決のあとに Gate を評価し直して
+  「発行できる状態になった」と検知する処理が無い。配線するには「いつ Gate を再評価するか」
+  （写真アップロード時か、懸念解決時か、定期 cron か）という新しい業務フローの設計が要る。
+- **`rating_request`**（カタログ上 customer 宛・in_app）: 評価の仕組みは受発注（B2B）の
+  `order_reviews`（取引完了後に双方が評価）しか無い。カタログの宛先 `customer` を
+  「施工店の顧客」と読むと、顧客の評価フローも顧客のアプリ内受信箱も存在しない。
+  「受発注の発注側テナント」と読むなら取引完了時に送れるが、同じ瞬間に `order_completed` も
+  届くため、2通にするか・完了通知に評価依頼を含めるかも決めが要る。
+- 次のアクション: 代表に (a) Gate 再評価のタイミング、(b) `rating_request` の宛先の意味
+  （施工店の顧客 / 受発注の相手テナント）を確認する。
+- 起票日: 2026-09-25
+- 判断者: 代表
+- **解決（2026-09-27）**: (a) Gate再評価は写真アップロード時。(b) `rating_request`の宛先は
+  施工店の顧客（エンドユーザー）。送信タイミングは証明書発行の数日後（`signature_reviews`＝
+  サイン直後のその場レビューとは別物として扱う）。加えて調査中に`defaultChannels: ["in_app"]`
+  が顧客に届かない不整合と判明、実装時にemail/line等へ修正する。詳細は DECISION_LOG.md
+  2026-09-27 を参照。
+
 ## ビルドが Google Fonts への外部フェッチに依存していて、取れないと CI が落ちる（2026-09-23）
 
 2026-09-23 05:23 UTC、**コード変更が1件も無い PR（#1127・`docs/context/` のみ）で
@@ -94,12 +356,17 @@ Web 側は顧客名・車両情報など任意の日本語を出すので、同�
   手元と CI で成果物が変わる形は型 E を作る。(f) リトライを足す ——
   失敗の窓は狭くなるが無くならない。
 
+> **【2026-09-29】 CI にだけ (f) を入れた**（#1184、DECISION_LOG 2026-09-29）。3回目（下の表）で、CI が同一コードを
+> 赤くする誤検知を止めるため。**Vercel の経路には効かない**ので、この項は閉じない。
+> (a) への着手は引き続き代表判断【要確認】。
+
 ### 再発の記録
 
 | 回 | 日時(UTC) | 落ちた場所 | 対象 | 結末 |
 |---|---|---|---|---|
 | 1 | 2026-09-23 05:23 | GitHub Actions（`Client Bundle Size`） | #1127（`docs/context/` のみ・コード変更0） | 同じコミットの再実行で 06:22 に成功。**同時刻に Vercel は成功** |
 | 2 | 2026-09-24 13:42→13:44 | **Vercel**（`dpl_7NgpKfXib84pLrSWtZTLouxNUoM8`） | #1114（依存更新・head `9f7c2bf3`） | **GitHub CI は同じコミットで10件すべて緑**。main を取り込んだ `368a1e8e` で 15:05 に Ready |
+| 3 | 2026-09-29（時刻【要確認】） | GitHub Actions（`Client Bundle Size`） | #1172（`7feaed9` / `5e100a8` の2コミット） | アプリのコードが同じ前後のコミット（`f4233c7` / `69c447b`）では成功 |
 
 **2回目の切り分け**（#1114 のコメントに詳細）:
 
@@ -196,12 +463,38 @@ Google Fonts が `&` を含む URL を返すと `next/font/google queries have e
 > 巻き込んで消してしまった（`/code-review` の指摘で復活）。`LEDRA_CURRENT.md` と
 > `DECISION_LOG.md` がここを指している。
 
-`certificate_images` の列定義が本番と食い違っている
-（`file_name` と `content_type` が本番は NOT NULL・マイグレーションは NULL 可、
-`sort_order` の既定が本番 1・マイグレーション 0）。
-`file_size` だけは `20260922141100` で揃えた。**列の「名前」しか突き合わせていない**ので、
-既定値・NULL 可否・型の食い違いは `check:schema` にも再生にも映らない。
-検出器を属性まで見るように広げるかは別途判断する。
+**2026-09-25 に解決（`20260925142800`・判断は DECISION_LOG 2026-09-25）。**
+本番と再生 DB を**同じクエリで**引いて
+突き合わせた（`information_schema.columns` の列名・型・精度・NULL 可否・既定値）。
+45 列のうち差は次の3件だけで、他は完全一致だった。
+
+| 列 | 本番 | 再生 |
+|---|---|---|
+| `file_name` | NOT NULL | NULL 可 |
+| `content_type` | NOT NULL | NULL 可 |
+| `sort_order` | 既定 1 | 既定 0 |
+
+マイグレーション側を本番に揃えた。本番は 88 行・3列とも NULL 0件なので**本番では no-op**、
+直るのは新しく作る環境の側。書き手は2箇所（`processUploadedPhoto.ts` と
+`scripts/setup-demo-tenant.ts` のデモ投入。SQL 関数からの insert は `pg_proc` で0件を確認）で、
+どちらも3列とも常に明示で渡す。
+振る舞い検査 `certificate_images_column_shape.sql` を追加し、3件それぞれが
+独立に落ちることを陰性対照で実測した。
+
+**この修正が隣の検査を弱めていた（`/code-review` の指摘で修正）**: 同表の
+`certificate_images_file_size.sql` は「`file_size` を省くと 23502」で判定していたが、
+その insert は `file_name` / `content_type` も省いていた。3列とも NOT NULL になった後は
+**どの列で落ちても 23502** なので、`20260922141100` を丸ごと戻しても通る状態だった。
+insert に2列を明示で渡すよう直し、`20260922141100` を空にすると 23514 で落ちることを実測した。
+台帳 `M-20260925-my-not-null-blinded-the-sibling-check`。
+
+**残っている根の問題**: 検出器（`check-schema-drift.mjs`）と `check:schema` は
+**列の「名前」しか突き合わせていない**（検出器の「ponytail: 上限その2」に明記された既知の限界）。
+だから今回の3件はどちらの検査にも映らず、表を1つずつ手で突き合わせるしかなかった。
+**他の表にも同じ形の食い違いが残っている可能性がある**（未調査）。
+検出器を属性まで広げるのが筋 ——**NULL 可否は 2026-10-02 に検出器へ入れた**（報告のみ・両方向。
+上の「列属性のドリフトを全表で洗い出した」節の「まだやっていないこと」を参照）。既定値・型の
+深い比較は残る。本番照合は Management API 秘密のある CI でしか回らないので、報告のみで始めている。
 
 ## 一意でない索引が本番と再生 DB で食い違っている（2026-09-21）
 
@@ -336,6 +629,11 @@ created 2026-07-26）。増えていない。
 **未決（残る）**: マイグレーション側を enum に寄せるか。`certificates.status` は稼働中の RPC が触るので
 （2026-09-19 の `status::text` 修正はこの型差が原因だった）、影響範囲の確認が要る【要確認】。
 
+**2026-09-27 に全表調査で裏を取った。** 280 表・310 セルを本番と同じクエリで突き合わせた結果、
+**型が違う列はこの5列だけ**（＋ビュー `certificates_public.status` / `.expiry_type` が元の列の型を継ぐ2列）で、
+他に enum/text の食い違いは無い。この節の一覧が母集団の全部である。
+型以外の属性（NULL 可否・既定値）は `20260929150300` で揃えたので、**残る差はこの型だけ**になった。
+
 ## 本番と再生 DB で制約・ポリシーの数が違う（2026-09-21）
 
 索引と同じ形の差が、制約とポリシーにもある。**名前の突き合わせは未実施**【要確認】。
@@ -346,6 +644,28 @@ created 2026-07-26）。増えていない。
 | 外部キー | 597 | 600 |
 | RLS ポリシー | 622 | 642 |
 | 関数 | 145 | 145（名前の差は 0。`check-schema-drift.mjs` が見ている） |
+
+**2026-09-25 に索引とポリシーを測り直した**（`--dsn` で残した再生 DB ⇄ 本番、同じクエリ）。
+
+| | 本番 | 再生 | 差のある表 |
+|---|---|---|---|
+| 一意でない索引 | 768 | 766 | **15 表** |
+| RLS ポリシー | 654 | 659 | **12 表** |
+
+**総数の差（索引2・ポリシー5）を「差が小さい」と読んではいけない。** 表ごとに見ると
+索引は本番のみ側が正味 16 本・再生のみ側が正味 14 本で、打ち消し合って2になっている
+（16−14=2 で総数差と一致）。ポリシーも再生のみ側 13・本番のみ側 8 で 13−8=5。
+以前これと同じ形で誤った（MISTAKE_LEDGER `M-20260921-compared-counts-where-names-differed`）。
+
+索引で件数が違う 15 表: `agent_signing_requests` `audit_logs` `certificates`
+`customer_inquiries` `customer_login_codes` `customer_sessions` `documents`
+`insurer_tenant_access` `insurers` `job_orders` `market_vehicles` `nfc_tags`
+`reservations` `tenant_memberships` `vehicles`。
+ポリシーで件数が違う 12 表: `academy_creator_rewards` `academy_lessons`
+`academy_quiz_questions` `admin_audit_logs` `audit_logs` `certificates`
+`customer_inquiries` `insurer_access_logs` `organization_members` `templates`
+`tenant_memberships` `tenants`。
+**索引名・ポリシー名までの突き合わせは今回も未実施**（表ごとの件数まで）。
 
 **CHECK と外部キーは 2026-09-22 に名前まで突き合わせ済み**（`20260922123000` / `20260922123100`）。
 適用後は外部キーが両方向 0、CHECK は enum に置き換わった3本だけが残る見込み。
@@ -619,6 +939,19 @@ RPC を解決できない可能性がある」と指摘し、それが本当な�
 **未決は同じ**（書き起こすか、本番から消すか）。変わったのは、**当て推量ではなく
 検出器が毎週数えるようになった**こと。`certificates` の anon 公開が意図どおりかは
 引き続き【要確認】。
+
+**2026-09-25 追記（再確認と、1つ足りていなかった事実）**: 件数は本番 654 / 再生 659 に
+動いたが、`insurer_access_logs` の2本（`logs_insert_self_only` / `logs_select_same_insurer`）は
+**今も本番にだけある**。この2本は `check-schema-drift.mjs` の既知リストに載っていないので、
+検出器が走っていれば出るはずのものである（この作業環境には Management API の資格情報が
+無く、検出器を走らせて「出ているのか」は確かめていない）。
+
+上の記録に無かった事実を1つ足す: **再生 DB では `insurer_access_logs` は
+RLS が有効なままポリシー0本**（`relrowsecurity = true` / `pg_policies` 0件を実測）。
+つまり新しい環境は `authenticated` に対して**全部拒否**で、本番より緩いのではなく厳しい。
+API の読み書きはサービスロール（`createInsurerScopedAdmin`）で RLS を迂回するので
+画面は動く。**漏れる向きの差ではない**が、同じマイグレーションから作った環境の
+振る舞いが本番と違う状態は残っている。
 ## 追加（2026-08-27・CI が2回続けて起動しなかった）
 
 - **PR #979 への push 2回（`f97fbe0` / `2c78c1d`、8/27 00:10〜00:12 UTC）で
@@ -659,6 +992,35 @@ RPC を解決できない可能性がある」と指摘し、それが本当な�
   **時間経過で直っただけ**だった可能性が高い。
 - 次に踏んだときの現実的な対処: **15〜20 分ほど置いてから push し直す**。それで駄目なら
   close→reopen を人に頼む。空コミットで突く意味は無い（今回 4 回の push が無駄になった）。
+- **追記(2026-09-28・3度目の再発。PR #1174 / `claude/outsourced-work-history-system-8c16e2`)**:
+  `ci.yml` / `codeql.yml` / `gitleaks.yml` / `loc.yml` の run が**1本も作られていない**。
+  付いたのは Vercel と Supabase Preview だけ。このブランチの最新 Actions 実行は
+  2026-09-26 の `46b59714`（前の PR #1166）のまま。同時刻帯に他ブランチは正常
+  （`ci.yml` run 3431 が 09-27 15:23、3432 が 15:33、3433 が 15:48、いずれも成功）で、
+  **ブランチ単位の事象**という点は過去2回と同じ。
+- **引き金の形は 2026-09-21 と一致した。** 今回も「**マージ済みで閉じた PR の後、
+  オープンな PR が無い状態でブランチへ force-push し、その後に PR を作成**」である
+  （#1166 を squash マージ → `git checkout -B` で main から作り直し → force-with-lease →
+  PR #1174 を作成）。08-27 は「既にオープンな PR への push」だったので、
+  **force-push → PR 作成の順序が疑わしい**という手がかりが2例に増えた。
+- **「15〜20 分置いて push し直す」は今回は効かなかった**: 最初の push（09-27 15:2x）から
+  約 17 時間後の 09-28 08:57 に中身のある push（`21f590c9`）をしたが、それでも起動していない。
+  2026-09-21 の「時間経過で直る」は今回は当てはまらない。
+- **`workflow_dispatch` を足しても今回は救えない。** `workflow_dispatch` は
+  **ワークフローファイルが既定ブランチに在るときだけ**起動できるので、ブランチ側に足しても
+  そのブランチの CI は動かせない。**先に main へ入れておく必要がある**（だから「再発時の保険」
+  としては正しいが、踏んでから足しても間に合わない）。
+- この PR で実測した回避策の成否:
+
+  | 試したこと | 結果 |
+  |---|---|
+  | 中身のある push（17 時間後） | 起動しない |
+  | 時間経過（約 17 時間） | 起動しない |
+  | 空コミット / close→reopen | **方針として使わない** |
+  | ブランチ側に `workflow_dispatch` を足す | **原理的に効かない**（既定ブランチ要件） |
+
+  残る手は「人が close→reopen する」だけ。**`ci.yml` に `workflow_dispatch` を
+  main へ入れておくことを、独立した作業として先に済ませるべき。**
 - main を取り込んだ次の push（`1804721`、00:52 UTC）では正常に起動し、全ジョブ緑。
   **原因不明のまま解消**した。GitHub 側の一時障害か、ブランチ単位のスロットリングかは
   切り分けられていない。
@@ -908,6 +1270,54 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
 - **未決**: `@contentauth/c2pa-node` を `optionalDependencies` から `dependencies` へ
   移すか。fail-closed にしたので「入らなければ CI が落ちる」ようにはなったが、
   **ランタイム（Vercel）でのフェイルオープンは塞げていない**。下の【要確認】と同じ論点。
+  - **2026-10-02 に片付いた論点: これは C2PA の適合性審査には影響しない（どちらの向きにも）。**
+    一次資料を取って確認した（`c2pa-org/conformance-public` を clone、
+    `docs/v0.2/C2PA Generator Product Security Requirements.md`。v0.2 は 2026-10-02 時点でも現行で、
+    `docs/` 配下に v0.3 以降は無い）。根拠は脅威モデルで、**T.1〜T.6 の6つすべてが
+    「偽の来歴を作る／鍵を盗む／改ざんする」側**であり、**「署名しない」は脅威に入っていない**。
+    未署名の画像は世の中の既定状態なので、C2PA から見て攻撃ではない。
+    O.3・O.4 の Level 1 要件は2つずつで、どちらも「Claim Generator の依存に SCA/SBOM を掛けて
+    NVD 脆弱性を検出する」「CRITICAL/HIGH を検知から90日以内に修正する」だけ。Static Evidence は
+    GPSA にツールと「90日超の既知 CRITICAL/HIGH を出荷しない仕組み」を書くこと、Dynamic Evidence は
+    "No stipulation"。**npm の依存区分を見る要件は無く、モジュールが丸ごと入らないことは
+    「既知の脆弱性」ではないので上記にも当たらない。** `docs/c2pa-gpsa.md` §2.3 の書きぶり
+    （SCA/SBOM ツール＋90日ポリシーの2点）は一次要件と一致しており、取りこぼしは無かった。
+  - CPL 掲載後の `Material Change`（再申請が必要な重大変更）にも当たらない。規定は
+    「CPL レコードまたは Generator Product Security Requirements への適合性への明確な改変」
+    （`docs/v0.2/C2PA Conformance Program.md`）で、依存区分はどちらにも触れない。
+    **したがって掲載の前でも後でも、審査の都合で急ぐ/待つ理由は無い。**
+    判断は純粋に「本番で黙って未署名になる経路を塞ぐか」だけで決めてよい。
+  - 【要確認】のまま残るもの: **O.2（署名鍵）・O.1・O.5・O.6 と、各 Level 2 は今回読んでいない。**
+    ギャップ分析 G4（鍵保管＝O.2）の「AL1 の具体要件は別文書＝要確認」は未解決。
+    一次資料は手元に clone 済みなので、読めば片付く。
+  - **2026-10-02 決着（代表判断「黙って未署名はダメだ」、DECISION_LOG 同日）: ランタイムの
+    フェイルオープンは塞いだ。** ただし**依存区分の移動では塞がらなかった**ので、塞ぎ方が違う。
+    黙る出口は6本あり（署名器が作れない／出力バッファ無し／署名中の例外／`withTimeout` の
+    打ち切り／disabled／成功）、**失敗の4本すべてが disabled と同じ `DISABLED_RESULT` を
+    返していた**のが根だった。`C2paResult` に `failure` を足して区別できるようにし、
+    `processUploadedPhoto` が `C2PA_MODE=production` かつ failure のとき
+    **ストレージ書き込みの前に**保存を断るようにした。
+    `dev-signed` は `console.error` を出して通す。
+    **2026-10-03 訂正: ここには「（孤児ファイルを残さない）」と書いていたが、副作用をストレージだけで
+    数えた言い方で、出荷した設計とも違う。** `signC2pa` は `anchorToPolygon` と同じ `Promise.all` で走るため
+    署名例外・タイムアウトで断る時点では、Polygon のアンカリングが有効（`POLYGON_ANCHOR_ENABLED=true`）で鍵とコントラクトが設定されている場合は**オンチェーン送信が済んでおり取り消せない**（無効・未設定・SHA-256 不正なら `anchorToPolygon` は送信前に返る: `polygon.ts:116` / `:119` / `:125`）。そのため実装は
+    `/code-review` の指摘を受けて2段構えになった —— **本番は署名器の有無を nonce・sharp・TSA・Polygon・
+    ストレージより前に先行検査して全体を 503**、写真ごとの失敗は `c2paRefused` を立てて**一部成功でも 422 で
+    何枚目が欠けたか**を返す（`uploadHandler` は `uploaded === 0` のときしか失敗を表に出さなかった）。
+    2026-10-03 に `main` へマージ（squash `e9dbb95e`・PR #1209）。
+  - **依存区分（`optionalDependencies` → `dependencies`）は、これとは別の未決として残る。**
+    上のゲートで「黙って」は消えたので、依存区分の論点は「ビルド不可環境で `npm ci` ごと
+    落とす代わりに、モジュール不在を早く知るか」だけになった。
+  - 【要確認】**本番（Vercel）で `@contentauth/c2pa-node` が実際にビルドできているか。**
+    できていなければ、`C2PA_MODE=production` にした瞬間に全アップロードが
+    `signer_unavailable` で断られる。**オンにする前に本番環境での読み込み可否を確かめること。**
+    先行検査を入れたので、落ちるとしても「1枚も保存されず 503」という分かる形になる。
+  - 【要確認】**HEIC を c2pa-node が署名できるか。** `validateMagicBytes` は `image/heic` を受け、
+    管理画面の `accept` にも入っているが、`c2paSignValidate.test.ts` は jpeg/png/webp しか見ていない。
+    `stripGpsAndReadExif` は `toFormat` を指定しないので入力形式のまま署名へ渡る。
+    署名できない場合、**本番オン後に iPhone 既定の HEIC が全部 503 になる**（以前は黙って
+    未署名で保存されていた）。手元の sharp の heif は avif 専用で HEIC を作れず検証できなかったので、
+    **実機で撮った HEIC で確かめること。**
 - **未決（今回の変更で残ったもう1つ）**: `providers.test.ts` の
   「c2pa-node が無ければ graceful-degradation の契約だけを見る」分岐。
   これは skip ではなく実際に assert しているので沈黙ではないが、**強い検証が
@@ -1194,21 +1604,26 @@ LINE または SMS 経由の送付失敗が同様に調査不能という報告�
 （`sendSMS` は OTP 送信とは別関数 `sendOtpSms` が既に `SmsSendResult` を返している
 のでそちらの形に揃えられる可能性がある）、着手前に呼び出し元を洗い出すこと。
 
-## 帳票メールが本番で送れない実際の外部原因（Resend/SendGrid 側）が未特定（2026-09-08）
+## 帳票メールが本番で送れない：原因は Resend で ledra.co.jp が未認証（2026-09-08 起票・2026-09-30 更新）
 
-「請求書のメール送付が出来ない」報告を調査（DECISION_LOG 2026-09-08）。本番
-`document_share_log` を見ると、同じ宛先 `sh***@honda-auto.ne.jp` 宛が
-2026-07-09・08-09 は成功、08-28 は別の2ドメイン（outlook.jp / gmail.com）宛で失敗、
-09-08 に同じ宛先が再び失敗——宛先ドメイン依存ではなく、07-09〜08-28 の間に
-プロバイダ側（Resend の API キー失効・送信ドメイン検証失効・アカウント停止等）
-で何かが起きたと推定されるが、該当期間にコードの変更は無く、本セッションからは
-Vercel の環境変数・Resend ダッシュボードを確認できないため未特定。
+**原因は特定済み。代表の作業待ち。** 2026-09-08 の修正（失敗理由を握り潰さない）の後、
+2026-09-13 22:29〜22:41（JST）の送付4件が `document_share_log.error_message` に
+`resend(403):{"message":"The ledra.co.jp domain is not verified. ..."}` を残した。
+送信元（`RESEND_FROM`）が `@ledra.co.jp` なのに、Resend 側でドメインが検証済みになっていない。
+403 は「再送しても同じ」扱いなので SendGrid へのフォールバックも起きない（`sendEmail.ts` の `shouldFallback`、設計どおり）。
+9/13 に理由は出ていたが、この項目が「未特定」のまま更新されず、代表に手順が届いていなかった
+（MISTAKE_LEDGER `M-20260930-diagnosable-fix-left-without-anyone-watching`）。
+本番DBで確認した範囲では 9/14〜9/30 の帳票メール送付は0件で、今送れるかは誰も確かめていない。
 
-**次にやること**: 代表に Resend ダッシュボード（API キーの有効性、送信ドメインの
-DKIM/SPF 検証状態）と Vercel の `RESEND_API_KEY` / `RESEND_FROM` / `SENDGRID_API_KEY`
-を確認してもらう。今回の修正（失敗理由を握り潰さないようにした）のデプロイ後に
-もう一度送付を試み、`document_share_log.error_message` に出る具体的な理由から
-判断する。
+**次にやること（代表）**:
+1. Resend の Domains で `ledra.co.jp` を追加（または状態確認）し、表示される DNS レコード（SPF/DKIM 等）を
+   ledra.co.jp の DNS に登録して Verify する。別の手として、`RESEND_FROM` を検証済みの別ドメインに変えてもよい。
+2. Vercel に `SLACK_OPS_ALERT_WEBHOOK_URL`（運営向け障害通知の Slack Incoming Webhook）を設定する。
+   未設定だと運営 Slack への失敗通知はスキップされる（店の管理者へのベル通知は設定なしで届く）。
+3. 請求書を1通送って、成功するか・新しい理由が出るかを確認する。
+
+推定: 7〜8月は同じ宛先に送れていたので、当時は検証済みだったドメインが DNS レコードの変更・削除で
+検証切れになった。根拠は成功と失敗の間にコード変更が無いことだけ。未検証。
 
 ## モバイル _layout.tsx の Stack.Protected 設計をディープリンク保存方式から恒久対応に切り替えるか（2026-09-09）
 
@@ -1523,6 +1938,12 @@ PR #1040 で、公開証明書ページが `vehicle_histories` の閲覧監査�
 
 ## `certificates` の公開ポリシーが行ごと許可し、`is_hidden` を見ていない（2026-09-06）
 
+> **2026-09-27 訂正: 「実害0」は誤りだった。** 下の表の `customer_name` 23/23 件は「証明書の性質上そこにあるべきもの」ではない。
+> アプリは公開ページ・公開ビュー・公開 PDF の3経路とも顧客名を匿名の閲覧者から伏せており、
+> 表の直読みだけがその外にあった。ポリシー2本の DROP と anon 権限の REVOKE を `20260927113105` で入れた
+> （DECISION_LOG 2026-09-27、MISTAKE_LEDGER `M-20260927-anon-customer-names-read-as-by-design`）。
+> 下の1・2は、anon から表が読めなくなるので解消する。
+
 anon から読める表を全件実測した際に見つけた2点。**どちらも現時点で実害0**だが、
 条件が変わると露出する形なので残す。
 
@@ -1737,8 +2158,113 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
   3. **Administrator へ訂正メール送付**（validate 取り下げ。文面 `scratchpad/ledra-intake-correction-email.md`）— 代表が送信。
   4. **Conformulator（https://c2pa-conformulator.netlify.app/）で生成サンプルを自己テスト**後に提出。
   5. 提出はメール添付/zip/DLリンク（機密）。GPSA 一式のファイル名に "GPSA" を含める。
-- 別論点: 本番 sharp が HEIF デコード不可だと HEIC の GPS 除去が効かない点は要確認。
-- 確定済み: 役割=GP / 実装クラス=Backend / Max AL=1 / 申告 Spec=**2.4** / 法人名=株式会社HOLY（英字 **HOLY Inc.**）/ 登記住所=東京都港区北青山1-3-1 アールキューブ青山3F / 連絡先=info@holy-inc.jp / **生成メディアタイプ=image/jpeg・png・webp・heic（validate は今回申告せず）**。
+- **2026-09-27 更新（提出一式を再作成・リポジトリに保存）**: 9/3 のサンプルは消える作業領域にあり残っていなかったため、
+  現行コード（c2pa-node 0.9.7）で再生成し `docs/c2pa-evidence/samples/` に保存（4枚とも `Valid`、指摘は
+  `signingCredential.untrusted` のみ）。GPSA は**英語の提出版** `docs/c2pa-evidence/Ledra-GPSA*.md` を作成
+  （日本語版は参照用）。返信メール下書き（validate 取り下げ込み・英日）は `docs/c2pa-evidence/submission-email.md`。
+  再生成の過程で C2PA 行為台帳の不具合（回転・WebP のメタデータ除去が記録されない）を発見し修正
+  （MISTAKE_LEDGER `M-20260927-c2pa-ledger-tested-only-on-exif-free-images`）。
+  **Conformulator 結果（2026-09-29、3版目サンプル）**: jpeg / webp / heic は「3 of 4 pass/fail rubrics passed」で、
+  不合格は `validation:trusted_success`（untrusted＝テスト証明書、想定内）のみ。適合ルーブリック（0.1/2.2・0.2/2.2・0.2/2.4）は全 PASS。
+  png も同日合格（画面の manifest URN `urn:c2pa:bdf9c565-…` が b-sample.png と一致。Signals 欄の形式表示はサムネイル形式で、
+  png のサムネイルは jpeg なので `image/jpeg` と出る）。**4枚とも自己テスト合格**。
+  **残タスク（代表）**: (1) ✅ Conformulator 自己テスト、
+  (2) GPSA §2.2/§2.6 の「Vercel/Supabase に入れる人＝管理者のみ」、本番デプロイが `main` からのみであること、
+  署名欄の英語表記（Yusuke Horikoshi / Representative Director）を確認、(3) 返信メール送信。
+  Intake Form（9/3 提出・PDF 控え確認済み）は validate=Yes（jpeg/png/webp/heic）のままなので、訂正は返信メールで行う。
+- **2026-09-29 訂正と差し戻し**: 送信されたのは 9/27 の**1版目**（Gmail 送信記録 15:32 UTC）。9/28 に Administrator から
+  非適合4件（DST 欠落／actions 位置／カスタムアサーション形式／Backend は `c2pa.created` 不可）。validate 取り下げは受理されたが、
+  Administrator は「opened で取り込む以上 validate を戻すべき」と勧告。**再提出に必要な残り**:
+  1. 指摘(3) カスタムアサーション `com.ledra.capture` の何が不正か — メール内スクリーンショット2枚が必要（Gmail コネクタでは画像を取得できない）。
+  2. ingredient ライブラリ（Drive `Google_Samples-…zip` 31MB）— この環境のネットワークでは取得不可。代表から jpeg/png/webp/heic を1つずつ受け取る。
+  3. GPSA レビュー文書（Drive `1i-awde…`）— このアカウントに共有されておらず閲覧不可。
+  4. validate 申告の復活（jpeg/png/webp/heic）を返信で依頼、GPSA を opened/ingredient 前提に改訂、サンプル再生成→Conformulator 再確認。
+  - **2026-09-29 追記**: 指摘(3)は画像で判明＝`no_unrecognized_custom_action_parameters`（1版目の `c2pa.edited` の `parameters.name`）で、
+    2版目で既に除去済み・3版目で合格。GPSA レビュー文書（代表が貼付）の不合格は O.4（TOE 境界の食い違い＋created/digitalCapture）と
+    O.5（TLS 1.3 を「最低」として強制していない）。O.4 は GPSA を Backend のみの TOE・クライアントは TOE 外の非信頼入力と書き直して対応。
+    **O.5 は未対応・代表判断待ち**: Vercel は前段に Cloudflare 無し（直）。Vercel 側で TLS 1.3 最低を設定できるかは未確認。
+    外向き（Backend→Supabase 等）は Node の `--tls-min-v1.3`（環境変数 NODE_OPTIONS）で強制できるが全外部連携に効く。
+    TSA は設定例が `http://timestamp.digicert.com`（平文 HTTP）で、GPSA の「HTTPS」記述と食い違う — 本番の PHOTO_TSA_URL 要確認。
+    → 代表回答（2026-09-29）: **本番は TSA 未設定（無効）**。GPSA・運用文書・TOE 図から TSA の記述を削除した。
+    → O.5 は代表回答「まず Vercel で最低 TLS 1.3 を設定できるか確認」。外向きは NODE_OPTIONS=--tls-min-v1.3 で強制する方針。
+      → 2026-10-01 更新: 外向きは `NODE_OPTIONS` をやめ、#1183 の `tls13Fetch`（Supabase クライアントだけに TLS 1.3 を強制）を #1173 に取り込んだ。
+    → 2026-09-29 Vercel 回答: **最低 TLS 1.3 は設定不可**（1.2/1.3 両対応で固定）。代表決定: **Cloudflare を前段に置き Minimum TLS 1.3**。
+      手順書 `docs/c2pa-evidence/cloudflare-tls13-runbook.md`。コード側は写真アップロードに `viaTls13Edge`（`CF_ORIGIN_SECRET` の
+      共有秘密ヘッダ照合、未設定なら無効）を追加済み — `*.vercel.app` 直アクセス（TLS 1.2 可）で TOE に入る抜け道を塞ぐ。
+      ~~代表作業待ち: DNS 移管・Cloudflare 設定・Vercel 環境変数・切替後の TLS 1.2 拒否の確認。~~
+      → **2026-10-02 一部確認**: `www.ledra.co.jp` で TLS 1.2 は exit 35（拒否）、TLS 1.3 は 200（`Server: cloudflare`）を代表の PC で実測。
+      GPSA §1.6・§2.5 を書き直した。`app.ledra.co.jp` も同日確認（TLS 1.2 は exit 35、TLS 1.3 は 200・cloudflare、http は 301→https）。
+      本番の写真アップロードも代表が確認（403 なし）。**解決したのはクライアント→Cloudflare の区間だけ**。
+      → **2026-10-02 Codex レビュー（#1213、再提出の送信後）で O.5 の穴が3つ判明・未解決**:
+        1. **クライアント→Supabase の直通信**: Web（`src/lib/supabase/client.ts`、`NEXT_PUBLIC_SUPABASE_URL`）と
+           モバイル（`apps/mobile/src/lib/supabase.ts`）は Auth・PostgREST・Storage に Cloudflare を通らず直接つなぐ。
+           §1.6 は Supabase を TOE 内としているのに、GPSA §2.5 と TOE 図にこの経路が無い。Supabase 側の最低 TLS 版は未確認
+           → **2026-10-02 実測: Supabase は TLS 1.2 を受け付ける**（代表の PC で `--tls-max 1.2` が exit 0・HTTP 401・`Server: cloudflare`）。
+           Supabase 側の最低版は当社で変えられない。代表の問い「Supabase 以外（AWS 等）にしないといけないか」→ 移行は不要の見込み。
+           候補は Administrator に O.5 の対象範囲を確認するか、クライアントの Supabase 通信を Backend 経由（tls13Fetch）に寄せるか。
+           Realtime（WebSocket）は Web・モバイルとも未使用なので、Backend 経由にする障害にはならない。
+        2. **Cloudflare→Vercel の区間**: Full (strict) は証明書の検証で、最低 TLS 版の強制ではない。こちらからは版が見えず、
+           Cloudflare に起点側の最低版を指定する設定があるかも未確認（この環境から Cloudflare の文書に届かない）。
+        3. ~~**外部連携**~~ → **2026-10-02 対応**（代表了承）: Hive・Pinata・Polygon RPC を `tls13Fetch` 経由にした
+           （Polygon は providers 7箇所＋ `app/api/cron/polygon-signer` 1箇所。`integrationsTls13.test.ts` が viem を使う全ファイルを走査）。
+           (a) 連携先の TLS 1.3 対応は 2026-10-02 に代表の PC で確認済み（`curl.exe --tlsv1.3` で api.thehive.ai・api.pinata.cloud・
+           polygon-rpc.com とも exit 0）。本番の `POLYGON_RPC_URL` が別のホストなら、そのホストは未確認。残り:
+           (b) Polygon 署名を `aws-kms` にした場合の AWS SDK の通信は対象外（本番は `local` か未確認）。
+           (c) 写真 TSA（`photoTsa` → `parts/rfc3161` の素の fetch）は対象外。本番で無効・GPSA の連携一覧にも無い。有効にするなら直す。
+        4. **写真アップロード以外の Backend 経路**（Codex 2回目の指摘）: 秘密ヘッダの照合は写真アップロードだけ。他の画面・API は
+           `*.vercel.app` から TLS 1.2 で届く（Vercel の Deployment Protection を有効にしていなければ。有効かは未確認）。
+           全経路で照合すると、Vercel Cron など `*.vercel.app` 宛ての内部呼び出しを止めるおそれがある（推定・未検証）。
+           → 2026-10-02 代表了承: まず Vercel の Deployment Protection を有効にし、本番の `*.vercel.app` URL が保護されるかを実測する。
+           QStash のコールバック先は `NEXT_PUBLIC_APP_URL` が最優先（未設定時のみ `VERCEL_URL`）。
+           → **2026-10-03 解決（実測）**: Vercel Authentication は「Require Log In」オン・Standard Protection（代表の画面で確認）。
+           代表の PC で本番デプロイの URL `ledra-lqjnjqxkf-yusuke-horikoshis-projects.vercel.app` は `302` で vercel.com/sso-api へ
+           （未ログインでは入れない）、`app.ledra.co.jp` は `200`・`Server: cloudflare`。残り: 固定の本番エイリアス URL が別にあれば未実測。
+           Cron が保護を通るかは未確認（翌日の Cron 実行結果で見る）。
+      → **2026-10-02 Administrator がアーキテクチャを合格とし「これ以上は不要」と返信。訂正の追送はしない。**
+        残りの穴（Supabase 直通信・Cloudflare→Vercel）は審査とは別に社内で詰める。`*.vercel.app` は 2026-10-03 に解決（上の4）。
+      ~~**代表判断待ち**: 送信済みの提出物をこのまま審査に出すか、訂正を追送するか。~~直し方（Supabase を TOE の外に出す／
+      クライアントの Supabase 通信を Backend 経由に寄せる／現状を正直に書く）も製品・申請の判断。
+      → **2026-10-02 再提出を送信**（代表の申告）。validate（jpeg/png/webp/heic）復活を依頼済み。
+      **待ち**: Administrator の返答と、追加要件 §2.3 のテスト入力（届いたらハーネスで crJSON を返す）。
+      Cloudflare→Vercel 間の TLS バージョンはこちらから見えない（Full (strict) で検証付き HTTPS までは設定どおり）。
+  - 代表が添付した画像4枚は Ledra の旧サンプルで、C2PA 指定ライブラリの素材ではない（ライブラリは引き続き未入手）。
+  - **2026-09-29 ライブラリ入手**（代表が zip を添付）: 画像は jpg（Google Pixel 署名・証明書期限切れ）と png（Google 署名）のみ。
+    webp/heic は Program の指示どおりライブラリ jpg から作り c2pa-rs テスト証明書で署名（`docs/c2pa-evidence/make-ingredients.mts`）。
+    X-ingredient1 → X-sample の4組を生成、4枚とも Valid・untrusted のみ・ingredient に元 manifest と検証結果あり。
+    計32MB のためリポジトリには入れず、生成スクリプトのみ保存。**Conformulator 未確認（zip 名に UNVERIFIED）**。
+  - **追加要件 PDF（v0.2）§2.3**: validate を申告すると **crJSON 出力のテストハーネス**（入力: 資産・テスト Trust List・TSA Trust List・
+    検証時刻 → crJSON）が必須。Program からテスト入力が後日届く。c2pa-node 0.9.7 は crJSON 非対応、c2pa-rs main に
+    `Reader::to_crjson_value` あり、この環境に Rust と crates.io 到達性あり → 小さな Rust ツールで作れる見込み（未着手）。
+    → **2026-09-29 作成済み**: `tools/c2pa-crjson-harness`（c2pa-rs 0.90.22＝製品と同じエンジン＋2点パッチ、自己テスト6件）。
+      Program のテスト入力が届いたら、これで crJSON を出して返す。
+  - **2026-10-02 Administrator 助言**: 「生成製品が C2PA の CA・TSA Trust List を参照していない。参照すれば TRUSTED になる」。
+    公式リスト（c2pa-org/conformance-public の `trust-list/C2PA-TRUST-LIST.pem`・`C2PA-TSA-TRUST-LIST.pem`）はこの環境から取得できる
+    （2026-10-02 に HTTP 200 を確認）。c2pa-node 0.9.7 は `Context` の `trust.trustAnchors` に PEM の本文を渡せるが、URL は取りに行かない。
+    **2026-10-02 実測（c2pa-node 0.9.7、公式リスト C2PA 30件・TSA 22件を `trustAnchors` に渡して比較）**:
+    - Program 素材の Google Pixel 写真（a-ingredient1.jpg）は、既定設定だと `signingCredential.expired`＋`untrusted`・状態 Invalid。
+      リストを渡すと `timeStamp.trusted`・`signingCredential.trusted`・状態 Trusted（TSA が信頼されると証明書の有効期間を
+      タイムスタンプ時点で判定するため）。Google 署名の png も同様に Trusted。Ledra のテスト証明書のサンプルは untrusted のまま。
+    - **今の本番の不具合**: `interpretC2paValidation` は `expired` を致命とするので、本物の Pixel 写真が `external_c2pa_verified=false`
+      になり、管理画面の改ざん検知パネルに「外部C2PA署名が無効 (撮影後改変の疑い)」と出る（推定: 期限切れ証明書の端末写真すべて）。
+    ~~**代表判断待ち**: 本番に設定するか~~ → **2026-10-03 代表了承（「つづき」）で実装**: 公式リスト2つを
+    `src/lib/anchoring/c2paTrustList.generated.ts` に同梱し、重複を除いた36件を `verifyExternalC2pa` と署名時の ingredient 検証に
+    生の設定で渡す。実関数で Pixel 写真が verified=false → true に変わり、署名したマニフェスト内の ingredient も trusted になることを確認。
+    残り: (a) リストの更新は手動（`node scripts/update-c2pa-trust-list.mjs`）。定期更新の仕組みは無い。
+    (b) 署名者と TSA を1つの信頼ストアで見る（c2pa-rs 0.90.22 の制約。TSA リストにしか無い中間 CA 6件が署名者の信頼にも数えられうる。
+    `trust_config` は EKU を足せるだけで外せないので設定では防げない）。(c) 本番証明書の事前検査 `scripts/verify-c2pa-cert.mjs` は
+    別に CA リストだけを URL から取る（同じ信頼セットにそろっていない）。(d) 取得元は main ブランチで、上流のコミットに固定していない。
+  - **本番の検証は C2PA Trust List を使っていない（2026-09-29 判明・未判断）**: `verifyExternalC2pa` と ingredient 取り込み時の
+    検証（`signC2pa` 内の `addIngredient` / `Reader.fromAsset`）は c2pa-rs を既定設定で呼んでおり、信頼アンカーを渡していない。
+    そのため本番では外部の署名はすべて `signingCredential.untrusted` になる（`interpretC2paValidation` は untrusted を致命扱いしない設計）。
+    ハーネスは信頼リストを受け取るが、製品本体はそうなっていない。審査で「製品が Trust List で信頼を評価しているか」を
+    問われうる（推定・未検証）。直すなら本番に C2PA Trust List（と TSA Trust List）を設定する＝製品挙動の変更なので代表判断。
+- ~~**TLS 1.2 の扱い（未確認）**~~ → 2026-10-02 解決（`www`・`app` とも TLS 1.2 拒否を実測。上の O.5 参照）。
+- **HEIC の GPS が残る（2026-09-27 実測で確定）**: sharp のプリビルドは HEVC を読めず（`heif: Support for this compression
+  format has not been built in`）、`stripGpsAndReadExif` が原本フォールバックするため、HEIC は **GPS を含んだまま**
+  署名・Storage 保存される（`assets` バケットは公開読み取り）。マニフェストは `c2pa.created` のみ・allActionsIncluded=false で
+  正直だが、「生座標を保存しない」方針（imageExif.ts 冒頭）に反する。実際に HEIC が届く経路があるか
+  （iOS Safari はアップロード時に JPEG 化するのが通例＝推定）と、フォールバック時に保存を止めるかは未判断。
+- 確定済み: 役割=GP / 実装クラス=Backend / Max AL=1 / 申告 Spec=**2.4** / 法人名=株式会社HOLY（英字 **HOLY Inc.**）/ 登記住所=東京都港区北青山1-3-1 アールキューブ青山3F / 連絡先=info@holy-inc.jp / **生成メディアタイプ=image/jpeg・png・webp・heic**／**validate=image/jpeg・png・webp・heic（2026-10-02 再提出で復活を依頼。9/4 の取り下げは撤回）**。
 - 残る論点と選択肢:
   - **Spec 2.4 の実出力確認**: 申告 2.4 に対し、製品が実際に v2.4 準拠マニフェストを出力しているかを Intake 用サンプルで要検証（契約上、申告版に拘束される）。
   - **Date of Earliest Public Disclosure**: CPL 公開を遅らせたい日付があるか（無ければ即時）。
@@ -2096,6 +2622,12 @@ DB 側2関数との一致を `src/lib/api/__tests__/insurerUsableStatuses.test.t
 
 ## 本番にあってマイグレーションに無い RLS ポリシーがある（2026-09-08）
 
+> **2026-09-27 追記: `certificates` の2本は「消す」に決めた**（DECISION_LOG 2026-09-27）。
+> 危険度は「不明」ではなかった。anon はテーブル単位の SELECT 権限も持っていたので、本番で
+> `set local role anon` して数えると、24行・6テナント分の顧客名が読めた。
+> PDF ルートをサービスロール経由に替え、`20260927113105` でポリシーを DROP、権限を REVOKE する。
+> 塞ぐ前に実際に読まれたかどうかは【要確認】（PostgREST のログ）。`templates` の分は未着手のまま。
+
 列型の調査中に見つかった、**ポリシー層のドリフト**。オブジェクトの有無を見る
 検出器では出ない（ポリシーは対象外）。
 
@@ -2164,7 +2696,7 @@ Next.js は関数内にも `"use server"` を書けるので（`vehicles/[id]/pa
 - 起票日: 2026-09-04
 - 判断者: 未定
 
-## 通知18タイプのうち15タイプが本番で一度も発火していない（2026-08-31）
+## 【解決済み 2026-09-25】通知18タイプのうち15タイプが本番で一度も発火していない（2026-08-31）
 
 通知タイプカタログ（`src/lib/notifications/types.ts`）には18タイプあるが、本番で実際に
 書き込まれているのは3タイプだけ（`chat_message` 56件 / `ai_action` 4件 / `platform_notification`
@@ -2185,6 +2717,13 @@ Next.js は関数内にも `"use server"` を書けるので（`vehicles/[id]/pa
 - 関連: 統合dispatch（既存の LINE/Slack/メール/SMS モジュールを中央エンジンへ移行）も
   この判断が決まってからでないと設計できない。
 - 起票日: 2026-08-31
+- **解決（2026-09-25）**: 代表に (a) 叩き台通り全15タイプ確定 / (b) 重要度の高いものだけ先行 /
+  (c) 個別確認 / (d) 見送り、の4択を提示し「全部」の回答を得た。全15タイプとも発火させ、
+  宛先はカタログの `targetRole`、チャネルは `defaultChannels` を正式仕様として確定。
+  詳細は DECISION_LOG.md 2026-09-25 を参照。
+- **実装（2026-09-25）**: 中央 dispatch（`src/lib/notifications/dispatch.ts`）を作り、13タイプが
+  発火する状態になった（内訳は RELEASE_LOG.md 2026-09-25）。`certificate_gate_ready` と
+  `rating_request` は該当イベントの実処理が無いため未配線（本ファイル先頭の項目）。
 
 ## notifications.priority が全行 "normal" で、読み手が1つも無い（2026-08-31）
 
@@ -2535,6 +3074,20 @@ DECISION_LOG「遷移表の未解決4件を代表判断で解決」参照。）
 
 ## 追加（2026-08-26・本番マイグレーションの書き手）
 
+- **【判断済み 2026-10-02】マイグレーションの追い越しは「検知」で止める（阻止へは上げない）。** 代表判断。branch protection / merge queue はどちらも全 PR に恒常的なコストを課すため採らない。残る穴は「貼られたコメントを読まずにマージする」一点で、再発したら見直す。経緯は DECISION_LOG 2026-10-02。
+  2026-10-02 に `stale-migration-check.yml` を `push: branches: [main]` でも走るようにし、
+  追い越しが起きた瞬間に PR へコメントが貼られるようにした（それまでは毎日1回で、
+  #1174 は28分の隙を通った）。**ただしこれは検知で、マージを止める力は無い。**
+  止めるには GitHub 側の設定が要り、どちらも**代表のダッシュボード操作**になる。
+  - (a) branch protection の「Require branches to be up to date before merging」——
+    追い越された PR はマージボタンが押せなくなる。確実だが、**全 PR に main の再取り込みを強制する**。
+    このリポジトリのマージ頻度（1日数本）だと、取り込みと CI 再実行の往復が常に発生する。
+  - (b) merge queue —— マージ直前に base へ載せて CI を回すので、追い越しも含めて確実に落ちる。
+    (a) の往復は要らないが、導入と運用の学習コストが大きい。
+  - (c) 現状（検知のみ）のまま —— コメントに気づいた人が止める。コストは 0 だが、人に依る。
+  いまは (c)。(a)/(b) に上げるかは代表判断。
+  詳細は DECISION_LOG 2026-10-02。
+
 - **【判断済み・実施待ち】Supabase の GitHub 連携（Branching）による本番への自動適用を切る。**
   **2026-09-13 に代表が「切る」と判断**（DECISION_LOG 2026-09-13）。設定変更はダッシュボード操作で、
   Supabase MCP のツール範囲外のため Claude 側から実行できない。**代表の操作待ち。**
@@ -2550,6 +3103,13 @@ DECISION_LOG「遷移表の未解決4件を代表判断で解決」参照。）
   - **2026-09-13 時点でこの経路はまだ生きている**（`list_branches`: 既定ブランチ `main` の
     `project_ref` が本番 `cahybswpduchptvyvdkk` と同一）。なお上の項のとおり、
     プレビューブランチの詰まりは解消したので、**切ったときに失うものは以前より小さい**。
+  - **2026-10-01: この経路がそのまま記録の誤りを生んだ。** #1174 をマージしたあと
+    `db-migrate` を手で回していないので「本番未適用」と事業ログに書き、代表にもそう報告した。
+    実際は**マージ時点で本番に適用済み**だった（`list_migrations` に `20260929150200` /
+    `20260929150300` が両方あり、`job_orders.status` の既定は `'pending'::text`）。
+    切らない限り、**「まだ当てていない」と書ける状態が存在しない**ので、事業ログの状態記述は
+    毎回台帳を引かないと書けない。経緯は MISTAKE_LEDGER
+    `M-20261001-reported-applied-migrations-as-not-applied`。
 - ~~**プレビューブランチ2本が `MIGRATIONS_FAILED` のまま残っている**
   （PR #938 `impl/IMP-023-evidence` / PR #941 `impl/IMP-026-customer-concern`）。
   同時プレビューブランチ数の上限に達しており、**全 PR で `Supabase Preview` が

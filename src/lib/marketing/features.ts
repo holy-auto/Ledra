@@ -26,7 +26,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
       },
       {
         title: "施工写真のC2PA署名",
-        description: "撮影時に証明書と紐付け、C2PA規格で署名。後からの差し替え・改変を検知可能にします。",
+        description: "登録時に証明書と紐付け、C2PA規格で署名。後からの差し替え・改変を検知可能にします。",
         href: "/features/blockchain-anchoring",
       },
       {

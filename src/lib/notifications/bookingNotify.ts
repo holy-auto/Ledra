@@ -3,6 +3,7 @@ import { sendEmail } from "@/lib/email/sendEmail";
 import { notifySlack } from "@/lib/slack";
 import { readSecret } from "@/lib/crypto/tenantSecrets";
 import { logger, maskEmail } from "@/lib/logger";
+import { dispatchNotification } from "./dispatch";
 
 function escapeHtml(s: string): string {
   return s
@@ -50,6 +51,18 @@ export async function notifyNewBooking(
   const results = await Promise.allSettled([
     sendOwnerEmail({ supabase, tenantId, reservation, customerName, timeLabel, reservationUrl }),
     sendSlackAlert({ supabase, tenantId, reservation, customerName, timeLabel, reservationUrl }),
+    // booking_created（IMP-029）: カタログの in_app / email / slack のうち、email と slack は
+    // 上の専用テンプレート（予約日時・備考入り）が既に送っている。dispatch 経由に置き換えると
+    // 汎用文面に落ちるうえ宛先も変わる（先頭1名 → 管理者全員）ため、ここでは共存させ、
+    // dispatch には不足していた in_app だけを担わせる（email/slack を無効化して二重送信を防ぐ）。
+    dispatchNotification({
+      tenantId,
+      type: "booking_created",
+      title: "新しい予約が入りました",
+      body: `${customerName} 様 / ${reservation.scheduled_date} ${timeLabel} / ${reservation.title}`,
+      linkPath: "/admin/reservations",
+      overrides: { disabledChannels: ["email", "slack"] },
+    }),
   ]);
   // allSettled は reject しないため、呼び出し側の `.catch()` はここでの例外を拾えない。
   // 握りつぶすと原因不明のまま通知が届かなくなるので、ここで明示的にログする。

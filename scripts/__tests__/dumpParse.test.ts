@@ -13,7 +13,12 @@
  * 解析 135 件 = `pg_index` の 135 件、差分 0）。ここは書き方の読み分けだけ。
  */
 import { describe, it, expect } from "vitest";
-import { uniqueFromDump, constraintsFromDump, columnRowsFromDump } from "../lib/dumpParse.mjs";
+import {
+  uniqueFromDump,
+  constraintsFromDump,
+  columnRowsFromDump,
+  nullabilityDrift,
+} from "../lib/dumpParse.mjs";
 
 const DUMP = `
 CREATE TABLE public.tenants (
@@ -161,7 +166,87 @@ describe("columnRowsFromDump（pg_dump から列と型を拾う）", () => {
   });
 
   it("GENERATED の折り返し行（CASE/WHEN/ELSE/END）を列と誤認しない", () => {
-    expect(rows.some((r) => /when|else|end|then/i.test(r.name))).toBe(false);
+    // 列名セグメント（ドット以降）が SQL キーワードそのものにならないこと。
+    // ※ period_end / endpoint のように語を**含む**実在列は正当なので、完全一致で見る。
+    const kw = /^(when|else|end|then|case|and|or)$/i;
+    expect(rows.some((r) => kw.test(r.name.split(".").pop()!))).toBe(false);
     expect(typeOf("tenants.label_public")).toBe("boolean");
+  });
+});
+
+/**
+ * columnRowsFromDump の notnull（NULL 可否）と nullabilityDrift（両方向の仕分け）のテスト。
+ *
+ * なぜ要るか: 検出器は従来「列名の有無」しか見ず、**本番 NOT NULL / 再生 NULL 可**（新環境だけ
+ * ゆるい）と**再生 NOT NULL / 本番 NULL 可**（実害: 本番で通る INSERT が再生で 23502）を
+ * どちらも見逃していた（検出器の「ponytail: 上限その2」/ OPEN_QUESTIONS §88・§381）。
+ * 本体の check:drift は SUPABASE 秘密が要って手元で回せないので、解析と仕分けはここで単体検査する。
+ */
+const NNDUMP = `
+CREATE TABLE public.audit_logs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid,
+    action text NOT NULL,
+    note text DEFAULT 'value is NOT NULL here'::text,
+    label_public boolean GENERATED ALWAYS AS (
+        CASE WHEN (action = 'x'::text) THEN true
+        ELSE false END) STORED NOT NULL,
+    next_due date GENERATED ALWAYS AS (
+        CASE WHEN ((tenant_id IS NOT NULL) AND (action IS NOT NULL)) THEN now()
+        ELSE NULL::date END) STORED
+);
+`;
+
+describe("columnRowsFromDump（NOT NULL 判定）", () => {
+  const rows = columnRowsFromDump(NNDUMP);
+  const nn = (n: string) => rows.find((r) => r.name === n)?.notnull;
+
+  it("宣言された NOT NULL を真に、無いものを偽にする", () => {
+    expect(nn("audit_logs.id")).toBe(true);
+    expect(nn("audit_logs.action")).toBe(true);
+    expect(nn("audit_logs.tenant_id")).toBe(false);
+  });
+
+  it("既定値の文字列リテラル内の『NOT NULL』を制約と読み違えない", () => {
+    expect(nn("audit_logs.note")).toBe(false);
+  });
+
+  it("GENERATED STORED の折り返し末尾に付く NOT NULL も拾う（列は1件に畳む）", () => {
+    expect(rows.filter((r) => r.name === "audit_logs.label_public")).toHaveLength(1);
+    expect(nn("audit_logs.label_public")).toBe(true);
+  });
+
+  it("式の中の IS NOT NULL を列の NOT NULL 制約と読み違えない（null 許容の生成列）", () => {
+    // 実例 service_reminders.next_due_mileage/date。ELSE NULL で null 許容だが式に IS NOT NULL を含む。
+    // ここが true に化けると「再生 NOT NULL / 本番 NULL 可」の実害ドリフトとして誤報する。
+    expect(rows.filter((r) => r.name === "audit_logs.next_due")).toHaveLength(1);
+    expect(nn("audit_logs.next_due")).toBe(false);
+  });
+});
+
+describe("nullabilityDrift（NULL 可否ドリフトの両方向仕分け）", () => {
+  const map = (o: Record<string, boolean>) => new Map(Object.entries(o));
+
+  it("本番 NOT NULL / 再生 NULL 可 を prodStrict に、逆を replayStrict に入れる", () => {
+    const replay = map({ "t.a": false, "t.b": true, "t.c": true });
+    const prod = map({ "t.a": true, "t.b": false, "t.c": true });
+    const { prodStrict, replayStrict } = nullabilityDrift(replay, prod);
+    expect(prodStrict).toEqual(["t.a"]); // 本番だけ厳しい（本番では no-op）
+    expect(replayStrict).toEqual(["t.b"]); // 再生だけ厳しい（実害）
+  });
+
+  it("片側にしか無い列は見ない（列名ドリフトの担当）", () => {
+    const { prodStrict, replayStrict } = nullabilityDrift(
+      map({ "t.only_replay": true }),
+      map({ "t.only_prod": false }),
+    );
+    expect(prodStrict).toEqual([]);
+    expect(replayStrict).toEqual([]);
+  });
+
+  it("結果はソート済み", () => {
+    const replay = map({ "t.z": true, "t.a": true });
+    const prod = map({ "t.z": false, "t.a": false });
+    expect(nullabilityDrift(replay, prod).replayStrict).toEqual(["t.a", "t.z"]);
   });
 });

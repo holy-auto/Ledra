@@ -7,14 +7,9 @@ describe("buildC2paManifestSummary", () => {
     expect(s.signerMode).toBe("production");
     expect(s.claimGenerator).toBe("Ledra/1.0");
     expect(s.title).toBe("Certificate Photo");
-    // 実アサーションと同じ台帳。先頭は C2PA 2.x 準拠のため c2pa.created。
-    // EXIF/GPS 除去は parameters.name 付きで要約される。
-    expect(s.actions).toEqual([
-      "c2pa.created",
-      "c2pa.orientation",
-      "c2pa.converted",
-      "c2pa.edited:exif_gps_metadata_removed",
-    ]);
+    // 実アサーションと同じ台帳。Backend 型なので先頭は原本を開いた c2pa.opened（created は主張しない）。
+    // EXIF/GPS 除去は汎用 c2pa.edited ではなくメタデータ専用の c2pa.edited.metadata。
+    expect(s.actions).toEqual(["c2pa.opened", "c2pa.orientation", "c2pa.converted", "c2pa.edited.metadata"]);
   });
 
   it("asserts only the actions that actually had an effect (no no-ops)", () => {
@@ -25,17 +20,17 @@ describe("buildC2paManifestSummary", () => {
       orientationApplied: false,
       metadataRemoved: false,
     });
-    expect(reencodeOnly.actions).toEqual(["c2pa.created", "c2pa.converted"]);
+    expect(reencodeOnly.actions).toEqual(["c2pa.opened", "c2pa.converted"]);
     expect(reencodeOnly.allActionsIncluded).toBe(true);
 
-    // Fallback: sharp failed, original signed as-is → only created, not complete.
+    // Fallback: sharp failed, original signed as-is → only opened, and that IS every action.
     const fallback = buildC2paManifestSummary("production", undefined, {
       reencoded: false,
       orientationApplied: false,
       metadataRemoved: false,
     });
-    expect(fallback.actions).toEqual(["c2pa.created"]);
-    expect(fallback.allActionsIncluded).toBe(false);
+    expect(fallback.actions).toEqual(["c2pa.opened"]);
+    expect(fallback.allActionsIncluded).toBe(true);
   });
 
   it("summarizes the sealed binding and keeps the nonce as a boolean only (never the raw value)", () => {

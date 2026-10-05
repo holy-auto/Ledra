@@ -4881,6 +4881,75 @@ export type Database = {
           },
         ]
       }
+      delivery_consents: {
+        Row: {
+          consent_text_hash: string | null
+          consent_version: string | null
+          created_at: string
+          customer_id: string
+          granted_at: string | null
+          granted_by: string | null
+          id: string
+          method: string | null
+          note: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          revoked_via: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          consent_text_hash?: string | null
+          consent_version?: string | null
+          created_at?: string
+          customer_id: string
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          method?: string | null
+          note?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          revoked_via?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          consent_text_hash?: string | null
+          consent_version?: string | null
+          created_at?: string
+          customer_id?: string
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          method?: string | null
+          note?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          revoked_via?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_consents_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_consents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       delivery_receipts: {
         Row: {
           anchor_tx_hash: string | null
@@ -6599,6 +6668,8 @@ export type Database = {
           inspected_at: string
           inspection_type: string
           inspector_name: string | null
+          inspector_qualification_snapshot: Json | null
+          inspector_staff_id: string | null
           notes: string | null
           photo_urls: Json
           reservation_id: string | null
@@ -6617,6 +6688,8 @@ export type Database = {
           inspected_at?: string
           inspection_type?: string
           inspector_name?: string | null
+          inspector_qualification_snapshot?: Json | null
+          inspector_staff_id?: string | null
           notes?: string | null
           photo_urls?: Json
           reservation_id?: string | null
@@ -6635,6 +6708,8 @@ export type Database = {
           inspected_at?: string
           inspection_type?: string
           inspector_name?: string | null
+          inspector_qualification_snapshot?: Json | null
+          inspector_staff_id?: string | null
           notes?: string | null
           photo_urls?: Json
           reservation_id?: string | null
@@ -13552,6 +13627,7 @@ export type Database = {
           name: string
           note: string | null
           phone: string | null
+          qualifications: string[]
           skills: string[]
           tenant_id: string
           updated_at: string
@@ -13569,6 +13645,7 @@ export type Database = {
           name: string
           note?: string | null
           phone?: string | null
+          qualifications?: string[]
           skills?: string[]
           tenant_id: string
           updated_at?: string
@@ -13586,6 +13663,7 @@ export type Database = {
           name?: string
           note?: string | null
           phone?: string | null
+          qualifications?: string[]
           skills?: string[]
           tenant_id?: string
           updated_at?: string
@@ -13601,6 +13679,57 @@ export type Database = {
           },
           {
             foreignKeyName: "staff_members_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_qualifications: {
+        Row: {
+          created_at: string
+          expires_on: string | null
+          id: string
+          note: string | null
+          number: string | null
+          qualification: string
+          staff_member_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          expires_on?: string | null
+          id?: string
+          note?: string | null
+          number?: string | null
+          qualification: string
+          staff_member_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          expires_on?: string | null
+          id?: string
+          note?: string | null
+          number?: string | null
+          qualification?: string
+          staff_member_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_qualifications_staff_member_id_fkey"
+            columns: ["staff_member_id"]
+            isOneToOne: false
+            referencedRelation: "staff_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_qualifications_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -15365,6 +15494,7 @@ export type Database = {
           plan_tier: Database["public"]["Enums"]["plan_tier_enum"]
           prefecture: string | null
           registration_number: string | null
+          require_inspector_qualification: boolean
           slug: string
           square_merchant_id: string | null
           sso_email_domain: string | null
@@ -15416,6 +15546,7 @@ export type Database = {
           plan_tier?: Database["public"]["Enums"]["plan_tier_enum"]
           prefecture?: string | null
           registration_number?: string | null
+          require_inspector_qualification?: boolean
           slug: string
           square_merchant_id?: string | null
           sso_email_domain?: string | null
@@ -15467,6 +15598,7 @@ export type Database = {
           plan_tier?: Database["public"]["Enums"]["plan_tier_enum"]
           prefecture?: string | null
           registration_number?: string | null
+          require_inspector_qualification?: boolean
           slug?: string
           square_merchant_id?: string | null
           sso_email_domain?: string | null

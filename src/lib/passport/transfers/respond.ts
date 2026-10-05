@@ -1,6 +1,6 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { hashTransferToken } from "./tokens";
-import { sendTransferAcceptedNotification } from "./email";
+import { sendTransferAcceptedNotification, sendTransferCompletedToPreviousOwner } from "./email";
 import { logAuditEvent } from "@/lib/audit/certificateLog";
 import { logger } from "@/lib/logger";
 
@@ -128,7 +128,7 @@ export async function acceptTransferByToken(args: {
     .from("passport_ownership_transfers")
     .select(
       "id, vin_code_normalized, initiating_tenant_id, initiating_vehicle_id, " +
-        "from_owner_email, to_owner_email, status, expires_at",
+        "from_owner_email, from_owner_name, to_owner_email, status, expires_at",
     )
     .eq("transfer_token_hash", tokenHash)
     .maybeSingle();
@@ -181,6 +181,15 @@ export async function acceptTransferByToken(args: {
     // of truth and a reconciliation job can fix the passport row.
   }
 
+  const hideErr = isSameOwner(row) ? null : await hideFromPreviousOwner(admin, row, now);
+  if (hideErr) {
+    // 受諾は確定済み。記録を残して手当てできるようにする（旧オーナーに見え続けるだけで、データは失われない）。
+    logger.error("acceptTransferByToken hide from previous owner failed", {
+      error: hideErr.message,
+      transferId: row.id,
+    });
+  }
+
   // Audit on the initiating tenant.
   void logAuditEvent({
     type: "note",
@@ -189,6 +198,9 @@ export async function acceptTransferByToken(args: {
     description: `VIN末尾: ${row.vin_code_normalized.slice(-6)} / 新オーナー: ${row.to_owner_email}`,
     vehicleId: row.initiating_vehicle_id,
   });
+
+  // 旧オーナーへの通知（best-effort）。
+  void notifyPreviousOwner(row);
 
   // Notify the shop (best-effort).
   void notifyShopAccepted({
@@ -200,6 +212,88 @@ export async function acceptTransferByToken(args: {
   });
 
   return { ok: true };
+}
+
+/**
+ * 旧オーナーのマイページから、この VIN の受諾時点までの**旧オーナー名義の**証明書を外す（代表判断 2026-09-27）。
+ * 全テナント分（同じ VIN を別の店で施工していることがある）。/c の公開ページは変えない。
+ *
+ * 旧オーナーの顧客行 = 移転を始めた車両に紐付く顧客 ＋ 旧オーナーのメールを持つ顧客（全テナント）。
+ * 新オーナーのメールを持つ顧客は除く。受諾前に新オーナーが自分名義で施工していた証明書まで
+ * 消さないため（/code-review 指摘）。
+ */
+async function hideFromPreviousOwner(
+  admin: ReturnType<typeof createServiceRoleAdmin>,
+  row: TransferRow,
+  now: string,
+): Promise<{ message: string } | null> {
+  const fromEmail = row.from_owner_email?.trim() ?? "";
+  const [vins, initVehicle, byEmail] = await Promise.all([
+    admin.from("vehicles").select("id").eq("vin_code_normalized", row.vin_code_normalized),
+    row.initiating_vehicle_id
+      ? admin.from("vehicles").select("customer_id").eq("id", row.initiating_vehicle_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    fromEmail
+      ? admin
+          .from("customers")
+          .select("id, email")
+          .ilike("email", fromEmail.replace(/[\\%_]/g, "\\$&"))
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const firstErr = vins.error ?? initVehicle.error ?? byEmail.error;
+  if (firstErr) return firstErr;
+
+  const vehicleIds = (vins.data ?? []).map((v: { id: string }) => v.id);
+  const initCustomerId = (initVehicle.data as { customer_id: string | null } | null)?.customer_id ?? null;
+  let initCustomerEmail: string | null = null;
+  if (initCustomerId) {
+    const { data } = await admin.from("customers").select("email").eq("id", initCustomerId).maybeSingle();
+    initCustomerEmail = (data as { email: string | null } | null)?.email ?? null;
+  }
+  const toEmail = row.to_owner_email.trim().toLowerCase();
+  const isNewOwner = (email: string | null) => !!email && email.trim().toLowerCase() === toEmail;
+  const ownerIds = [
+    ...new Set([
+      ...(initCustomerId && !isNewOwner(initCustomerEmail) ? [initCustomerId] : []),
+      ...((byEmail.data ?? []) as { id: string; email: string | null }[])
+        .filter((c) => !isNewOwner(c.email))
+        .map((c) => c.id),
+    ]),
+  ];
+  if (vehicleIds.length === 0 || ownerIds.length === 0) return null;
+
+  const { error } = await admin
+    .from("certificates")
+    .update({ hidden_from_owner_portal_at: now })
+    .in("vehicle_id", vehicleIds)
+    .in("customer_id", ownerIds)
+    .lte("created_at", now)
+    .is("hidden_from_owner_portal_at", null);
+  return error;
+}
+
+function isSameOwner(row: TransferRow): boolean {
+  const from = row.from_owner_email?.trim().toLowerCase();
+  return !!from && from === row.to_owner_email.trim().toLowerCase();
+}
+
+async function notifyPreviousOwner(row: TransferRow): Promise<void> {
+  const to = row.from_owner_email?.trim();
+  // 旧オーナーのメールが無い、または自分自身への移転（同じメール）なら送らない。
+  if (!to || isSameOwner(row)) return;
+
+  const admin = createServiceRoleAdmin("passport transfer — previous owner notification email");
+  const { data: vehicle } = row.initiating_vehicle_id
+    ? await admin.from("vehicles").select("maker, model, year").eq("id", row.initiating_vehicle_id).maybeSingle()
+    : { data: null };
+  const v = vehicle as { maker: string | null; model: string | null; year: number | null } | null;
+
+  await sendTransferCompletedToPreviousOwner({
+    toEmail: to,
+    toName: row.from_owner_name,
+    vehicleLabel: (v && [v.maker, v.model, v.year].filter(Boolean).join(" ")) || "車両",
+    passportShortId: row.vin_code_normalized.slice(-6),
+  });
 }
 
 async function notifyShopAccepted(args: {

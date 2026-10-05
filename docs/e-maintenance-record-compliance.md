@@ -79,15 +79,16 @@
 | --- | --- |
 | 電磁的記録を電磁的記録媒体に移行できる措置 | テナント全体エクスポート `GET /api/admin/data-export`（owner 限定・JSON・`schema_version:"1.0"`）、証明書エクスポート（`export` / `export-selected` / `export-one`）、帳票・在庫の CSV 系エクスポート。ダウンロードした電子データを SD カード等の媒体に保存できるため、実質的に移行可能。**注**: 外部媒体・アーカイブ（S3/R2 等）への専用書き出しスクリプトは未実装（`docs/data-retention.md` に TODO として記載）。 |
 
-### （３）作成・保存・更新・消去の日時、更新箇所、作業者を自動記録・保存 — ⚠️ 部分対応
+### （３）作成・保存・更新・消去の日時、更新箇所、作業者を自動記録・保存 — ⚠️ 部分対応（証明書・指定整備記録簿の作成/更新は対応・消去は2年保存で保持中不可／documents・body_repair は後続）
 
 | 対象 | 状況 |
 | --- | --- |
 | 証明書（certificates） | ✅ **ほぼ完全**。`certificate_edit_histories`（`edited_by` ＋ `changes:[{field,label,old,new}]` の**更新箇所差分**、`20260408000000_...`）、`certificate_versions`（`created_by` / `server_received_at`＝権威時刻 / SHA-256 ハッシュ、**UPDATE 拒否トリガで不変**、`20260719000001_...`）、`audit_logs`（`performed_by` / `old_values` / `new_values` / `performed_at`、`20260325000001_...`）。 |
-| 帳票・整備記録簿本体（documents / inspection_records / body_repair_jobs） | ⚠️ 差あり。`body_repair_jobs.recorded_by`（記録者）はあるが、証明書のような**フィールド単位の更新差分＋更新者の自動履歴**が全レコード横断で揃っているわけではない。汎用 `audit_logs` は存在するが、書込みは個別 API の明示 insert 依存で、`updated_by` を全テーブル自動記録する行トリガは無い。 |
-| 「消去」の日時記録 | ⚠️ **要確認**。`data-retention` cron（`src/app/api/cron/data-retention/route.ts`）が保持期限超過データを削除・匿名化するが、**削除イベント自体を監査ログに残す実装は未確認**。規制は「消去の日時」の自動記録も求めるため、ここは要点検。 |
+| 指定整備記録簿（inspection_records・完成検査） | ✅ **作成・更新を監査ログ化（2026-10-02 / G2）**。`POST`＝作成、`PATCH`＝更新（**更新箇所＝変わったフィールドの前後値**を `changedFields` で算出）を `logTenantAuditEvent` で `audit_logs` に `作業者（actor_user_id）＋日時（performed_at）＋更新箇所（query_json.changed）` として残す。**消去**は意図的にアプリ経路を設けない（下記）。あわせて、PATCH が未送信の任意フィールドを null に化けさせて `inspected_at`(NOT NULL) で失敗していた既存不具合を、送信キーだけ更新する方式に修正。 |
+| 帳票・整備記録簿本体（documents / body_repair_jobs） | ⚠️ 差あり。`body_repair_jobs.recorded_by`（記録者）はあるが、証明書・指定整備記録簿のような**フィールド単位の更新差分＋更新者の自動履歴**が documents / body_repair_jobs ではまだ揃っていない（OPEN_QUESTIONS に後続として記載）。 |
+| 「消去」の扱い | 指定整備記録簿（完成検査）は `record_retention_until`＝**2年保存**を課し、保持期間中は**アプリに消去経路を持たない**（保存義務に沿う）。保持期限後の物理削除は `data-retention` cron の領域だが、現状 cron は認証コード・セッション等の**非・記録簿**のみを対象にし、指定整備記録簿は削除しない。将来、保持期限後の管理者消去を設けるなら、`record_retention_until` 経過の確認＋消去の監査記録（`logTenantAuditEvent`）を必須にする（OPEN_QUESTIONS）。 |
 
-→ 本項は準拠上の**急所**。証明書は満たすが、記録簿本体・帳票・消去ログに差分が残る。OPEN_QUESTIONS に起票。
+→ 証明書・指定整備記録簿は作成/更新の自動記録を満たす。消去は保存義務（2年）により保持期間中は不可＝記録簿を保持する要件に沿う。残差は documents / body_repair_jobs の更新差分と、保持期限後の消去経路＋その監査（OPEN_QUESTIONS）。
 
 ### （４）保管場所を定め施錠する等し、不正改ざんを防止 — ✅ 対応
 
@@ -108,16 +109,16 @@
 
 ### （１）技術面の安全対策
 
-#### ① 権限別の ID・パスワード等による利用者登録・管理・認証 — ⚠️ 部分対応（認証は堅牢／法定資格ロールが未区別）
+#### ① 権限別の ID・パスワード等による利用者登録・管理・認証 — ⚠️ 部分対応（認証は堅牢／法定資格ロールは軸を追加・強制は後続）
 
 | 規制が例示する権限区分 | 実装 |
 | --- | --- |
 | 認証機能そのもの（ID/PW・利用者登録・管理） | ✅ Supabase Auth（ID/PW）＋ TOTP MFA（`src/lib/auth/mfa.ts`）＋ WebAuthn 操作署名（`operator_credentials` / `webauthn_assertions`、重要操作を登録済み認証器に暗号的に束縛、`20260721093116_webauthn.sql`）。 |
-| 自動車検査員に係る権限（指定整備事業者に限る） | ❌ **未区別**。 |
-| 整備主任者に係る権限 | ❌ **未区別**。 |
-| 点検整備記録簿等を起票・入力する権限 | ⚠️ `certificates:create/edit`・`requireMinRole(caller,"staff")` 等で起票・入力の権限制御はあるが、**「整備主任者」「自動車検査員」という法定資格に対応した権限区分は存在しない**。 |
+| 自動車検査員に係る権限（指定整備事業者に限る） | ✅ **資格軸＋操作の強制**。資格軸（`staff_members.qualifications`・`src/lib/staff/qualifications.ts`）に加え、完成検査（指定整備記録簿）の実施者に有効な自動車検査員資格を必須化（テナント opt-in `tenants.require_inspector_qualification`、`src/lib/staff/inspectorQualification.ts`、fail-closed）。資格番号・有効期限は `staff_qualifications`、実施時点の資格は記録簿へスナップショット。`20261002160000`。 |
+| 整備主任者に係る権限 | ⚠️ 資格軸（`maintenance_supervisor`）を登録・表示でき、番号・有効期限も保持可。固有の操作強制は未設定（完成検査の強制対象は自動車検査員）。 |
+| 点検整備記録簿等を起票・入力する権限 | ⚠️ `certificates:create/edit`・`requireMinRole(caller,"staff")` 等の起票・入力の権限制御に加え、法定資格軸（`record_author`）を登録・表示でき、番号・有効期限も保持可。 |
 
-Ledra の権限は汎用 SaaS ロール（`super_admin` / `owner` / `admin` / `staff` / `viewer`、`src/lib/auth/roles.ts`・`permissions.ts`）＋店舗ロール（`manager` / `staff`）＋作業者レジストリ（`staff_members.kind` = internal/external、`skills[]`）で構成され、**整備業の法定資格・職責（自動車検査員 / 整備主任者 / 起票入力担当）を区別する軸を持たない。** 本項も準拠上の**急所**。→ OPEN_QUESTIONS に起票。
+Ledra の権限は汎用 SaaS ロール（`super_admin` / `owner` / `admin` / `staff` / `viewer`、`src/lib/auth/roles.ts`・`permissions.ts`）＋店舗ロール（`manager` / `staff`）＋作業者レジストリ（`staff_members.kind` = internal/external、`skills[]`）で構成される。**2026-10-02（G1）に、整備業の法定資格・職責（自動車検査員 / 整備主任者 / 起票入力担当）を表す統制語彙の軸 `staff_members.qualifications` を追加**（SaaS ロール・skills とは別軸。単一定義源 `src/lib/staff/qualifications.ts`）。続けて**（1）資格に基づく操作の強制**（完成検査＝指定整備記録簿の実施者に有効な自動車検査員資格を必須化。テナント opt-in `tenants.require_inspector_qualification`、既定 false で非破壊、`src/lib/staff/inspectorQualification.ts` が fail-closed で判定）、**（2）資格番号・有効期限の保持**（`staff_qualifications` 明細表。保有の有無は引き続き `qualifications` が源泉）、**（3）記録簿への実施者資格の紐付け**（`inspection_records.inspector_staff_id` ＋ 実施時点の `inspector_qualification_snapshot`）を実装（`20261002160000`）。自動車検査員要件は指定整備事業者に限るため、強制はテナント opt-in とした。
 
 #### ② オンライン接続時のユーザー認証 — ✅ 対応
 
@@ -155,17 +156,17 @@ ID 共用禁止・非使用時停止・周知は運用ルール。技術面で�
 
 PDF ダウンロード（`content-disposition: attachment`）により、使用者が自ら印刷して書面化できる。
 
-### （３）交付前に方法を示し、書面又は電磁的方法で承諾を得る（施行規則第12条・政令第２条第１項） — ⚠️ 部分対応
+### （３）交付前に方法を示し、書面又は電磁的方法で承諾を得る（施行規則第12条・政令第２条第１項） — ⚠️ 仕組みを実装（事前承諾の取得・記録）
 
 | 規制要求 | 実装 |
 | --- | --- |
-| （１）のいずれの方法で交付予定かを示し、書面/電磁的方法で承諾を得る | 承諾・電子署名基盤は充実（`signature_sessions`＝二要素〔電話下4桁ハッシュ〕・`consent_text_hash`、`body_repair_consents`〔kind: pre_work/change/post_work〕、`delivery_receipts`）。**ただしこれらは「作業内容・受領」への同意が主で、「電子交付そのもの・交付方法の選択」への事前承諾を専用に取得・記録する仕組みは未確認。** 汎用の同意基盤を流用すれば実装可能だが、現状は専用フロー無し。→ OPEN_QUESTIONS に起票。 |
+| （１）のいずれの方法で交付予定かを示し、書面/電磁的方法で承諾を得る | ✅ **電子交付の事前承諾を顧客単位で取得・記録する専用の仕組みを追加（2026-10-02 / G3）**。`delivery_consents`（granted/revoked）＋開示文言カタログ `src/lib/delivery/deliveryConsent.ts`（交付方法〔メール/LINE/SMS/ダウンロード〕を列挙、`consent_text_hash`・version で固定）。店舗が承諾を記録（`POST /api/admin/customers/:id/delivery-consent`、顧客詳細の「電子交付の承諾」パネル）。従来の受領サイン基盤（`delivery_receipts` 等）は「作業内容・受領」への同意として併存。 |
 
-### （４）承諾が得られない / 撤回された場合は電磁的交付をしてはならない（政令第２条第２項） — ⚠️ 未対応寄り
+### （４）承諾が得られない / 撤回された場合は電磁的交付をしてはならない（政令第２条第２項） — ⚠️ 撤回フロー＋撤回後ブロックを実装（未承諾ハードブロックは opt-in 後続）
 
 | 規制要求 | 実装 |
 | --- | --- |
-| 承諾なし・承諾撤回時は電磁的交付を禁止 | 同意の**無効化（cancel）**は実装あり（`signature_sessions.status='cancelled'`＋`cancel_reason`、内容変更時に旧 pending を失効させ再発行）。しかし**使用者起点の「電子交付承諾の撤回」専用フロー、および撤回後に電子交付をブロックするロジックは該当なし。** → OPEN_QUESTIONS に起票。 |
+| 承諾なし・承諾撤回時は電磁的交付を禁止 | ✅ **撤回フロー＋撤回後ブロックを追加（2026-10-02 / G4）**。使用者本人の撤回（`POST /api/customer/delivery-consent/revoke`、顧客ポータルセッション）と店舗代行の撤回（`DELETE /api/admin/customers/:id/delivery-consent`）。**撤回済みの顧客には規制対象記録（証明書＝記録簿の写し）の電子交付（受領サイン依頼メール）をブロック**（`certificates/:id/delivery-receipt-request` で判定、409）。⚠️ **未承諾（none）のハードブロックは既定では行わない**（既存交付を一斉に止めないための非破壊既定。厳格な事前承諾ゲートはテナント opt-in の後続 → OPEN_QUESTIONS）。見積/請求の送付（`documents/share`）は対象外。顧客未紐付け（customer_id 無し）の証明書は顧客単位判定不可のため従来どおり（後続）。 |
 
 ### （５）閲覧・表示・書面作成方法の教示 — 🏢/⚠️ 運用（導線あり）
 
@@ -180,10 +181,10 @@ PDF ダウンロード（`content-disposition: attachment`）により、使用�
 
 | # | ギャップ | 該当条項 | 区分 |
 | --- | --- | --- | --- |
-| G1 | 法定資格ロール（自動車検査員 / 整備主任者 / 起票入力）が権限体系に無い | 第２ ３（１）① | システム |
-| G2 | 更新箇所＋作業者の自動履歴が記録簿本体・帳票で不完全、**消去ログ未確認** | 第２ ２（３） | システム |
-| G3 | 電子交付方法の**事前承諾**を専用取得する仕組みが未実装 | 第２ ４（３） | システム |
-| G4 | **交付承諾の撤回**フローと撤回後の交付ブロックが未実装 | 第２ ４（４） | システム |
+| G1 | 法定資格ロール（自動車検査員 / 整備主任者 / 起票入力）が権限体系に無い → ✅ **資格軸＋操作強制＋資格番号/有効期限＋実施者紐付けを実装（2026-10-02）**。完成検査の実施者に自動車検査員を必須化（テナント opt-in・非破壊既定） | 第２ ３（１）① | システム |
+| G2 | 更新箇所＋作業者の自動履歴が記録簿本体・帳票で不完全、消去ログ未確認 → ✅ **指定整備記録簿（inspection_records）の作成/更新を監査ログ化（2026-10-02）**。消去は2年保存で保持期間中は不可。documents/body_repair と保持期限後の消去経路＋監査は後続 | 第２ ２（３） | システム |
+| G3 | 電子交付方法の**事前承諾**を専用取得する仕組みが未実装 → ✅ **`delivery_consents`＋承諾記録UI/APIを追加（2026-10-02）**。未承諾ハードブロックは opt-in 後続 | 第２ ４（３） | システム |
+| G4 | **交付承諾の撤回**フローと撤回後の交付ブロックが未実装 → ✅ **使用者/店舗の撤回＋撤回後の証明書電子交付ブロックを追加（2026-10-02）** | 第２ ４（４） | システム |
 | G5 | **指定整備記録簿の法定様式**出力が未確認（指定整備事業者を顧客に含める場合に必須の可能性） | 第２ １（４） | システム/要確認 |
 | G6 | バックアップ・復旧手順がコード上明示されず、Supabase マネージド依存 | 第２ ２（５） | 運用/要確認 |
 | G7 | 管理規程・管理責任者・操作マニュアル・ID 共用禁止周知 | 第２ ３（２）（３） | 事業者運用 |

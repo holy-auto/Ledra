@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/api/rateLimit", () => ({ checkRateLimit: mocks.checkRateLimit }));
 vi.mock("@/lib/slack", () => ({ notifySlack: mocks.notifySlack }));
+vi.mock("@/lib/notifications/dispatch", () => ({ dispatchNotification: vi.fn() }));
 
 const TENANT = "tenant-1";
 const RESERVATION = "reservation-1";

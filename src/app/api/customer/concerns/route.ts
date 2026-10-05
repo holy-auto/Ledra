@@ -5,6 +5,7 @@ import { apiJson, apiValidationError, apiInternalError, apiNotFound } from "@/li
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { notifySlack } from "@/lib/slack";
 import { CONCERN_SOURCES, CONCERN_CATEGORIES, CONCERN_CATEGORY_LABELS } from "@/lib/concerns/types";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 
 const concernSchema = z.object({
   source_type: z.enum(CONCERN_SOURCES),
@@ -60,23 +61,34 @@ export async function POST(req: NextRequest) {
 
     if (error) return apiInternalError(error, "customer/concerns POST");
 
-    // Slack 通知(fire-and-forget)
-    try {
-      // customer_inquiries(一般問い合わせ)とは別系統のため専用 webhook を使う。
-      // 未設定の間は無言でスキップ(notifySlack の仕様) — 誤って一般問い合わせ
-      // チャンネルに混ぜない。
-      await notifySlack(process.env.SLACK_CUSTOMER_CONCERN_WEBHOOK_URL, {
-        text: `:warning: 顧客懸念: *${categoryLabel(category)}*`,
-        fields: [
-          { title: "発生源", value: sourceLabel(source_type), short: true },
-          { title: "カテゴリ", value: categoryLabel(category), short: true },
-          ...(customer_name ? [{ title: "お客様", value: customer_name, short: true }] : []),
-          { title: "内容", value: concern_text.slice(0, 500) },
-        ],
-      });
-    } catch (err) {
-      console.error("[customer/concerns] slack notify failed:", err);
-    }
+    // Ledra 運営向け Slack と テナント管理者向け通知（IMP-029 customer_concern_raised: in_app + テナントの Slack）
+    // は宛先が別なので二重送信にはならない。どちらも fire-and-forget・失敗を投げないため並列実行する。
+    await Promise.all([
+      (async () => {
+        try {
+          // customer_inquiries(一般問い合わせ)とは別系統のため専用 webhook を使う。
+          // 未設定の間は無言でスキップ(notifySlack の仕様) — 誤って一般問い合わせ
+          // チャンネルに混ぜない。
+          await notifySlack(process.env.SLACK_CUSTOMER_CONCERN_WEBHOOK_URL, {
+            text: `:warning: 顧客懸念: *${categoryLabel(category)}*`,
+            fields: [
+              { title: "発生源", value: sourceLabel(source_type), short: true },
+              { title: "カテゴリ", value: categoryLabel(category), short: true },
+              ...(customer_name ? [{ title: "お客様", value: customer_name, short: true }] : []),
+              { title: "内容", value: concern_text.slice(0, 500) },
+            ],
+          });
+        } catch (err) {
+          console.error("[customer/concerns] slack notify failed:", err);
+        }
+      })(),
+      dispatchNotification({
+        tenantId: resolved.tenantId,
+        type: "customer_concern_raised",
+        title: `顧客から懸念が届きました（${categoryLabel(category)}）`,
+        body: `${sourceLabel(source_type)}: ${concern_text.slice(0, 200)}`,
+      }),
+    ]);
 
     return apiJson({ ok: true, id: data.id }, { status: 201 });
   } catch (e) {

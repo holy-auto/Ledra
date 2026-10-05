@@ -1,25 +1,50 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import CompletionMeasurementCsvImport from "@/components/admin/CompletionMeasurementCsvImport";
 import {
   measurementFieldsForForm,
   measurementGroup,
+  getMeasurementField,
+  visualItemsForForm,
+  groupVisualItems,
+  vehicleMatchFieldsForForm,
+  extractInspectionAnswers,
+  INDICATED_INSPECTION_FORMS,
+  VISUAL_GROUP_LABEL,
+  VISUAL_JUDGMENTS,
+  JUDGMENT_LABEL,
   type IndicatedInspectionForm,
   type MeasurementInput,
 } from "@/lib/validations/indicated-inspection";
 
 /**
- * 完成検査（指定整備記録簿・第三号/四号様式）の測定値 手入力フォーム。 [G5 / Phase 1b]
+ * 完成検査（指定整備記録簿・第三号/四号様式）の手入力フォーム。 [G5 / Phase 1b・1d・閲覧編集]
  *
- * inspection_type='completion' の点検記録を作成し、様式の「検査機器等による検査」測定値を
- * inspection_measurements へ保存する。様式(四輪=第三号 / 二輪=第四号)で測定セルが変わる。
- * 目視等による検査（構造・装置）と車両情報の照合は後続で拡張する。
+ * inspection_type='completion' の点検記録を作成/編集し、
+ * - 「検査機器等による検査」測定値 → inspection_measurements（Phase 1b）
+ * - 「目視等による検査」（構造・装置）と車両情報の照合欄 → inspection_records.answers（Phase 1d,
+ *   `visual.` / `match.` 接頭辞。様式の別は `__indicated_form`）
+ * に保存する。様式(四輪=第三号 / 二輪=第四号)で項目が変わる。
+ * editRecord を渡すと編集モード（answers を prefill し、測定値は API から読み込む）。
  */
+
+/** 編集モードで渡す既存記録（一覧が持つ answers ＋ 氏名/備考）。測定値は別途 API で取得する。 */
+export type CompletionEditRecord = {
+  id: string;
+  inspector_name: string | null;
+  inspector_staff_id: string | null;
+  notes: string | null;
+  answers: Record<string, { value?: unknown }> | null;
+};
+
+type PickerStaff = { id: string; name: string; qualifications: string[]; is_active: boolean };
 
 interface Props {
   reservationId: string;
   vehicleId?: string | null;
   customerId?: string | null;
+  editRecord?: CompletionEditRecord | null;
   onCancel: () => void;
   onSaved: () => void | Promise<void>;
 }
@@ -31,22 +56,119 @@ const FORM_LABEL: Record<IndicatedInspectionForm, string> = {
   yonago: "第四号様式（二輪）",
 };
 
+/** answers.__indicated_form から様式を復元（未保存/不正は第三号）。 */
+function resolveFormFromAnswers(answers: CompletionEditRecord["answers"]): IndicatedInspectionForm {
+  const v = answers?.__indicated_form?.value;
+  return INDICATED_INSPECTION_FORMS.includes(v as IndicatedInspectionForm) ? (v as IndicatedInspectionForm) : "sanago";
+}
+
+// 判定 select の選択肢。空(—)＋カタログの判定語彙（良/否/該当なし）を単一定義源から生成する。
 const JUDGMENTS: { value: string; label: string }[] = [
   { value: "", label: "—" },
-  { value: "pass", label: "良" },
-  { value: "fail", label: "否" },
-  { value: "na", label: "該当なし" },
+  ...VISUAL_JUDGMENTS.map((v) => ({ value: v, label: JUDGMENT_LABEL[v] })),
 ];
 
-export default function CompletionInspectionForm({ reservationId, vehicleId, customerId, onCancel, onSaved }: Props) {
-  const [form, setForm] = useState<IndicatedInspectionForm>("sanago");
-  const [inspectorName, setInspectorName] = useState("");
-  const [notes, setNotes] = useState("");
+export default function CompletionInspectionForm({
+  reservationId,
+  vehicleId,
+  customerId,
+  editRecord,
+  onCancel,
+  onSaved,
+}: Props) {
+  const isEdit = !!editRecord;
+  const [form, setForm] = useState<IndicatedInspectionForm>(() => resolveFormFromAnswers(editRecord?.answers ?? null));
+  const [inspectorName, setInspectorName] = useState(editRecord?.inspector_name ?? "");
+  const [inspectorStaffId, setInspectorStaffId] = useState<string>(editRecord?.inspector_staff_id ?? "");
+  const [staffList, setStaffList] = useState<PickerStaff[]>([]);
+  const [notes, setNotes] = useState(editRecord?.notes ?? "");
   const [cells, setCells] = useState<Record<string, Cell>>({});
+  // 読み込んだ測定値の来歴（code→'manual'|'imported'）。保存時に取込分を manual に化けさせないため保持。
+  const [loadedSources, setLoadedSources] = useState<Record<string, string>>({});
+  // 目視検査の判定（code→"pass"/"fail"/"na"）と照合欄のテキスト（code→値）。answers に保存する。
+  const [visual, setVisual] = useState<Record<string, string>>(() =>
+    editRecord ? extractInspectionAnswers(editRecord.answers).visual : {},
+  );
+  const [match, setMatch] = useState<Record<string, string>>(() =>
+    editRecord ? extractInspectionAnswers(editRecord.answers).match : {},
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // 作成済みレコード ID。測定値保存だけ失敗した際、再保存で新レコードを重複作成しないよう保持する。
-  const [recordId, setRecordId] = useState<string | null>(null);
+  // 作成済み/編集対象レコード ID。作成時の再保存で新レコードを重複作成しないよう保持する。
+  const [recordId, setRecordId] = useState<string | null>(editRecord?.id ?? null);
+  // 編集モードで測定値を読み込み終えたか。読み込み前/失敗時に保存すると PUT の全置換で既存測定値を
+  // 消してしまうため、完了するまで保存を止める。新規モードは常に true。読み込み失敗は loadFailed。
+  const [measLoaded, setMeasLoaded] = useState(!editRecord);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  // 既存記録の測定値を API から読み込みセルへ反映する（一覧は測定値を持たないため）。
+  // 初回ロード（useEffect）と CSV 取込後の再読込（onImported）で共有する。成否を返す。
+  const reloadMeasurements = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/admin/inspection-records/${id}/measurements`);
+      const json = await res.json().catch(() => null);
+      // 200 でも measurements 配列が無ければ「読み込み成功で空」と誤認しない（誤った全消去を防ぐ）。
+      if (!res.ok || !json || !Array.isArray(json.measurements)) return false;
+      const next: Record<string, Cell> = {};
+      const sources: Record<string, string> = {};
+      for (const m of json.measurements as {
+        field_code: string;
+        num_value: number | null;
+        text_value: string | null;
+        unit: string | null;
+        judgment: string | null;
+        source: string | null;
+      }[]) {
+        next[m.field_code] = {
+          num: m.num_value != null ? String(m.num_value) : "",
+          text: m.text_value ?? "",
+          unit: m.unit ?? "",
+          judgment: m.judgment ?? "",
+        };
+        if (m.source) sources[m.field_code] = m.source;
+      }
+      setCells(next);
+      setLoadedSources(sources);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  // 編集モード: 初回に測定値を読み込む。失敗時は保存を止める（全置換 PUT による消去を防ぐ）。
+  useEffect(() => {
+    if (!editRecord) return;
+    let cancelled = false;
+    (async () => {
+      const ok = await reloadMeasurements(editRecord.id);
+      if (cancelled) return;
+      if (ok) setMeasLoaded(true);
+      else {
+        setLoadFailed(true);
+        setError("測定値の読み込みに失敗しました。画面を開き直してください（このまま保存すると測定値が消えます）。");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editRecord, reloadMeasurements]);
+
+  // 実施者ピッカー用のスタッフ一覧（最小・PII なし）。資格の有無を表示し、自動車検査員を選びやすくする。
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/staff/picker");
+        const json = await res.json().catch(() => null);
+        if (!cancelled && res.ok && Array.isArray(json?.staff)) setStaffList(json.staff as PickerStaff[]);
+      } catch {
+        // 取得失敗時は従来どおり氏名の自由入力で続行（ピッカーは任意の補助）。
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fields = useMemo(() => measurementFieldsForForm(form), [form]);
   const groups = useMemo(() => {
@@ -60,6 +182,10 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
     return Array.from(map.entries());
   }, [fields]);
 
+  const visualItems = useMemo(() => visualItemsForForm(form), [form]);
+  const visualGroups = useMemo(() => groupVisualItems(form), [form]);
+  const matchFields = useMemo(() => vehicleMatchFieldsForForm(form), [form]);
+
   function cell(code: string): Cell {
     return cells[code] ?? { num: "", text: "", unit: "", judgment: "" };
   }
@@ -67,38 +193,66 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
     setCells((prev) => ({ ...prev, [code]: { ...cell(code), ...patch } }));
   }
 
-  /** 入力済みセルから PUT 用の測定値配列を組み立てる（空セルは送らない） */
+  /**
+   * 入力済みセルから PUT 用の測定値配列を組み立てる（空セルは送らない）。
+   * PUT は全置換のため、「現在の様式のフィールド」ではなく「値を持つ全セル」を対象にする。
+   * こうすることで、編集時に読み込んだ他様式のセル（様式が __indicated_form 欠落で既定に倒れた等）を
+   * 取りこぼして消してしまう事故を防ぐ。値種別はカタログ（getMeasurementField）で解決する。
+   * ponytail: 来歴は「読み込んだ時の source を維持、未読込(新規入力)は manual」。読み込んだ imported セルを
+   * フォームで編集しても imported のまま（人手修正を manual へ厳密再分類はしない）。厳密化が要るなら
+   * 読み込み値のベースライン比較を足す。
+   */
   function buildMeasurements(): MeasurementInput[] {
     const out: MeasurementInput[] = [];
-    for (const f of fields) {
-      const c = cells[f.code];
-      if (!c) continue;
+    for (const [code, c] of Object.entries(cells)) {
+      const f = getMeasurementField(code);
+      if (!f) continue; // 未知コードは送らない（サーバ側でも拒否される）
+      const source = loadedSources[code] === "imported" ? "imported" : "manual";
       if (f.valueKind === "numeric") {
         if (c.num.trim() === "") continue;
         const n = Number(c.num);
         if (!Number.isFinite(n)) continue;
-        out.push({ field_code: f.code, num_value: n, unit: c.unit || (f.units?.[0] ?? null), source: "manual" });
+        out.push({ field_code: code, num_value: n, unit: c.unit || (f.units?.[0] ?? null), source });
       } else if (f.valueKind === "judgment") {
         if (!c.judgment) continue;
-        out.push({ field_code: f.code, judgment: c.judgment as "pass" | "fail" | "na", source: "manual" });
+        out.push({ field_code: code, judgment: c.judgment as "pass" | "fail" | "na", source });
       } else {
         if (c.text.trim() === "") continue;
         out.push({
-          field_code: f.code,
+          field_code: code,
           text_value: c.text.trim(),
           unit: c.unit || (f.units?.[0] ?? null),
-          source: "manual",
+          source,
         });
       }
     }
     return out;
   }
 
+  /**
+   * answers に保存する内容を組み立てる。様式の別(__indicated_form)＋目視検査の判定＋照合欄の値。
+   * 未入力の項目は含めない。PDF 出力(Phase 1c/1d)がこの接頭辞で読み分ける。
+   */
+  function buildAnswers(): Record<string, { value: string }> {
+    const a: Record<string, { value: string }> = { __indicated_form: { value: form } };
+    for (const it of visualItems) {
+      const v = visual[it.code];
+      if (v) a[it.code] = { value: v };
+    }
+    for (const f of matchFields) {
+      const v = (match[f.code] ?? "").trim();
+      if (v) a[f.code] = { value: v };
+    }
+    return a;
+  }
+
   async function handleSave() {
     setSaving(true);
     setError(null);
     try {
-      // 1) 完成検査レコードを作成（既に作成済みなら再利用し、重複作成を避ける）
+      const answers = buildAnswers();
+      // 1) 完成検査レコードを作成（既に作成済みなら再利用し、重複作成を避ける）。
+      //    再保存時は create をスキップするため、目視・照合の編集が消えないよう answers を PATCH で更新する。
       let id = recordId;
       if (!id) {
         const createRes = await fetch("/api/admin/inspection-records", {
@@ -110,10 +264,9 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
             customer_id: customerId ?? null,
             inspection_type: "completion",
             inspector_name: inspectorName || null,
+            inspector_staff_id: inspectorStaffId || null,
             notes: notes || null,
-            // 様式(第三号/四号)の別を記録に永続化する。PDF 出力(Phase 1c)がセル配列の
-            // 決定に使う。answers は完成検査では他用途が無いため予約キーに載せる。
-            answers: { __indicated_form: { value: form } },
+            answers,
           }),
         });
         const createJson = await createRes.json().catch(() => ({}));
@@ -121,6 +274,21 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
         id = createJson?.record?.id;
         if (!id) throw new Error("作成した記録の ID を取得できませんでした。");
         setRecordId(id);
+      } else {
+        // 既存記録の更新（編集モード、または create 済みの再保存）。氏名・備考・answers を反映する。
+        const patchRes = await fetch("/api/admin/inspection-records", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            id,
+            answers,
+            inspector_name: inspectorName || null,
+            inspector_staff_id: inspectorStaffId || null,
+            notes: notes || null,
+          }),
+        });
+        const patchJson = await patchRes.json().catch(() => ({}));
+        if (!patchRes.ok) throw new Error(patchJson?.message ?? "記録の更新に失敗しました。");
       }
 
       // 2) 測定値を保存
@@ -144,7 +312,9 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
   return (
     <div className="glass-card space-y-4 p-4">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-sm font-semibold text-primary">完成検査（指定整備記録簿）</div>
+        <div className="text-sm font-semibold text-primary">
+          {isEdit ? "完成検査（編集）" : "完成検査（指定整備記録簿）"}
+        </div>
         <div className="flex gap-1">
           {(Object.keys(FORM_LABEL) as IndicatedInspectionForm[]).map((f) => (
             <button
@@ -168,12 +338,39 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label className="text-xs text-secondary">
+          検査実施者（スタッフ）
+          <select
+            value={inspectorStaffId}
+            onChange={(e) => {
+              const id = e.target.value;
+              setInspectorStaffId(id);
+              // 選択時は氏名を当該スタッフ名で補完する（記録簿の実施者名と資格スナップショットを一致させる）。
+              const s = staffList.find((x) => x.id === id);
+              if (s) setInspectorName(s.name);
+            }}
+            className="input mt-1 w-full text-sm"
+          >
+            <option value="">（選択しない / 外注・氏名のみ入力）</option>
+            {staffList.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+                {s.qualifications?.includes("vehicle_inspector") ? "（自動車検査員）" : ""}
+                {s.is_active ? "" : "（休止中）"}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block text-[10px] text-muted">
+            指定整備事業者で資格強制が有効な場合、有効な自動車検査員の実施者が必須です。
+          </span>
+        </label>
+        <label className="text-xs text-secondary">
           自動車検査員の氏名
           <input
             value={inspectorName}
             onChange={(e) => setInspectorName(e.target.value)}
             className="input mt-1 w-full text-sm"
             maxLength={80}
+            placeholder="外注等でスタッフ未登録の場合に入力"
           />
         </label>
       </div>
@@ -242,6 +439,87 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
         </div>
       ))}
 
+      {/* 外部テスタ CSV 取込（既存記録・測定値読み込み後のみ）。取込後は測定値セルを再読込する。 */}
+      {isEdit && recordId && measLoaded && (
+        <CompletionMeasurementCsvImport
+          recordId={recordId}
+          form={form}
+          onImported={async () => {
+            // 取込後の再読込が失敗したらセルは取込前のまま。そのまま保存すると全置換 PUT で
+            // 取込分が消えるため、保存を止めて開き直しを促す（初回ロードと同じガード）。
+            const ok = await reloadMeasurements(recordId);
+            if (!ok) {
+              setLoadFailed(true);
+              setError(
+                "取込後の再読込に失敗しました。画面を開き直してください（このまま保存すると取込分が消えます）。",
+              );
+            }
+          }}
+        />
+      )}
+
+      {/* 目視等による検査（構造・装置） */}
+      <div className="space-y-2">
+        <div className="text-[11px] font-semibold tracking-[0.14em] text-muted uppercase">目視等による検査</div>
+        {visualGroups.map(([group, items]) => (
+          <div key={group} className="space-y-1">
+            <div className="text-[11px] font-semibold text-secondary">{VISUAL_GROUP_LABEL[group]}</div>
+            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+              {items.map((it) => (
+                <div key={it.code} className="flex items-center gap-2">
+                  <span className="flex-1 text-[12px] text-secondary">{it.label}</span>
+                  <select
+                    value={visual[it.code] ?? ""}
+                    onChange={(e) => setVisual((prev) => ({ ...prev, [it.code]: e.target.value }))}
+                    className="input w-24 text-sm"
+                  >
+                    {JUDGMENTS.map((j) => (
+                      <option key={j.value} value={j.value}>
+                        {j.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 自動車検査証等の記載事項との照合 */}
+      <div className="space-y-2">
+        <div className="text-[11px] font-semibold tracking-[0.14em] text-muted uppercase">車両情報の照合</div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {matchFields.map((f) => (
+            <label key={f.code} className="text-[12px] text-secondary">
+              {f.label}
+              {f.unit ? `（${f.unit}）` : ""}
+              {f.choices ? (
+                <select
+                  value={match[f.code] ?? ""}
+                  onChange={(e) => setMatch((prev) => ({ ...prev, [f.code]: e.target.value }))}
+                  className="input mt-1 w-full text-sm"
+                >
+                  <option value="">—</option>
+                  {f.choices.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={match[f.code] ?? ""}
+                  onChange={(e) => setMatch((prev) => ({ ...prev, [f.code]: e.target.value }))}
+                  className="input mt-1 w-full text-sm"
+                  maxLength={120}
+                />
+              )}
+            </label>
+          ))}
+        </div>
+      </div>
+
       <label className="block text-xs text-secondary">
         点検及び整備の概要 / 備考
         <textarea
@@ -257,17 +535,25 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
         <div className="rounded-lg border-l-4 border-danger bg-danger/10 p-2 text-xs text-danger-text">{error}</div>
       )}
 
-      <div className="flex justify-end gap-2">
+      <div className="flex items-center justify-end gap-2">
         <button type="button" onClick={onCancel} disabled={saving} className="btn-ghost text-xs">
           キャンセル
         </button>
         <button
           type="button"
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || !measLoaded}
           className="btn-primary text-xs disabled:opacity-50"
         >
-          {saving ? "保存中…" : "完成検査を保存"}
+          {saving
+            ? "保存中…"
+            : loadFailed
+              ? "読み込み失敗"
+              : !measLoaded
+                ? "読み込み中…"
+                : isEdit
+                  ? "更新"
+                  : "完成検査を保存"}
         </button>
       </div>
     </div>

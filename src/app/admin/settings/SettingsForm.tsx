@@ -30,6 +30,7 @@ type Props = {
   registrationNumber: string | null;
   bankInfo: BankInfo;
   laborRatePerHour: number | null;
+  requireInspectorQualification: boolean;
   bookingNotifySlackColumnExists: boolean;
   bookingNotifySlackConfigured: boolean;
   columnsExist: boolean;
@@ -49,6 +50,7 @@ export default function SettingsForm({
   registrationNumber,
   bankInfo,
   laborRatePerHour,
+  requireInspectorQualification,
   bookingNotifySlackColumnExists,
   bookingNotifySlackConfigured,
   columnsExist,
@@ -232,6 +234,34 @@ export default function SettingsForm({
                 />
               </label>
             </div>
+          </div>
+
+          <div className="border-t border-[var(--border-default)] pt-5 mt-5">
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-3 flex items-center gap-1.5">
+              完成検査（指定整備記録簿）
+              <HelpTooltip>
+                指定整備事業者の場合、完成検査（指定整備記録簿）の実施者は自動車検査員でなければなりません（第２
+                ３（１）①）。有効にすると、完成検査の記録を作成・更新する際に、実施者として有効な自動車検査員資格を持つスタッフの指定を必須化します（未指定・資格無し・期限切れは保存できません）。指定整備事業者でない場合はオフのままにしてください。
+              </HelpTooltip>
+            </div>
+            {/* チェックボックスは未チェック時に送信されないため、送信有無を判別する hidden マーカーを常に添える
+                （columnsExist 方式。マーカーがあるときだけ actions がこの列を更新する）。 */}
+            <input type="hidden" name="require_inspector_qualification_present" value="1" />
+            <label className="flex items-start gap-2 text-sm text-secondary">
+              <input
+                type="checkbox"
+                name="require_inspector_qualification"
+                value="on"
+                defaultChecked={requireInspectorQualification}
+                className="mt-0.5"
+              />
+              <span>
+                完成検査の実施者に有効な自動車検査員資格を必須化する
+                <span className="mt-0.5 block text-xs text-muted">
+                  オフ（既定）の場合は実施者の資格を強制しません。スタッフの資格・資格番号・有効期限は「スタッフ管理」で登録します。
+                </span>
+              </span>
+            </label>
           </div>
         </>
       ) : (

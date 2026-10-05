@@ -4,7 +4,127 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-24
+最終更新: 2026-10-03
+
+> 2026-10-02 追記（**Japan Mobility Show Bizweek 2026 に Ledra を出展**）: 会期 2026-10-13〜16・幕張メッセ
+> 展示ホール2・3、小間位置 ZONE1「滞らないシステムで、広がる安心。」S-06。出展内容は Ledra（代表回答）。
+> holy-inc.jp のお知らせで告知済み（holy-auto/holy-inc#14 マージ）。Ledra サイトの `/news` にも同じ告知を MDX で追加
+> （`src/content/news/2026-10-03-japan-mobility-show-bizweek.mdx`、マージ後のデプロイで公開）。展示の具体的な構成・デモ内容は【要確認】。
+
+> 2026-10-02 追記（**メーカー・車種が分からない車両でも証明書を発行できる**）: 代表判断で
+> `vehicles.maker` / `model` の NOT NULL を外した（`20261002120100`）。発行のガードと画面は
+> もともと「`vehicle_id` か `maker` か `model` のどれか1つ」で通す形だったので、**アプリ側の
+> コード変更は無い**。緩めたのは DB と、それを通る2経路（証明書発行・ヒアリング）だけで、
+> **車両の直接登録 API は maker / model を両方必須のまま**（`vehicleCreateSchema`）。
+> 「不明」は NULL で表す（空文字は使わない）。
+> **この2文は本番で実際に走る**（マージ時に Supabase の GitHub 連携が自動適用）。
+> 実測で本番 `vehicles` 27 行・NULL 0 件・空文字 0 件なので既存データへの影響はない。
+> 戻すときは `SET NOT NULL` を足すだけだが、その時点で NULL の行があると落ちる。
+> **未修正**: `src/app/api/admin/hearings/route.ts:136-137` のエラー握り潰しは別の不具合として残る。
+
+> 2026-10-02 追記（Vercel のビルド機）: プロジェクト設定の Build Machine が **Enhanced（Elastic・8 vCPU・16 GB Memory）**
+> になっていることを、代表が共有した設定画面で確認した。8GB 機ではキャッシュが捨てられたフルビルドでメモリ不足（OOM）に
+> なっていた（2026-09-29 #1172、2026-10-01 `5f54e29`）。DECISION_LOG 2026-09-29 の切り替えは完了。
+> 確認したのは設定で、切り替え後のフルビルドのログ（`Build machine configuration` 行）はまだ見ていない。
+> 実ビルドでの確認は OPEN_QUESTIONS に残している。再び OOM が出たら、そのビルドの機械構成を最初に見る。
+
+> 2026-10-02 追記: **本番で写真の C2PA 署名が失敗したら、その写真を保存せずに断るようにした**
+> （代表判断「黙って未署名はダメだ」、DECISION_LOG 同日）。それまでは署名の失敗4経路と
+> タイムアウトが「C2PA は無効」と同じ結果を返していたため、本番でも真正性等級だけ下がって
+> 写真が保存され、誰にも知らされなかった。`C2PA_MODE=production` かつ署名失敗のときだけ断る
+> （`dev-signed` はログを出して通す）。**2026-10-03 訂正: ここには「判定はストレージ書き込みの前なので
+> 孤児ファイルは残らない」と書いていたが、副作用をストレージだけで数えた言い方だった。** ストレージには
+> 確かに残らないが、`signC2pa` は `anchorToPolygon` と同じ `Promise.all`（`providers/index.ts:63`）で走るので、
+> 署名器の有無以外の失敗（署名中の例外・タイムアウト）で断る時点では、Polygon のアンカリングが有効（`POLYGON_ANCHOR_ENABLED=true`）で鍵とコントラクトが設定されている場合は**オンチェーン送信が済んでおり取り消せない**
+> （無効・未設定・SHA-256 不正なら `anchorToPolygon` は送信前に返る: `polygon.ts:116` / `:119` / `:125`）。
+> だから本番モードは署名器の先行検査を nonce・sharp・TSA・Polygon・ストレージより前に置いてある
+> （MISTAKE_LEDGER `M-20261002-checked-one-side-effect-and-called-it-no-orphans`）。
+> **現状、本番の C2PA はまだ稼働していない**（`C2PA_MODE` 未設定＝disabled）ので現場への影響は無く、
+> 本番証明書を入れてオンにした日から効く。**未確認**: 本番（Vercel）で `@contentauth/c2pa-node` が
+> 実際にビルド・読み込みできるか。できていなければオンにした瞬間に全アップロードが断られる。
+> **2026-10-03 に `main` にマージ済み（squash `e9dbb95e`・PR #1209）。**
+
+> 2026-10-01 追記（#1174 は**本番適用済み** —— 2026-09-29 に「未適用」と書いたのは誤り）:
+> 列属性のドリフトを揃える2本（`54a0f875`）は、**#1174 を main にマージした時点で本番へ自動適用されていた。**
+> `db-migrate` を手で回していないので「未適用」と書いたが、本番の台帳に書く経路は2つあり
+> （`.github/workflows/db-migrate.yml`）、(b) Supabase の GitHub 連携が main への push で適用する。
+> **2026-10-01 に本番へ直接問い合わせて確認した**（Supabase MCP・読み取りのみ）:
+> - 本番の適用台帳に `20260929150200` と `20260929150300` が**両方ある**（`list_migrations`）。
+> - 列定義も実際に変わっている —— `job_orders.status` の既定は `'pending'::text`、
+>   `insurer_users.role` の既定は `'viewer'::text`（どちらも NOT NULL）。
+> - 既定が自表の CHECK を**通る**ことも確認: `job_orders_status_check` は
+>   `['pending','quoting','accepted','in_progress','approval_pending','payment_pending','completed','rejected','cancelled']`、
+>   `insurer_users_role_check` は `['admin','viewer','auditor']`。どちらも `convalidated: true`。
+>   よって「列を省いた insert が 23514 になる」状態は解消している（insert を実行しての確認はしていない。
+>   既定リテラルが CHECK の許可配列に含まれることを定義から確認した）。
+> - `20260929150300` は本番では no-op（`audit_logs.tenant_id` は nullable、`insurers.plan_tier` は
+>   既定なし・nullable のまま）。直るのは新しく作る環境の側。
+> **残っている作業**: なし（適用と確認は完了）。経緯は
+> `M-20261001-reported-applied-migrations-as-not-applied`。
+> **これが示す運用上の問題**: main にマージすると `supabase/migrations/**` は**誰も実行しなくても本番に入る**。
+> 「まだ当てていない」と判断してよい状態は存在しない。OPEN_QUESTIONS の「Branching の自動適用を切る」は
+> 未実施のままで、切るまでこの形が続く。
+> **代表判断待ち**: `vehicles.maker`/`model` に明示 NULL を送る2経路の保存方針、`insurers.plan_tier` の
+> 既定、enum/text の7列（IMP-015）。OPEN_QUESTIONS 参照。
+
+> 2026-10-01 追記（C2PA 並行2案の整理）: 代表決定で、ingredient は #1173 方式（原本ごと＋redaction）、
+> Backend→Supabase の TLS 1.3 強制は #1183 の `tls13Fetch` を #1173 に取り込んだ。#1183 は 2026-10-02 に代表指示でクローズ（文言修正は #1198 で main 済み）。
+> 2026-10-02 再提出用サンプル a〜d を現行コードで再生成（4枚とも Valid・untrusted のみ・GPS なし）。zip `Ledra-C2PA-Resubmission-20261002-UNVERIFIED.zip` を代表へ渡した。**未送信**。
+> **2026-10-02 追記（適合審査）: Administrator から「validate の申告を戻した。アーキテクチャは適合チェックに合格。これ以上は不要」と返信**
+> （代表が転送）。あわせて「生成製品が C2PA の CA・TSA Trust List を参照する設定になっていない。参照すれば TRUSTED の判定になる」
+> との助言（添付画像は Claude からは見えていない）。送信後に見つけた O.5 の穴（#1215 で外部連携は対応済み）について訂正の追送は不要と判断。
+> 次の論点は Trust List の本番設定（OPEN_QUESTIONS）と、適合後の本番署名証明書の取得。
+> 2026-10-02 追記: #1173 は main にマージ済み（c4cc5816）。`www.ledra.co.jp` は Cloudflare 経由（`Server: cloudflare`）になり、
+> 代表の PC から `curl --tls-max 1.2` は exit 35（ハンドシェイク失敗）、`--tlsv1.3` は 200 を確認＝**TLS 1.2 拒否を実測**。
+> GPSA §1.6・§2.5（O.5）・TOE 図を Cloudflare 前段の構成で書き直した。Web とモバイルが使う `app.ledra.co.jp` も同日確認: TLS 1.2 は exit 35、TLS 1.3 は 200・`Server: cloudflare`、
+> `http://` は 301 で `https://` へ（`M-20261002-tls-check-covered-www-but-app-host-is-app-ledra`）。本番の写真アップロードも代表が確認済み（403 なし）。
+> Conformulator（新サンプル a〜d、zip 内と同一バイトを確認）は**4枚とも**適合ルーブリック（Conformance 3種）が全 PASS。Integrity ルーブリックの `trusted_success` だけ不合格（テスト証明書の untrusted、想定内）。
+> 再提出メール下書き `docs/c2pa-evidence/submission-email.md`（validate 復活・指摘4件の是正・O.4/O.5）と最終 zip
+> `Ledra-C2PA-Resubmission-01a06690.zip` を代表へ渡し、**2026-10-02 に代表が Administrator へ返信で送信**（代表の申告。送信時刻は未確認）。
+> 次は Administrator の返答待ち。**ただし送信後の Codex レビュー（#1213）で、送った GPSA の O.5 に穴が3つ見つかった**
+> （クライアント→Supabase の直通信が未記載、Cloudflare→Vercel の版は未強制、外部連携は素の fetch。運用管理策 A02 は言い過ぎ）。
+> 追送するかは代表判断待ち（OPEN_QUESTIONS）。validate を再申告したので、crJSON ハーネス用のテスト入力が届いたら `tools/c2pa-crjson-harness` で返す。
+
+> 2026-09-29 追記（crJSON ハーネス）: validate 再申告に必要な **crJSON テストハーネスを作成**（`tools/c2pa-crjson-harness`、
+> 製品と同じ c2pa-rs 0.90.22＋検証時刻・TSA 信頼リストのパッチ、自己テスト6件）。Program のテスト入力待ち。
+> 本番の検証が C2PA Trust List を使っていない点は未判断（OPEN_QUESTIONS）。
+
+> 2026-09-29 追記（訂正）: C2PA 証拠パッケージは **9/27 に1版目が送信され、9/28 に非適合4件で差し戻し**。
+> 「3版目・自己テスト合格後に送信」と書いたのは誤り。対応として署名を `c2pa.opened`＋原本 ingredient に作り替え済み
+> （GPS は漏れないことを実測・テスト化）。**再提出待ち**: カスタムアサーションの指摘内容・ingredient ライブラリ・
+> GPSA レビュー文書の入手、validate 申告の復活、GPSA 改訂、サンプル再生成と Conformulator 再確認。
+
+> 2026-09-27 追記: **C2PA Conformance の証拠パッケージを再作成し、`docs/c2pa-evidence/` に保存した**
+> （英語 GPSA・運用管理策・サンプル4枚・返信メール下書き）。**未送信**。送信前に代表が Conformulator で
+> 自己テストし、GPSA の管理者アクセス等の記述を確認する。Intake の validate 申告は返信メールで取り下げる。
+> 同時に C2PA 行為台帳の不具合（回転・WebP のメタデータ除去が記録されない）を修正。
+> **HEIC は GPS を残したまま署名・保存される**（sharp が HEVC を読めない）ことを実測で確定、対応は未判断。
+
+> 2026-09-29 追記（本番適用 実測）: **#1170 を本番に適用した**（`94f345f1`・`db-migrate` run 94 成功・12:35 UTC）。
+> 本番で実測した結果:
+> - `certificates` の anon 向けポリシーは **0本**。anon の SELECT 権限は `certificates` と `certificates_public` の**どちらにも無い**。
+>   → 未ログインで顧客名を列挙できた穴は閉じた。
+> - `pii_disclosure_consents` にオーナー同意の2列を追加した。`certificates.hidden_from_owner_portal_at` もある。
+> - `is_pii_disclosed()` は `owner_consented_at` を見て、`tenant_consented_at` は見ない（オーナー同意だけの定義）。
+> いまの状態:
+> - 保険会社への氏名開示は「保険会社の申請＋オーナー本人の同意」で決まる。オーナーはマイページで同意する。
+> - 匿名の公開証明書・公開 PDF にナンバーは出ない。
+> - パスポートへの掲載は、施工店が車両ごとに切り替えられる（既定オン）。
+> - 所有権を移転すると、旧オーナーにメールが届き、旧オーナーのマイページから旧オーナー名義の証明書が外れる。
+> - 契約条件は /terms（11条）だけ。
+> **未確認**: 塞ぐ前に第三者が anon の経路で証明書を読んだかどうか（PostgREST のログ）。公開 PDF の本番での実際の表示。
+> 法務確認が要る未決は OPEN_QUESTIONS 2026-09-27 に残っている。
+
+> 2026-09-25 追記: **`certificate_images` の列定義を本番に揃えた**（`20260925142800`）。
+> `file_name` / `content_type` を NOT NULL、`sort_order` の既定を 1 に。本番と再生 DB を
+> 同じクエリで引いて 45 列を突き合わせ、差はこの3件だけと確認（他は完全一致）。
+> 本番は 88 行・3列とも NULL 0件なので**本番では no-op**、直るのは新しく作る環境の側。
+> **本番未適用**（PR 作成時点）。
+>
+> あわせて索引とポリシーを測り直した: **一意でない索引 本番 768 / 再生 766（差のある表 15）**、
+> **RLS ポリシー 本番 654 / 再生 659（差のある表 12）**。総数の差は両方向が打ち消し合った
+> 結果で「差が小さい」ではない。名前までの突き合わせは未実施。
+> 再生 DB では `insurer_access_logs` が RLS 有効・ポリシー0本（全拒否）＝本番より厳しい側の差。
 
 > 2026-09-24 追記（本番適用 実測）: **#1151 を本番に適用した**（`147ed34b`・`db-migrate` run 90 成功・15:50 UTC）。
 > 本番で実測: `insurer_users.is_system` 列あり、保険会社2社に**システム行が各1行**（`user_id` を持つものは0）、
@@ -860,6 +980,8 @@
 > あわせて **anon から読める表を全件実測**（13件）。秘密情報・加盟店データの露出は無し。
 > `certificates` の公開ポリシーが**行ごと**許可する点と `is_hidden` を見ない点を
 > OPEN_QUESTIONS に起票（いずれも現時点で実害0）。
+> **2026-09-27 訂正**: 「露出は無し」「実害0」は誤り。anon から `certificates` の顧客名が全件読めていた
+> （アプリは3経路とも顧客名を伏せる設計）。`20260927113105` で anon の読み取りを閉じた（DECISION_LOG 2026-09-27）。
 > 確認が今も有効かは **`preview_token`（中身4項目 + `updated_at` の sha256）** で持つ。
 > 印は preview / publish とも **DB が返した行**から作る —— 手元の値を混ぜると表記の
 > 食い違い（JS は `...Z`、PostgREST は `+00:00`）でハッシュが永久に一致せず、
@@ -1018,6 +1140,19 @@
 > **IMP-029 の本丸（残り15タイプの発火条件・宛先・チャネル、統合dispatch）は経営判断が要るため
 > 実装していない** — 「証明書を発行したら誰に通知するか」は推測で決める話ではないため、
 > OPEN_QUESTIONS.md に起票した。
+>
+> 2026-09-25 追記: **上記の経営判断が確定し、中央 dispatch（`src/lib/notifications/dispatch.ts`）を
+> 実装、15タイプ中13タイプが本番で発火するようになった。** 代表に severity・叩き台の
+> チャネル・宛先ロールを一覧表で提示し「叩き台通り全15タイプ確定」の回答を得た
+> （DECISION_LOG 2026-09-25）。残り2タイプ（`certificate_gate_ready` / `rating_request`）は
+> 該当する業務イベントの実処理がコードに無いため未配線のまま OPEN_QUESTIONS に起票済み。
+> 詳細は RELEASE_LOG 2026-09-25。
+>
+> 2026-09-29 追記: **残り2タイプも配線し、15タイプすべてに発火元がある状態になった（PR #1172 マージ）。**
+> `certificate_gate_ready` は写真アップロード時の Gate 再評価で未READY→READY の遷移だけ admin に通知、
+> `rating_request` は証明書発行の7日後に施工店の顧客へ評価依頼（新テーブル `certificate_rating_requests`、
+> `20260929132849`）。送信条件の仮置き（`follow_up_settings.enabled` のテナントのみ・7日固定）は
+> OPEN_QUESTIONS で代表確認待ち。詳細は RELEASE_LOG 2026-09-27、DECISION_LOG 2026-09-27。
 
 > 2026-08-31 追記: **証明書の無効化に認可漏れがあり、閲覧専用(viewer)でも証明書を恒久的に
 > 無効化できる状態だった（修正済み、IMP-013）。** 無効化の経路は**5本**あり、
@@ -1445,6 +1580,12 @@ LINE だけ「ログインのみ」になっていない。完全に消すには
 残作業の自動検出）。加盟店に残るのは Channel ID と Channel Secret のコピーのみ。
 自動発行トークンは30日で失効するため、送信直前に期限が近ければ自動で再発行する。
 詳細は `docs/line-module-channel-research.md` / OPEN_QUESTIONS.md。
+
+**LINE非依存テナント（大手導入向け）**: `tenants.line_enabled = false` でテナント単位に
+LINE機能を無効化できる。予約 (`reservations`) はLINE非依存の列構成、顧客ログインは
+既定でメール+電話下4桁OTP（LINEログインは連携済み顧客向けの代替経路のみ）、通知は
+メール(Resend)/SMS(Twilio)/Slackで代替可能。RFP/DDQ向けの回答テンプレは
+`docs/enterprise-readiness.md` §7 に追加済み（2026-09-25）。
 
 ## 競争優位戦略（2026-08-18 策定）
 
