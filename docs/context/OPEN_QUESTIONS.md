@@ -3,6 +3,21 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## C2PA 本番証明書を ssl.com の無料枠で取る: 残る確認（2026-10-05）
+
+TSA の URL（`https://ts-c2pa.ssl.com/ecc`）と、証明書・TSA とも ssl.com の無料枠で取ることは決定済み
+（DECISION_LOG 2026-10-05）。確認の根拠（TLS 1.3・TSA Trust List へのチェーンの実測）も同エントリにある。残るのは次の点。
+
+- **申込画面の形**: CSR を提出する方式か、ssl.com 側で鍵を持つ方式（eSigner 等）か。前者なら鍵は代表の PC で作り外に出さない
+  （CSR だけ提出）。後者は GPSA の鍵管理の記述と合うかを見直す必要がある。代表が申込画面を見て共有する。
+- **申込の時期**: 申込には Record ID（`01a06690-…`）が要る。Notice of Conformance は 2026-10-05 時点で未着（Gmail 確認、
+  最後は 10-02 の Administrator 返信）。推定: ssl.com は CPL 掲載を確認してから発行する — 根拠は CA が CPL 掲載製品にしか
+  発行しないという Program 規程（`docs/c2pa-conformance-application.md` 手順6〜8）。未検証。
+- **無料枠の条件**: タイムスタンプが年 2,500 件か 10,000 件か（Web 検索結果の要約で食い違い）、2年目以降も無料で更新できるか、
+  超過分の単価（非公開）、TSA を本番の量で使ってよいか。申込時に ssl.com で確認する。
+  Ledra の写真は本番 `certificate_images` で直近12か月 88 枚（全期間も 88 枚、最終 2026-09-20）で、少ない方の 2,500 件でも約 3.5%。
+- タイムスタンプなしに落ちた写真の件数は、今はログ（`[c2pa] time-stamped signing failed`）でしか分からない。
+
 ## 実証テスト: 契約同意の控えが ft_job_assigned を流用している（2026-10-03）
 
 `/api/{admin,mobile}/field-test/agreements/[id]` は、同意した施工店自身へ「契約に同意しました」を `ft_job_assigned` で出している
