@@ -28,6 +28,27 @@
    ```
 3. RLS ポリシーが本番と同一であることを確認
 
+#### 注意（2026-10-05 に staging を作ったときの実測）
+
+- **`db push` は最新の `main` のクローンで流す。** 古いクローン（#1025 = 2026-09-05 より前）だと、最初の
+  `20260312000000_tenants_contact_fields.sql` で `relation "tenants" does not exist` になる。今の `main` ではこのファイルに
+  「tenants が無ければ skip」のガードが入っている。落ちたら、エラーに出た SQL を `main` のファイルと見比べる。
+- 空 DB にファイル名順・1パスで通ることは、手元の `node scripts/replay-migrations.mjs` で確かめられる（2026-10-05 時点 520/520）。
+- `npx supabase db dump` は内部で Docker を使う。Docker が無い PC では動かない。
+- 直接接続のホスト `db.<ref>.supabase.co` は、IPv6 の無い回線では名前解決できない（`ENOTFOUND`）。外から psql 等でつなぐときは、
+  ダッシュボードの Connect →「Session pooler」の文字列をそのまま使う（ユーザー名は `postgres.<ref>` 形式）。
+- PowerShell で環境変数にパスワードを入れるときは**シングルクォート**で囲む。ダブルクォートだと `$` 以降が変数として展開され、
+  パスワードが黙って途中で切れる。
+- 写真の保存先 `assets` バケットはマイグレーションに無い（本番では手作業で作られた）。本番と同じ設定（公開・10MB・
+  jpeg/png/webp/gif/avif）で作る:
+  ```sql
+  insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('assets', 'assets', true, 10485760, array['image/jpeg','image/png','image/webp','image/gif','image/avif'])
+  on conflict (id) do nothing;
+  ```
+- 現在の staging は `Ledra-staging`。スキーマはダンプから入れたため、マイグレーションの適用履歴が空になっている。
+  ここに `db push` する前に履歴を合わせる必要がある（`docs/context/OPEN_QUESTIONS.md`「staging（Ledra-staging）の残作業」）。
+
 ### 3. Stripe テストモード
 
 ステージング環境では Stripe の **テストモード** を使用します。
