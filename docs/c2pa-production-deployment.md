@@ -33,12 +33,29 @@ C2PA Trust List の CA から署名証明書を得るには、Ledra を「Confor
 3. Trust List CA（DigiCert または SSL.com 等）から end-entity 署名証明書を発行。
    - 費用は CA の商用条件次第。【要確認: 発行費用・更新頻度・年額】
    - 2026-10-05 追記: ssl.com は適合済み Generator 製品向けに AL1 証明書（1年）を無料で発行し、タイムスタンプ枠
-     （年 2,500 件または 10,000 件。情報源で食い違う）が付く、と Web 検索結果の要約にある。公式ページ未確認。
+     （年 2,500 件。2026-10-05 代表の申告）が付く。無料は1年のみで、無料の更新は無い（ssl.com の返答）。
      詳細は OPEN_QUESTIONS 2026-10-05。
    - 【要確認: 日本からの契約可否・請求通貨・審査期間】
 
 > メモ: 一次情報は `c2pa-org/conformance-public` の `docs/current/`（Program 規程）と
 > `legal-agreements/`。CA 側は SSL.com / DigiCert の「Content Credentials / C2PA」製品ページ。
+
+### ssl.com 無料枠での手順（2026-10-05 決定・ssl.com 了承済み）
+
+1. **鍵と CSR を代表の PC で作る**（秘密鍵は PC から出さない。リポジトリの外のフォルダで作る）:
+   ```
+   openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out c2pa-signer.key.pem
+   openssl req -new -key c2pa-signer.key.pem -subj "/C=JP/O=HOLY Inc./CN=Ledra" -out c2pa-signer.csr.pem
+   ```
+   1行目は最初から PKCS#8（`-----BEGIN PRIVATE KEY-----`）で出るので、変換は要らない。
+   このコマンドで作った鍵と CSR から、手元のテスト CA で同じ形の証明書を作り、§4 のプリフライトで `Trusted`・GO に
+   なることを 2026-10-05 に確認した（無関係な信頼点では NO-GO）。
+   Windows で `openssl` が見つからない場合は Git for Windows 同梱の `<Git>\mingw64\bin\openssl.exe` を使う
+   （2026-10-05 に代表の PC で OpenSSL 3.5.5 により作成済み）。
+   **鍵ファイルは安全な場所に複製して保管する**: 無料枠は無料の再発行が無い（ssl.com の返答）ので、鍵を失うと
+   証明書を取り直すことになる。
+2. **Notice of Conformance が届いたら**、通知と `c2pa-signer.csr.pem`（CSR だけ）を ssl.com の担当者へ送る。
+3. 証明書が届いたら §3〜§4。
 
 ## 3. 証明書が用意できたら（env 投入）
 
