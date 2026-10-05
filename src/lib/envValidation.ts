@@ -87,6 +87,13 @@ const CRITICAL_ENV_VARS: EnvVarCheck[] = [
   { name: "C2PA_MODE", required: false, warnOnly: true },
   { name: "C2PA_SIGNER_KEY", required: false, warnOnly: true },
   { name: "C2PA_SIGNER_CERT", required: false, warnOnly: true },
+  {
+    name: "C2PA_TSA_URL",
+    required: false,
+    warnOnly: true,
+    // http だと中継（tls13HttpsFetch）が毎回断り、どの写真にもタイムスタンプが付かないまま黙って進む。
+    validate: (v) => (v.startsWith("https://") ? null : "must be an https:// URL (the TSA is reached over TLS 1.3)"),
+  },
   { name: "DEEPFAKE_PROVIDER", required: false, warnOnly: true },
   { name: "DEEPFAKE_API_KEY", required: false, warnOnly: true },
   { name: "DEVICE_ATTESTATION_ENABLED", required: false, warnOnly: true },

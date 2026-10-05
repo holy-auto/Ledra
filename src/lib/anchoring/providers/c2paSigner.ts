@@ -12,6 +12,7 @@ import "reflect-metadata"; // tsyringe(@peculiar/x509 経由・@simplewebauthn �
 
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { withRetry } from "@/lib/http/withRetry";
 import { tls13HttpsFetch } from "@/lib/net/tls13Fetch";
 import type { C2paMode } from "./c2pa";
 
@@ -76,26 +77,37 @@ export async function generateDevCert(): Promise<{ certPem: string; keyPem: stri
 }
 
 /** The signing certificate (PEM chain) and PKCS#8 key for a mode. dev-signed generates one per process. */
-let cachedCredential: { mode: C2paMode; certPem: string; keyPem: string } | null = null;
+type Credential = { certPem: string; keyPem: string };
+// The promise is cached, not the value: concurrent first calls must share one dev certificate.
+let cachedCredential: { mode: C2paMode; credential: Promise<Credential | null> } | null = null;
 
-async function loadCredential(mode: C2paMode): Promise<{ certPem: string; keyPem: string } | null> {
-  if (cachedCredential?.mode === mode) return cachedCredential;
-  let certPem: string;
-  let keyPem: string;
-  if (mode === "dev-signed") {
-    ({ certPem, keyPem } = await generateDevCert());
-    console.info("[c2pa] generated ephemeral dev-signed ES256 certificate");
-  } else {
-    // production: require env vars
-    certPem = process.env.C2PA_SIGNER_CERT ?? "";
-    keyPem = process.env.C2PA_SIGNER_KEY ?? "";
-    if (!certPem || !keyPem) {
-      console.error("[c2pa] production mode requires C2PA_SIGNER_CERT and C2PA_SIGNER_KEY env vars");
-      return null;
-    }
+function loadCredential(mode: C2paMode): Promise<Credential | null> {
+  if (cachedCredential?.mode !== mode) {
+    const entry = { mode, credential: readCredential(mode) };
+    cachedCredential = entry;
+    // A failure is not cached: the next call reads the env (or generates) again, as before.
+    const forget = () => {
+      if (cachedCredential === entry) cachedCredential = null;
+    };
+    entry.credential.then((c) => c ?? forget(), forget);
   }
-  cachedCredential = { mode, certPem, keyPem };
-  return cachedCredential;
+  return cachedCredential.credential;
+}
+
+async function readCredential(mode: C2paMode): Promise<Credential | null> {
+  if (mode === "dev-signed") {
+    const credential = await generateDevCert();
+    console.info("[c2pa] generated ephemeral dev-signed ES256 certificate");
+    return credential;
+  }
+  // production: require env vars
+  const certPem = process.env.C2PA_SIGNER_CERT ?? "";
+  const keyPem = process.env.C2PA_SIGNER_KEY ?? "";
+  if (!certPem || !keyPem) {
+    console.error("[c2pa] production mode requires C2PA_SIGNER_CERT and C2PA_SIGNER_KEY env vars");
+    return null;
+  }
+  return { certPem, keyPem };
 }
 
 /**
@@ -144,29 +156,36 @@ export const C2PA_TSA_TIMEOUT_MS = 2_000;
  * c2pa-rs sends the TSA request with its own HTTP client, which has no timeout (a TSA that accepts
  * and never answers kept it pending for over 100 s) and no TLS 1.3 minimum. So it is pointed at a
  * relay on 127.0.0.1 that forwards the request with `tls13HttpsFetch` (https only, TLS 1.3) and
- * gives up after C2PA_TSA_TIMEOUT_MS.
+ * gives up after C2PA_TSA_TIMEOUT_MS. The `c2pa-tsa` circuit (withRetry: 5 failures open it for 30 s)
+ * makes the relay fail at once while the TSA is down, so an outage costs no wait per photo.
  * ponytail: one relay per photo. Ceiling: a listening socket per concurrent signing.
  */
 export async function signWithTimeStamp(
-  mode: C2paMode,
+  mode: Exclude<C2paMode, "disabled">,
   tsaUrl: string,
   builder: { signAsync(signer: unknown, input: unknown, output: { buffer: Buffer | null }): Promise<unknown> },
   input: { buffer: Buffer; mimeType: string },
 ): Promise<Buffer | null> {
-  if (mode === "disabled") return null;
   const relay = createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on("data", (c: Buffer) => chunks.push(c));
     req.on("end", async () => {
       try {
-        const r = await tls13HttpsFetch(tsaUrl, {
-          method: "POST",
-          headers: { "content-type": "application/timestamp-query" },
-          body: Buffer.concat(chunks),
-          signal: AbortSignal.timeout(C2PA_TSA_TIMEOUT_MS),
-        });
-        const body = Buffer.from(await r.arrayBuffer());
-        res.writeHead(r.status, { "content-type": r.headers.get("content-type") ?? "" }).end(body);
+        const r = await withRetry(
+          "c2pa-tsa",
+          async () => {
+            const r = await tls13HttpsFetch(tsaUrl, {
+              method: "POST",
+              headers: { "content-type": "application/timestamp-query" },
+              body: Buffer.concat(chunks),
+              signal: AbortSignal.timeout(C2PA_TSA_TIMEOUT_MS),
+            });
+            if (!r.ok) throw Object.assign(new Error(`TSA responded ${r.status}`), { status: r.status });
+            return { type: r.headers.get("content-type") ?? "", body: Buffer.from(await r.arrayBuffer()) };
+          },
+          { maxAttempts: 1 },
+        );
+        res.writeHead(200, { "content-type": r.type }).end(r.body);
       } catch (err) {
         console.warn("[c2pa] TSA request failed", err instanceof Error ? err.message : err);
         res.writeHead(504).end();

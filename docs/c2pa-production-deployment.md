@@ -51,7 +51,9 @@ end-entity 証明書は c2pa-rs の profile を満たすこと（通常 CA 発�
 `KeyUsage=digitalSignature` / `ExtendedKeyUsage=emailProtection`(OID 1.3.6.1.5.5.7.3.4) /
 `SubjectKeyIdentifier` / `BasicConstraints CA:FALSE`。署名アルゴリズムは鍵に応じて
 `es256`(P-256) / `es384`(P-384) / `ps256`(RSA) 等。現状コードは `es256` 固定
-（P-384 や RSA 証明書を使う場合は `c2paSigner.ts` の `newSigner` 第3引数を合わせる）。
+（P-384 や RSA 証明書を使う場合は `c2paSigner.ts` の2箇所を合わせる: `LocalSigner.newSigner` の第3引数と、
+`signWithTimeStamp` の `CallbackSigner` の `alg` および署名コールバックのハッシュ・形式。片方だけ変えると
+タイムスタンプ付きの署名が毎回失敗し、黙ってタイムスタンプなしに落ちる）。
 
 ### 署名のタイムスタンプ（`C2PA_TSA_URL`）
 

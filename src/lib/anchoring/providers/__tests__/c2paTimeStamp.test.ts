@@ -94,9 +94,15 @@ ess_cert_id_alg=sha256
     const chunks: Buffer[] = [];
     req.on("data", (c: Buffer) => chunks.push(c));
     req.on("end", () => {
-      writeFileSync(f("q.tsq"), Buffer.concat(chunks));
-      ossl("ts", "-reply", "-config", f("tsa.cnf"), "-queryfile", f("q.tsq"), "-out", f("r.tsr"));
-      res.writeHead(200, { "content-type": "application/timestamp-reply" }).end(readFileSync(f("r.tsr")));
+      try {
+        writeFileSync(f("q.tsq"), Buffer.concat(chunks));
+        ossl("ts", "-reply", "-config", f("tsa.cnf"), "-queryfile", f("q.tsq"), "-out", f("r.tsr"));
+        res.writeHead(200, { "content-type": "application/timestamp-reply" }).end(readFileSync(f("r.tsr")));
+      } catch (err) {
+        // Surfaces as "no time-stamp" in the stamping test, with the openssl error in the log.
+        console.error("[test TSA]", err);
+        res.writeHead(500).end();
+      }
     });
   });
   const silent = createServer(() => {});
@@ -178,4 +184,14 @@ describe("C2PA claim signature time-stamp", () => {
     },
     20_000,
   );
+
+  it("concurrent first signings share one dev certificate", async () => {
+    vi.resetModules();
+    const info = vi.spyOn(console, "info");
+    process.env.C2PA_TSA_URL = stampingTsa;
+    const { signC2pa } = await import("../c2pa");
+    await Promise.all([signC2pa(jpeg, "image/jpeg"), signC2pa(jpeg, "image/jpeg")]);
+    expect(info.mock.calls.filter(([m]) => String(m).includes("generated ephemeral"))).toHaveLength(1);
+    info.mockRestore();
+  }, 20_000);
 });
