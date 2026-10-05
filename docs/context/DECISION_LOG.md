@@ -4,6 +4,32 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-10-03 実証テスト（FT）の案件割当・不具合報告は、施工店の管理者にメールも送る
+
+1. 日付: 2026-10-03（`date -u` で確認）
+2. 起きたこと: 週次 Claude レビューが #1176 を起票。通知カタログ（`types.ts`）は `ft_job_assigned` / `ft_defect_reported` を
+   `in_app + email` としているのに、FT の送信は `ftNotify.ts`（`notifications` への in_app insert のみ）で、メールは一度も送られない。
+   代表に「メーカーが案件を割り当てた・不具合を報告したとき、施工店の管理者にメールも送るか」を確認し、「送る」の回答を得た。
+3. 以前の考え: FT の5タイプのチャネルは 2026-09-19 の FT 実装時にカタログへ置いた叩き台のまま。2026-09-25 の「カタログを正式仕様とする」
+   判断は残り15タイプが対象で、FT の5タイプは含まれていなかった（誰も確定していない）。
+4. 違和感・問題: (a) カタログと送信経路が食い違い、カタログが送らないメールを約束していた。(b) Issue の提案どおり全 FT 呼び出しを
+   dispatch に移すと、`ft_defect_reported` は宛先（`targetRole`）が無いため dispatch でもメールの宛先がゼロになる。
+   (c) 契約同意（`agreements/[id]`）は同意した施工店自身への控えを `ft_job_assigned` で出しており、dispatch に載せると
+   「自分の操作」が管理者宛メールで届く。(d) メーカー宛（`manufacturer_notifications`）は dispatch が扱えない。
+   本番の FT データは 0 件（`ft_projects`/`ft_jobs`/`ft_defects`/`ft_agreements`・FT 通知すべて 0、2026-10-03 実測）で実害はまだ無い。
+5. 決めたこと: `ft_job_assigned` / `ft_defect_reported` のチャネルはカタログ（in_app + email）を正式仕様とし、宛先は施工店の管理者
+   （owner/admin/super_admin）。メーカー起点の2経路（`/api/manufacturer/field-test/jobs` と `/defects`）を `dispatchNotification` に
+   切り替え、`ft_defect_reported` に `targetRole: "admin"` を足す。契約同意の控えは in_app のみの `notifyFtTenant` に残す。
+6. 捨てた選択肢:
+   - 全 FT 呼び出しを dispatch に移す（Issue の提案）: (b)(c)(d) の理由で、メールが届かない／自分の操作がメールで届く／メーカー宛が壊れる。
+   - カタログから email を外して当面 in_app のみ: 代表が「送る」を選んだため不採用。
+7. 判断理由: メールが要るのは「メーカーが施工店に何かを求めた」2イベントだけで、そこだけ dispatch に載せれば宛先解決・チャネル解決は
+   既存の中央 dispatch（IMP-029）に一本化でき、他の FT 通知の挙動は変えずに済む。
+8. まだ答えが出ていないこと: 契約同意の控えが `ft_job_assigned` を流用している（種類の誤用。OPEN_QUESTIONS 2026-10-03）。
+   in_app の宛先が「テナント全員1行（user_id=NULL）」から「管理者ごとの行」に変わるので、FT を使う施工店で一般スタッフにも
+   アプリ内通知が要るかは運用開始後に確認。
+9. 公開区分: 要確認（社内の通知設計判断）
+
 ## 2026-10-03 C2PA の検証に公式 Trust List を同梱して使う（CA と TSA を連結）
 
 1. 日付: 2026-10-03（`date -u` で確認）
