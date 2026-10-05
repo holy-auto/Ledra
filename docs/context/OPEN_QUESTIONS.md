@@ -10,9 +10,11 @@
 - 汎用の `timestamp.digicert.com` は、推定: TSA Trust List にチェーンしない — 根拠は、リストにある DigiCert の TSA 中間 CA が
   「DigiCert … TSA ICA for C2PA G1」だけであること。未検証。
 - SSL.com は C2PA 用 TSA として `http://ts-c2pa.ssl.com/ecc` と `/rsa` を案内している（2026-10-05 の Web 検索結果の要約。
-  公式ページは環境から開けず未確認）。**https・TLS 1.3 で受けるかは未確認**。代表の PC で
-  `curl.exe --tlsv1.3 -sI https://ts-c2pa.ssl.com/ecc` を打てば分かる。https で受けない場合、TSA だけ http を許すかは代表判断
-  （トークンは TSA の署名付きなので改ざんは検知できる。送るのは画像のハッシュだけ）。
+  公式ページは環境から開けず未確認）。
+  **2026-10-05 確認: `https://ts-c2pa.ssl.com/ecc` は https・TLS 1.3 で受ける**（代表の PC で
+  `curl.exe --tlsv1.3 -sI` が exit=0。応答は SignServer の `400`・`Request must contain data` で、空の問い合わせを断っただけ）。
+  残るのは、この TSA の証明書が TSA Trust List にチェーンするか。推定: チェーンする — 根拠は同梱リストに
+  「SSL.com C2PA ECC Root CA 2025」があること。未検証（実際のタイムスタンプを1つ取って検証すれば決まる）。
 - DigiCert の C2PA 用 TSA の URL は【要確認】（DigiCert の資料はこの環境から開けない）。
 - 本番の証明書と同じ CA の TSA にするかも未決。
 - タイムスタンプなしに落ちた写真の件数は、今はログ（`[c2pa] time-stamped signing failed`）でしか分からない。
