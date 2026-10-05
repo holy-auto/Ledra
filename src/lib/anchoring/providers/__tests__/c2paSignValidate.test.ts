@@ -17,6 +17,31 @@ import { collectFailureCodes } from "./c2paFailureCodes";
  */
 describe("C2PA sign → validate (manifest content conformance)", () => {
   const signedByType: Record<string, Buffer> = {};
+  const failureByType: Record<string, string | null> = {};
+
+  /**
+   * 署名させる入力を作る。`rebrand` があるときは ISO BMFF の `ftyp` メジャーブランドを
+   * 差し替える（sharp が書けない形式を、同じコンテナ族の出力から用意するため）。
+   * 差し替え前に `ftyp` box があることを確かめる —— sharp の出力形式が変わったら、
+   * 黙って別のバイト列に 4 文字を書き込むのではなく、ここで落ちてほしい。
+   */
+  type Sharp = Awaited<typeof import("sharp")>["default"];
+  async function makeFixture(
+    sharp: Sharp,
+    { fmt, rebrand }: { fmt: "jpeg" | "png" | "webp" | "avif"; rebrand?: string },
+  ): Promise<Buffer> {
+    const buf = await sharp({
+      create: { width: 240, height: 160, channels: 3, background: { r: 20, g: 90, b: 160 } },
+    })
+      [fmt]()
+      .toBuffer();
+    if (!rebrand) return buf;
+    if (buf.subarray(4, 8).toString("ascii") !== "ftyp") {
+      throw new Error(`${fmt} の先頭に ftyp box が無い（sharp の出力形式が変わった）`);
+    }
+    buf.write(rebrand, 8, 4, "ascii");
+    return buf;
+  }
   // Structural type for the bits we use. The package's own `Reader` type is not
   // reachable via `typeof import(...).Reader` under bundler resolution (its .d.ts
   // re-exports use .js/.d.ts specifiers), so we describe the surface we call.
@@ -32,14 +57,17 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
     { fmt: "webp", mime: "image/webp" },
     // **iPhone 既定の HEIC**。ここが抜けていたため、「c2pa-node が HEIC を署名できるか」は
     // 長く【要確認】のままだった（本番で署名必須にした今は、署名できなければ HEIC が全部
-    // 断られる）。2026-10-05 に実測して通ることを確認し、この行で恒久的に見張る。
+    // 断られる）。この行が見るのは **`image/heic` という形式名の資産に署名して読み戻せるか**
+    // だけで、**実機 HEIC が通る経路の manifest の形は見ていない**（下の fallback ループが見る）。
     //
     // ponytail: sharp のプリビルドは HEVC を書けないので、同じ ISO BMFF（HEIF）族の AVIF を
-    // 作り、`ftyp` のメジャーブランドだけ `heic` に差し替えて署名させる。manifest の埋め込みは
-    // コンテナの box 構造しか触らず画素をデコードしないので、この経路で「image/heic の資産に
-    // 署名して読み戻せるか」は見られる。**天井**: 実機 HEVC 写真の多 item な box 構成
-    // （iinf/iloc のオフセット書き換え）は見ていない。実機で撮った HEIC が手に入ったら、
-    // そのバイト列を fixture にしてこの行を差し替えるのが本筋。
+    // 作り、`ftyp` のメジャーブランドだけ `heic` に差し替える。manifest の埋め込みはコンテナの
+    // box 構造しか触らず画素をデコードしないので、形式対応はこの経路で見られる。**天井は2つ**:
+    // (1) 実機 HEVC 写真の多 item な box 構成（iinf/iloc のオフセット書き換え）を踏んでいない。
+    // (2) **この fixture は sharp が読めてしまう**（実体は AVIF なので `metadata()` も `rotate()`
+    //     も通る）。実機 HEIC は sharp が読めず `stripGpsAndReadExif` が fallback に落ちるので、
+    //     「sharp がデコードできない」という実機 HEIC の肝心な性質は再現していない。
+    // どちらも、実機で撮った HEIC のバイト列を fixture にすれば一度に埋まる。それが本筋。
     { fmt: "avif", mime: "image/heic", rebrand: "heic" },
   ];
 
@@ -63,25 +91,14 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
     if (!Reader) throw new Error("c2pa-node の Reader export が見つかりません（API 形状の退行）");
 
     const { signC2pa } = await import("../c2pa");
-    for (const { fmt, mime, rebrand } of TYPES) {
-      const buf = await sharp({
-        create: { width: 240, height: 160, channels: 3, background: { r: 20, g: 90, b: 160 } },
-      })
-        [fmt]()
-        .toBuffer();
-      if (rebrand) {
-        // 差し替えたブランドが本当に入ったことを確かめてから署名する。黙って avif のまま
-        // 署名すると「HEIC を見ている」と誤解したまま緑になる。
-        if (buf.subarray(4, 8).toString("ascii") !== "ftyp") {
-          throw new Error(`${fmt} の先頭に ftyp box が無い（sharp の出力形式が変わった）`);
-        }
-        buf.write(rebrand, 8, 4, "ascii");
-        if (buf.subarray(8, 12).toString("ascii") !== rebrand) {
-          throw new Error(`ftyp のメジャーブランドを ${rebrand} に差し替えられなかった`);
-        }
-      }
-      const res = await signC2pa(buf, mime);
-      if (res.signedBuffer) signedByType[mime] = res.signedBuffer;
+    for (const type of TYPES) {
+      const buf = await makeFixture(sharp, type);
+      const res = await signC2pa(buf, type.mime);
+      // **失敗理由を捨てない。** バッファの有無だけを見ていると、赤になったとき
+      // 「c2pa-node が BMFF を署名できない」のか「dev 署名器が読み込めていない」のか
+      // 区別できず、そこが診断の全部である（C2paResult.failure を参照）。
+      failureByType[type.mime] = res.failure;
+      if (res.signedBuffer) signedByType[type.mime] = res.signedBuffer;
     }
   }, 30_000);
 
@@ -93,7 +110,17 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
   for (const { mime } of TYPES) {
     it(`${mime}: manifest has only dev-signing validation codes (no content errors)`, async () => {
       const signed = signedByType[mime];
-      expect(signed, `signing produced a buffer for ${mime}`).toBeTruthy();
+      expect(signed, `signing produced a buffer for ${mime} (failure=${failureByType[mime] ?? "null"})`).toBeTruthy();
+
+      // 署名で `ftyp` のブランドが書き換わると、保存したファイルが
+      // `detectMagicByteMime` にとって HEIC でなくなる（受け口は全部この関数を通る）。
+      // 差し替えが署名時まで効いていたことも、ここで同時に見ている。
+      const expectedBrand = TYPES.find((x) => x.mime === mime)?.rebrand;
+      if (expectedBrand) {
+        expect(signed.subarray(4, 12).toString("ascii"), `signed output keeps the ftyp brand for ${mime}`).toBe(
+          `ftyp${expectedBrand}`,
+        );
+      }
 
       const reader = await Reader.fromAsset({ buffer: signed, mimeType: mime });
       const raw = reader?.json();
@@ -151,33 +178,41 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
   // Fallback path: when the upload pipeline could NOT re-encode/strip (sharp
   // failed) and signs the original as-is, the manifest must not certify
   // transforms that never happened — only c2pa.created, allActionsIncluded=false.
-  it("fallback (transform not applied) asserts only c2pa.opened, with allActionsIncluded=true", async () => {
-    const { signC2pa } = await import("../c2pa");
-    const sharp = (await requireNative(() => import("sharp"), "sharp")).default;
-    const buf = await sharp({
-      create: { width: 200, height: 120, channels: 3, background: { r: 30, g: 30, b: 30 } },
-    })
-      .jpeg()
-      .toBuffer();
-    const res = await signC2pa(buf, "image/jpeg", undefined, {
-      reencoded: false,
-      orientationApplied: false,
-      metadataRemoved: false,
-    });
-    expect(res.signedBuffer, "fallback signing produced a buffer").toBeTruthy();
+  // **実機 HEIC が通るのはこの経路である。** sharp のプリビルドは HEVC を読めないので
+  // `stripGpsAndReadExif` は例外で catch に落ち、原本をそのまま返す（reencoded:false）。
+  // 上の全形式ループは FULL_TRANSFORM の形を見ているので、実機 HEIC が作る manifest の形
+  // （c2pa.opened だけ）は、ここで形式ごとに見る必要がある。
+  for (const type of TYPES) {
+    it(`fallback (transform not applied) asserts only c2pa.opened, with allActionsIncluded=true [${type.mime}]`, async () => {
+      const { mime } = type;
+      const { signC2pa } = await import("../c2pa");
+      const sharp = (await requireNative(() => import("sharp"), "sharp")).default;
+      const buf = await makeFixture(sharp, type);
+      const res = await signC2pa(buf, mime, undefined, {
+        reencoded: false,
+        orientationApplied: false,
+        metadataRemoved: false,
+      });
+      expect(
+        res.signedBuffer,
+        `fallback signing produced a buffer for ${mime} (failure=${res.failure ?? "null"})`,
+      ).toBeTruthy();
 
-    const reader = await Reader.fromAsset({ buffer: res.signedBuffer!, mimeType: "image/jpeg" });
-    const raw = reader?.json();
-    const json = typeof raw === "string" ? JSON.parse(raw) : raw;
-    const m = json?.manifests?.[json.active_manifest] ?? {};
-    const actions = (m.assertions ?? []).find((a: { label?: string }) => a.label?.startsWith("c2pa.actions"));
-    // 原本をそのまま署名しただけ＝opened 以外に何もしていないので、台帳は完全（true）。
-    expect(actions?.data?.allActionsIncluded, "allActionsIncluded=true on fallback").toBe(true);
-    const actionNames = ((actions?.data?.actions ?? []) as Array<{ action?: string }>).map((a) => a.action);
-    expect(actionNames, "only c2pa.opened on fallback").toEqual(["c2pa.opened"]);
-    // Summary must mirror the embedded manifest (drift guard for the fallback too).
-    expect(res.manifestSummary?.allActionsIncluded, "summary allActionsIncluded mirrors fallback").toBe(true);
-  });
+      const reader = await Reader.fromAsset({ buffer: res.signedBuffer!, mimeType: mime });
+      const raw = reader?.json();
+      const json = typeof raw === "string" ? JSON.parse(raw) : raw;
+      const m = json?.manifests?.[json.active_manifest] ?? {};
+      const actions = (m.assertions ?? []).find((a: { label?: string }) => a.label?.startsWith("c2pa.actions"));
+      // 原本をそのまま署名しただけ＝opened 以外に何もしていないので、台帳は完全（true）。
+      expect(actions?.data?.allActionsIncluded, `allActionsIncluded=true on fallback for ${mime}`).toBe(true);
+      const actionNames = ((actions?.data?.actions ?? []) as Array<{ action?: string }>).map((a) => a.action);
+      expect(actionNames, `only c2pa.opened on fallback for ${mime}`).toEqual(["c2pa.opened"]);
+      // Summary must mirror the embedded manifest (drift guard for the fallback too).
+      expect(res.manifestSummary?.allActionsIncluded, `summary allActionsIncluded mirrors fallback for ${mime}`).toBe(
+        true,
+      );
+    });
+  }
 
   // The uploaded original (with GPS) becomes the parentOf ingredient. It must not carry
   // the location into the signed output: c2pa-rs keeps only a hash, the format and a

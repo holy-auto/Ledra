@@ -15,7 +15,7 @@
 4. 違和感・問題: 「HEIC を作れない」と「HEIC の署名可否を確かめられない」は別の主張である。
    **manifest の埋め込みは ISO BMFF の box 構造しか触らず、画素をデコードしない。** 署名に必要なのは
    読める HEIC ではなく、HEIF コンテナと `image/heic` という形式名だけだった。
-   さらに `OPEN_QUESTIONS` には 2026-09-08 に「HEIC も署名可能・準拠」と**根拠なしで**「全て解決」に
+   さらに `OPEN_QUESTIONS` には 2026-09-05 に「HEIC も署名可能・準拠」（`09888187`・PR #914。`git log -S` は 2026-09-08 の復元コミット `98b3aaae` も返すが、そちらは 1760 行挿入 0 行削除の復元で、書かれた日ではない）と**根拠なしで**「全て解決」に
    入れた一文があり、同じ 2026-09-03 の DECISION_LOG は「残」と書いていて、同じファイル内で矛盾していた。
 5. 決めたこと: sharp が作れる **AVIF（同じ HEIF 族）の `ftyp` メジャーブランドを `heic` に差し替えて**
    署名させ、読み戻しまで見る恒久ケースを `c2paSignValidate.test.ts` に入れる（3形式→4形式）。
@@ -28,7 +28,9 @@
    実測の結果、failure コードは jpeg/png/webp と同一（`signingCredential.untrusted` と
    `claimSignature.mismatch` の2つ＝dev 証明書の癖だけ、内容・構造のエラーはゼロ）で、
    入口の `detectMagicByteMime` もブランド `heic`/`mif1` を `image/heic` と判定する。
-   **「本番オン後に HEIC が全部 503」という見立ては、これで生きていない。**
+   ただし**消えたのは「c2pa-node が HEIC という形式を扱えない」という原因だけ**である（確度: 推定）。
+   実機 HEVC 写真そのものでは署名しておらず、fixture は sharp が読めてしまうので、実機 HEIC の肝心な
+   性質（sharp がデコードできず fallback に落ちる）を再現していない。**「全部 503」の懸念は残る。**
 8. まだ答えが出ていないこと: **実機 HEVC 写真の多 item な box 構成（`iinf`/`iloc` のオフセット書き換え）は
    見ていない**【要確認】。残リスクはここだけに絞られた。実機 HEIC が手に入ったらバイト列を fixture にして
    差し替えるのが本筋。もう1件の【要確認】（本番 Vercel で `@contentauth/c2pa-node` が読み込めるか）は
