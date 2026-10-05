@@ -17,6 +17,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
 import { issueCaptureNonce } from "@/lib/certificates/captureNonce";
 import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
+import { resolveCustomerIdByName } from "@/lib/certificates/create";
 
 import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
@@ -106,16 +107,16 @@ export const POST = withCaller(
       // 写真添付必須ルール: 新規作成時点では写真が 0 枚のため active で作れない。
       // active を要求されても draft で作成し、写真アップロード後に
       // PUT /api/admin/certificates/status で発行 (active 化) させる。
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
       const insertRow = {
         tenant_id: caller.tenantId,
         // この経路は createCertificate を通らないので、店舗もここで決める
-        store_id: await storeIdOrNull(
-          createTenantScopedAdmin(caller.tenantId).admin,
-          caller.tenantId,
-          "certificates/create",
-        ),
+        store_id: await storeIdOrNull(admin, caller.tenantId, "certificates/create"),
         status: "draft" as const,
         customer_name: b.customer_name,
+        // 顧客マスタへ紐付ける（createCertificate と同じ名寄せ/自動作成）。未紐付けだと電子交付の
+        // 承諾（G3/G4）を顧客単位で判定できないため。
+        customer_id: await resolveCustomerIdByName(admin, caller.tenantId, b.customer_name),
 
         // 平文 (customer_phone_last4) は保存しない。検索・紐付けはハッシュ一本化。
         customer_phone_last4_hash,
