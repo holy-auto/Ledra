@@ -181,11 +181,13 @@ export async function signWithTimeStamp(
               signal: AbortSignal.timeout(C2PA_TSA_TIMEOUT_MS),
             });
             if (!r.ok) throw Object.assign(new Error(`TSA responded ${r.status}`), { status: r.status });
-            return { type: r.headers.get("content-type") ?? "", body: Buffer.from(await r.arrayBuffer()) };
+            return Buffer.from(await r.arrayBuffer());
           },
           { maxAttempts: 1 },
         );
-        res.writeHead(200, { "content-type": r.type }).end(r.body);
+        // c2pa-rs refuses any other content type, whatever the TSA labelled its reply with; a body that
+        // is not a time-stamp reply still fails c2pa-rs's parsing and falls back to an unstamped signing.
+        res.writeHead(200, { "content-type": "application/timestamp-reply" }).end(r);
       } catch (err) {
         console.warn("[c2pa] TSA request failed", err instanceof Error ? err.message : err);
         res.writeHead(504).end();

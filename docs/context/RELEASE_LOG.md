@@ -18,6 +18,9 @@
   予算内でタイムスタンプなしの署名になる・同時の初回署名で dev 証明書が1枚）。配線を外すと付与テストが、中継を外すと
   無応答テストが、資格情報の共有を外すと同時署名テストが落ちることを確認。12MP・8.3MB の JPEG で、TSA 無応答時の
   署名は 2.7 秒（未設定時 0.65 秒）。
+- 中継は TSA の返答に常に `application/timestamp-reply` を付けて c2pa-rs に渡す（c2pa-rs はそれ以外の Content-Type を
+  返答ごと拒否するため。テストの TSA は `application/octet-stream` で返し、素通しに戻すと付与テストが落ちることを確認）。
+- 候補の TSA `https://ts-c2pa.ssl.com/ecc` は、TLS 1.3 で受けること、トークンが TSA Trust List にチェーンすることを確認済み。
 - 本番ではまだ効かない（`C2PA_MODE` が disabled、`C2PA_TSA_URL` も未設定）。
 
 ## 2026-10-03 documents / body_repair_jobs の作成・更新・削除を監査ログ化（G2）

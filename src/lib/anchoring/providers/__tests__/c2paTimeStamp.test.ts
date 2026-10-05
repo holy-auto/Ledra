@@ -97,7 +97,8 @@ ess_cert_id_alg=sha256
       try {
         writeFileSync(f("q.tsq"), Buffer.concat(chunks));
         ossl("ts", "-reply", "-config", f("tsa.cnf"), "-queryfile", f("q.tsq"), "-out", f("r.tsr"));
-        res.writeHead(200, { "content-type": "application/timestamp-reply" }).end(readFileSync(f("r.tsr")));
+        // Not `application/timestamp-reply`: the relay must not pass the TSA's label through to c2pa-rs.
+        res.writeHead(200, { "content-type": "application/octet-stream" }).end(readFileSync(f("r.tsr")));
       } catch (err) {
         // Surfaces as "no time-stamp" in the stamping test, with the openssl error in the log.
         console.error("[test TSA]", err);

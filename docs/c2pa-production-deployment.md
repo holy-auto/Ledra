@@ -63,7 +63,10 @@ end-entity 証明書は c2pa-rs の profile を満たすこと（通常 CA 発�
 
 - C2PA の **TSA Trust List** にチェーンする TSA を使う。チェーンしないと `timeStamp.untrusted` になり、期限切れの救済にならない。
   汎用の `timestamp.digicert.com` は、推定: チェーンしない（リストにある DigiCert の TSA 中間 CA は C2PA 専用のものだけ）。未検証。
-- https のみ（中継が TLS 1.3 で送る）。候補の URL と https 対応の確認は OPEN_QUESTIONS（2026-10-05）。
+- https のみ（中継が TLS 1.3 で送る）。
+- 候補: `https://ts-c2pa.ssl.com/ecc`。2026-10-05 に、https・TLS 1.3 で受けること、発行されたタイムスタンプが
+  TSA Trust List のルート（SSL.com C2PA ECC Root CA 2025）にチェーンすることを確認済み（OPEN_QUESTIONS 2026-10-05）。
+  利用条件・料金は【要確認】。
 - TSA が失敗・2秒で返らないときは、写真を止めずにタイムスタンプなしで署名し、ログに
   `[c2pa] time-stamped signing failed` が出る。
 - 実装: `signWithTimeStamp`（`c2paSigner.ts`）。c2pa-rs の TSA 通信にはタイムアウトが無いので、127.0.0.1 の中継を挟んでいる。

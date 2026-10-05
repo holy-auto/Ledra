@@ -13,8 +13,14 @@
   公式ページは環境から開けず未確認）。
   **2026-10-05 確認: `https://ts-c2pa.ssl.com/ecc` は https・TLS 1.3 で受ける**（代表の PC で
   `curl.exe --tlsv1.3 -sI` が exit=0。応答は SignServer の `400`・`Request must contain data` で、空の問い合わせを断っただけ）。
-  残るのは、この TSA の証明書が TSA Trust List にチェーンするか。推定: チェーンする — 根拠は同梱リストに
-  「SSL.com C2PA ECC Root CA 2025」があること。未検証（実際のタイムスタンプを1つ取って検証すれば決まる）。
+  **2026-10-05 確認: TSA Trust List にチェーンする。** 代表の PC から実際にタイムスタンプを1つ取得し（Status: Granted、
+  2026-10-05 11:29:12 UTC）、`openssl ts -verify` で問い合わせと照合して、同梱の TSA リストを信頼点に Verification: OK。
+  連鎖は「SSLcom C2PA Timestamping Unit 2026 E1」（2037-04-28 まで）→「SSL.com C2PA Time-Stamping ICA E1」→
+  「SSL.com C2PA ECC Root CA 2025」で、ルートの SHA-256 指紋が同梱リストのものと一致（8A:8B:…:B0:50）。
+  無関係な信頼点では FAILED、別データでは imprint mismatch になることも確認。中間 CA はリストに無くトークンに同梱される形で、
+  この形を手元で再現すると c2pa-rs もルートだけの信頼点で `timeStamp.trusted` を出す。
+  **残る判断（代表）**: `C2PA_TSA_URL=https://ts-c2pa.ssl.com/ecc` で決めてよいか。利用条件・料金・回数制限は【要確認】
+  （契約なしで1件応答したことは確認。本番の量で使ってよいかは ssl.com の規約次第）。
 - DigiCert の C2PA 用 TSA の URL は【要確認】（DigiCert の資料はこの環境から開けない）。
 - 本番の証明書と同じ CA の TSA にするかも未決。
 - タイムスタンプなしに落ちた写真の件数は、今はログ（`[c2pa] time-stamped signing failed`）でしか分からない。
