@@ -12,8 +12,13 @@
 > TSA が落ちている・2秒で返らないときは、写真を止めずにタイムスタンプなしで署名する。TSA への通信は TLS 1.3・https のみ。
 > #1231 で main にマージ済み（26959d80）。**TSA は `https://ts-c2pa.ssl.com/ecc` に決定**（TLS 1.3 で受けること、トークンが
 > TSA Trust List にチェーンすることを実測）。**本番証明書と TSA は ssl.com の C2PA 無料枠で取る**と代表が決定
-> （DECISION_LOG 2026-10-05）。次は代表が ssl.com のポータルで申込画面を開き、鍵の作り方（CSR か否か）を決める。
-> Notice of Conformance は 2026-10-05 時点で未着。
+> （DECISION_LOG 2026-10-05）。ssl.com は問い合わせに、CSR 方式で可・subject `CN=Ledra, O=HOLY Inc., C=JP` で可・
+> **発行は Notice of Conformance の受領後**・**無料は1年のみ（無料更新なし）**と返答した。鍵と CSR の作り方は
+> `docs/c2pa-production-deployment.md` §2。Notice of Conformance は 2026-10-05 時点で未着。
+> **2026-10-05 鍵と CSR を代表の PC で作成済み**（`Documents\c2pa`、Git 同梱の OpenSSL 3.5.5。CSR の自己署名 verify OK・
+> subject `C=JP, O=HOLY Inc., CN=Ledra` を代表の画面出力で確認、鍵は PKCS#8）。秘密鍵は PC から出していない。**代表がバックアップ済み**。
+> 通知が届いたら CSR と一緒に ssl.com へ送る。**Notice of Conformance の着信は Routine「Watch C2PA Notice」が毎日 8:45 / 17:45（JST）に
+> Gmail を確認し、届いたら代表に通知する**（2026-10-05 設定、届いたら自動で止める）。
 
 > 2026-10-05 追記（**モバイル一覧カードの右端は `>` の帯のために空けてある**）: 一覧カードの `>`
 > （`chevron`）は `position: "absolute"` ＋ `top: "50%"` で、**カードの縦中央に置かれた高さ20pxの帯**。

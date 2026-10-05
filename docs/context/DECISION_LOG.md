@@ -100,6 +100,8 @@
    入れても `timeStamp.untrusted` で期限切れの救済にならない。費用の見積りも無いまま CA を選ぶところだった。
 5. 決めたこと: 本番の claim 署名証明書と TSA を ssl.com の C2PA 無料枠で取る。`C2PA_TSA_URL=https://ts-c2pa.ssl.com/ecc`。
    申込は代表が ssl.com のポータルで行い、画面の形（CSR 提出か否か）を見てから鍵の作り方を決める。
+   **同日追記**: ssl.com の窓口は問い合わせフォームで、返答で CSR 方式（鍵は自社保持）・subject・通知後の発行・無料は1年のみが
+   確定。鍵（P-256・PKCS#8）と CSR は代表の PC で作成し、代表がバックアップした。2年目以降の扱いは未決（OPEN_QUESTIONS）。
 6. 捨てた選択肢: (a) DigiCert — C2PA 用 TSA の URL も費用も確認できていない。(b) 汎用 TSA（`timestamp.digicert.com`）— Trust List に
    チェーンしない見込み。(c) 証明書は ssl.com・TSA は別社 — 実測でチェーンを確かめた TSA が ssl.com のものだけで、分ける理由が無い。
 7. 判断理由: TSA は実測で条件を満たし、費用は今の量なら無料枠に収まる見込み（少ない方の 2,500 件でも約 3.5%）。
