@@ -32,6 +32,9 @@ C2PA Trust List の CA から署名証明書を得るには、Ledra を「Confor
      証明書発行時に求められることがある。【要確認: Ledra が狙う Assurance Level】
 3. Trust List CA（DigiCert または SSL.com 等）から end-entity 署名証明書を発行。
    - 費用は CA の商用条件次第。【要確認: 発行費用・更新頻度・年額】
+   - 2026-10-05 追記: ssl.com は適合済み Generator 製品向けに AL1 証明書（1年）を無料で発行し、タイムスタンプ枠
+     （年 2,500 件または 10,000 件。情報源で食い違う）が付く、と Web 検索結果の要約にある。公式ページ未確認。
+     詳細は OPEN_QUESTIONS 2026-10-05。
    - 【要確認: 日本からの契約可否・請求通貨・審査期間】
 
 > メモ: 一次情報は `c2pa-org/conformance-public` の `docs/current/`（Program 規程）と
