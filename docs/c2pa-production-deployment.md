@@ -50,6 +50,10 @@ C2PA Trust List の CA から署名証明書を得るには、Ledra を「Confor
    1行目は最初から PKCS#8（`-----BEGIN PRIVATE KEY-----`）で出るので、変換は要らない。
    このコマンドで作った鍵と CSR から、手元のテスト CA で同じ形の証明書を作り、§4 のプリフライトで `Trusted`・GO に
    なることを 2026-10-05 に確認した（無関係な信頼点では NO-GO）。
+   Windows で `openssl` が見つからない場合は Git for Windows 同梱の `<Git>\mingw64\bin\openssl.exe` を使う
+   （2026-10-05 に代表の PC で OpenSSL 3.5.5 により作成済み）。
+   **鍵ファイルは安全な場所に複製して保管する**: 無料枠は無料の再発行が無い（ssl.com の返答）ので、鍵を失うと
+   証明書を取り直すことになる。
 2. **Notice of Conformance が届いたら**、通知と `c2pa-signer.csr.pem`（CSR だけ）を ssl.com の担当者へ送る。
 3. 証明書が届いたら §3〜§4。
 

@@ -15,6 +15,8 @@
 > （DECISION_LOG 2026-10-05）。ssl.com は問い合わせに、CSR 方式で可・subject `CN=Ledra, O=HOLY Inc., C=JP` で可・
 > **発行は Notice of Conformance の受領後**・**無料は1年のみ（無料更新なし）**と返答した。鍵と CSR の作り方は
 > `docs/c2pa-production-deployment.md` §2。Notice of Conformance は 2026-10-05 時点で未着。
+> **2026-10-05 鍵と CSR を代表の PC で作成済み**（`Documents\c2pa`、Git 同梱の OpenSSL 3.5.5。CSR の自己署名 verify OK・
+> subject `C=JP, O=HOLY Inc., CN=Ledra` を代表の画面出力で確認）。秘密鍵は PC から出していない。通知が届いたら CSR と一緒に ssl.com へ送る。
 
 > 2026-10-05 追記（**モバイル一覧カードの右端は `>` の帯のために空けてある**）: 一覧カードの `>`
 > （`chevron`）は `position: "absolute"` ＋ `top: "50%"` で、**カードの縦中央に置かれた高さ20pxの帯**。
