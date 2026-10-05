@@ -30,6 +30,7 @@ export default function JobsTab({ projectId, isAdmin }: { projectId: string; isA
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -44,8 +45,9 @@ export default function JobsTab({ projectId, isAdmin }: { projectId: string; isA
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSaving(true);
+    setFormError(null);
     const fd = new FormData(e.currentTarget);
-    await fetch("/api/manufacturer/field-test/jobs", {
+    const res = await fetch("/api/manufacturer/field-test/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -56,8 +58,14 @@ export default function JobsTab({ projectId, isAdmin }: { projectId: string; isA
         job_code: fd.get("job_code") || undefined,
       }),
     });
-    setShowForm(false);
     setSaving(false);
+    if (!res.ok) {
+      // 応募が承認されていない施工店への割当などは 403 で断られる。フォームは閉じずに理由を出す。
+      const json = await res.json().catch(() => null);
+      setFormError(json?.message ?? "割当に失敗しました。");
+      return;
+    }
+    setShowForm(false);
     load();
   };
 
@@ -101,6 +109,9 @@ export default function JobsTab({ projectId, isAdmin }: { projectId: string; isA
             rows={2}
             className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
           />
+          {formError && (
+            <div className="rounded-md border border-danger-border bg-danger-dim p-3 text-sm text-danger-text">{formError}</div>
+          )}
           <button
             type="submit"
             disabled={saving}

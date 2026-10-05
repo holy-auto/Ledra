@@ -12,6 +12,7 @@ import {
   apiInternalError,
 } from "@/lib/api/response";
 import { dispatchNotification } from "@/lib/notifications/dispatch";
+import { APPLICATION_REQUIRED_MESSAGE, hasApprovedApplication } from "@/lib/fieldTest/applicationGate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -99,6 +100,14 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
     if (projErr) return apiInternalError(projErr, "ft jobs POST project lookup");
     if (!project) return apiNotFound("指定されたプロジェクトが見つかりません。");
+
+    // 応募が承認された施工店にだけ割り当てる（割当は施工店管理者へのメールを伴う）。
+    const approved = await hasApprovedApplication(admin, {
+      manufacturerId,
+      projectId: parsed.data.project_id,
+      tenantId: parsed.data.tenant_id,
+    });
+    if (!approved) return apiForbidden(APPLICATION_REQUIRED_MESSAGE);
 
     // Snapshot current conditions for the project
     const { data: conditions, error: condErr } = await admin
