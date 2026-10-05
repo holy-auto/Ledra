@@ -15,6 +15,14 @@
 > （DECISION_LOG 2026-10-05）。次は代表が ssl.com のポータルで申込画面を開き、鍵の作り方（CSR か否か）を決める。
 > Notice of Conformance は 2026-10-05 時点で未着。
 
+> 2026-10-05 追記（**モバイル一覧カードの右端は `>` の帯のために空けてある**）: 一覧カードの `>`
+> （`chevron`）は `position: "absolute"` ＋ `top: "50%"` で、**カードの縦中央に置かれた高さ20pxの帯**。
+> 水平方向はカードの右端から16〜36px（dense は8〜28px）を占める。6画面すべてで、この帯は
+> カードの `paddingRight`（既定 `spacing["4xl"]`=40、`work/cardDense` は `spacing["3xl"]`=32）で確保してある。
+> **カード内の行に `paddingRight` を足して逃がす形にしないこと**——どの行が帯に潜るかはカードの高さで
+> 決まるので必ず取りこぼす（#1232・DECISION_LOG 2026-10-05）。`>` を出さない `work/cardSimple` だけは
+> 左右対称（20）。実機での見た目確認は未了（OPEN_QUESTIONS 2026-10-05）。
+
 > 2026-10-02 追記（**Japan Mobility Show Bizweek 2026 に Ledra を出展**）: 会期 2026-10-13〜16・幕張メッセ
 > 展示ホール2・3、小間位置 ZONE1「滞らないシステムで、広がる安心。」S-06。出展内容は Ledra（代表回答）。
 > holy-inc.jp のお知らせで告知済み（holy-auto/holy-inc#14 マージ）。Ledra サイトの `/news` にも同じ告知を MDX で追加

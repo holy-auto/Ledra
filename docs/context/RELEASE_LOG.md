@@ -38,6 +38,32 @@
 - 候補の TSA `https://ts-c2pa.ssl.com/ecc` は、TLS 1.3 で受けること、トークンが TSA Trust List にチェーンすることを確認済み。
 - 本番ではまだ効かない（`C2PA_MODE` が disabled、`C2PA_TSA_URL` も未設定）。
 
+## 2026-10-05 一覧カードの「>」がバッジや本文に重なるのを6画面すべてで直す（#1232）
+
+- 症状: 代表のスクリーンショットで、作業一覧の行末の `>` が「来店」ステータスバッジに重なっていた。
+  その後「他の項目でも `>` がおかしくなってる」との指摘。
+- 原因: `chevron` は `position: "absolute"` ＋ `top: "50%"` ＋ `marginTop: -10` で、**カードの縦中央に置かれた
+  高さ20pxの帯**。水平方向はカードの右端から `right: spacing.lg(16)` 〜 `+20` ＝ **16〜36px** を占める
+  （dense は `right: spacing.sm(8)` なので 8〜28px）。カードは `paddingRight` を取っていなかったので、
+  **カードの高さ次第でどの行でもこの帯に潜る**。
+- 直し方: 逃げ幅を行ではなく**カード側**に置いた。`card` に `paddingRight: spacing["4xl"](40)`、
+  `work/cardDense` に `spacing["3xl"](32)`。`work/cardSimple` は `>` を出さず CTA ボタンになるので
+  `paddingRight: spacing.xl(20)` で左右対称に戻す。行ごとの逃げ幅（`cardHeaderChevron`・`metaRowDense`・
+  `field-test/[projectId]` の `meta`）は削除。
+- 対象6画面: `(tabs)/work`・`(tabs)/vehicles`・`(tabs)/certificates`・`customers`・`field-test`・`field-test/[projectId]`。
+  変更は7ファイル（6画面＋ MISTAKE_LEDGER）。
+- 検証: 絶対配置 chevron を持つ `.tsx` を列挙し、カードの各バリアントの実効 `paddingRight` が帯の右端以上かを
+  座標で突き合わせるスクリプト（8バリアント / NG 0）。**見た目の最終確認は実機で未了**（OPEN_QUESTIONS 2026-10-05）。
+- 経緯: 最初の修正は「重なって見えた1行（ヘッダー行）にだけ逃げ幅を入れる」もので、**誤りだった**。
+  `/code-review` が「帯はカードの縦中央なので `serviceText` / `desc` / 折り返した `metaRow` も潜る」と指摘し、
+  カード側に移した。MISTAKE_LEDGER `M-20261005-abs-chevron-reserved-space-in-one-row-only`（型 J）。
+- **追加検証（この修正の前提そのもの）**: 「カードに `paddingRight` を足しても `>` は動かない」は前提であって自明ではない。
+  Yoga には絶対配置の子にインセットが指定されていないとき親の padding を無視する旧挙動があり
+  （erratum `AbsolutePositionWithoutInsetsExcludesPadding`、Yoga 3.2 で旧 `AbsolutePositioningIncorrect` から改名）、
+  もしそれが効くなら `paddingRight` の分だけ `>` が内側へ寄り、**本文の上に乗って悪化する**。
+  適用条件は「インセットが指定されていない」場合で、`chevron` は `right` と `top` を指定しているため該当しない
+  ＝インセットは padding box（枠の内側）起点で測られ、親の `paddingRight` では動かない。RN は 0.83.10（Yoga 3 系）。
+
 ## 2026-10-03 documents / body_repair_jobs の作成・更新・削除を監査ログ化（G2）
 
 - 内容: 第２ ２（３）の「作成・更新の日時／更新箇所／作業者」の自動記録を、inspection_records（完成検査）に続いて
