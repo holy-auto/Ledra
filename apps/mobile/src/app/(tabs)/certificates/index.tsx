@@ -245,6 +245,8 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   cardHeader: {
+    // chevron が右端 16〜36px を占めるので、その帯を空ける
+    paddingRight: spacing["3xl"],
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,

@@ -130,7 +130,8 @@ const styles = StyleSheet.create({
     ...shadows.card,
     position: "relative",
   },
-  cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  // chevron が右端 16〜36px を絶対配置で占めるので、その帯を空ける
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingRight: spacing["3xl"] },
   iconWrap: {
     width: 40, height: 40, borderRadius: radius.md,
     backgroundColor: colors.primaryLight, alignItems: "center", justifyContent: "center",

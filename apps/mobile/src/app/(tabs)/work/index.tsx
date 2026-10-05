@@ -140,7 +140,7 @@ export default function WorkScreen() {
         accessibilityLabel={`${item.vehicle?.plate_display ?? "車両不明"} ${cfg.label}`}
       >
         {/* Top row: vehicle + status */}
-        <View style={[styles.cardHeader, isDense && styles.cardHeaderDense]}>
+        <View style={[styles.cardHeader, !isSimple && styles.cardHeaderChevron, isDense && styles.cardHeaderDense]}>
           {!isDense && (
             <View style={[styles.vehicleIcon, isSimple && styles.vehicleIconSimple]}>
               <Icon source="car" size={isSimple ? 24 : 20} color={colors.primary} />
@@ -306,9 +306,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
   },
+  // chevron は card に対する絶対配置で右端 16〜36px を占める。行側でその帯を
+  // 空けないとバッジが潜る。simple は chevron を出さない（代わりに CTA）ので対象外。
+  cardHeaderChevron: {
+    paddingRight: spacing["3xl"],
+  },
   cardHeaderDense: {
     gap: spacing.sm,
-    paddingRight: spacing["3xl"],
   },
   vehicleIcon: {
     width: 40,

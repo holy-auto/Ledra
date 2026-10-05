@@ -116,7 +116,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: radius.card,
     padding: spacing.lg, ...shadows.card, position: "relative",
   },
-  cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  // chevron が右端 16〜36px を絶対配置で占めるので、その帯を空ける
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingRight: spacing["3xl"] },
   cardText: { flex: 1 },
   code: { ...typography.meta, color: colors.textTertiary, fontFamily: "monospace" },
   title: { ...typography.titleSmall, color: colors.textPrimary },
