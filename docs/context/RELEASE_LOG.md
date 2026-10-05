@@ -56,6 +56,21 @@
   ＋ `INSPECTOR_REQUIRED_QUALIFICATION` で安全に解決）。
 - 検証: PDF レンダリングの単体テスト緑、tsc・eslint（変更 0 error）・check:schema 緑。
 
+## 2026-10-05 一覧カードの「>」をバッジの右隣に並べる（6画面）
+
+- 背景: #1232 で重なりは解消したが（代表の実機スクリーンショットで確認）、`>` はカードの縦中央に絶対配置されていたため
+  **ステータスバッジより少し下**に見え、代表から「変な感じがする」と指摘。
+- 変更: `>` を絶対配置から外し、見出し行の末尾に**バッジと並べて**置く。バッジと `>` を `trailing` という横並びの箱に入れ、
+  `alignItems: "center"` で `>` をバッジの中心に揃える。箱自体は `alignSelf: "flex-start"` で、バッジの位置は従来どおり。
+  - バッジの無いカード（証明書0件の車両、顧客一覧）は見出し行の末尾に `>` だけ。
+  - 作業一覧の「シンプル」表示は従来どおり `>` を出さず「作業を開く」ボタン。
+- 片付け: `position: "absolute"` の `chevron` / `chevronDense`、カードの `paddingRight`（40 / dense 32）、
+  `position: "relative"` を削除。カードの左右余白は対称に戻る。
+- 対象6画面: `(tabs)/work`・`(tabs)/vehicles`・`(tabs)/certificates`・`customers`・`field-test`・`field-test/[projectId]`。
+- 検証: `npm run typecheck`（0）・`npm test`（0、check-native-config / check-expo-pins / schema self-check を含む）。
+  6画面で絶対配置の `>`・`styles.chevron`・カードの右逃げ幅が0件になったことを grep で確認（`customers` に残る絶対配置1件は右下の＋ボタン）。
+  **実機の見た目は未確認**（OPEN_QUESTIONS 2026-10-05）。
+
 ## 2026-10-05 指定整備記録簿の「保持期限後の消去」経路を実装（G2）
 
 - 内容: 完成検査（指定整備記録簿）は2年保存のためアプリに消去経路が無かった。**保持期限（`record_retention_until`）

@@ -61,7 +61,10 @@ export default function FieldTestProjectsScreen() {
                     <Text style={styles.subtitle} numberOfLines={1}>{item.product_name}</Text>
                   )}
                 </View>
-                <StatusBadge label={cfg.label} severity={cfg.severity} />
+                <View style={styles.trailing}>
+                  <StatusBadge label={cfg.label} severity={cfg.severity} />
+                  <Icon source="chevron-right" size={20} color={colors.textTertiary} />
+                </View>
               </View>
               {item.description && (
                 <Text style={styles.desc} numberOfLines={2}>{item.description}</Text>
@@ -71,9 +74,6 @@ export default function FieldTestProjectsScreen() {
                   {item.starts_at ?? "?"} 〜 {item.ends_at ?? "?"}
                 </Text>
               )}
-              <View style={styles.chevron}>
-                <Icon source="chevron-right" size={20} color={colors.textTertiary} />
-              </View>
             </Pressable>
           );
         }}
@@ -127,11 +127,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.card,
     padding: spacing.lg,
-    // chevron は position:absolute で右端 16〜36px を占める。行ごとに逃げ幅を
-    // 入れるとカードの縦中央に来た行を取りこぼすので、カード側で帯ごと確保する。
-    paddingRight: spacing["4xl"],
     ...shadows.card,
-    position: "relative",
   },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   iconWrap: {
@@ -143,7 +139,8 @@ const styles = StyleSheet.create({
   subtitle: { ...typography.meta, color: colors.textSecondary, marginTop: 2 },
   desc: { ...typography.bodySmall, color: colors.textSecondary, marginTop: spacing.sm, marginLeft: 52 },
   dates: { ...typography.meta, color: colors.textTertiary, marginTop: spacing.xs, marginLeft: 52 },
-  chevron: { position: "absolute", right: spacing.lg, top: "50%", marginTop: -10 },
+  // バッジの右隣に置き、バッジと同じ高さに揃える（カード縦中央に置くとバッジより下にずれる）
+  trailing: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: spacing.xs },
   empty: { alignItems: "center", paddingTop: 80, gap: spacing.sm },
   emptyTitle: { ...typography.titleSmall, color: colors.textPrimary, marginTop: spacing.lg },
   emptyDesc: { ...typography.bodySmall, color: colors.textSecondary },

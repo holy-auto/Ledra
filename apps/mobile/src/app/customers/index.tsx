@@ -68,6 +68,7 @@ export default function CustomersIndexScreen() {
               <Text style={styles.kana}>{item.name_kana}</Text>
             )}
           </View>
+          <Icon source="chevron-right" size={20} color={colors.textTertiary} />
         </View>
 
         <View style={styles.metaRow}>
@@ -83,10 +84,6 @@ export default function CustomersIndexScreen() {
               <Text style={styles.metaText}>{item.email}</Text>
             </View>
           )}
-        </View>
-
-        <View style={styles.chevron}>
-          <Icon source="chevron-right" size={20} color={colors.textTertiary} />
         </View>
       </Pressable>
     ),
@@ -188,11 +185,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.card,
     padding: spacing.lg,
-    // chevron は position:absolute で右端 16〜36px を占める。行ごとに逃げ幅を
-    // 入れるとカードの縦中央に来た行を取りこぼすので、カード側で帯ごと確保する。
-    paddingRight: spacing["4xl"],
     ...shadows.card,
-    position: "relative",
   },
   cardHeader: {
     flexDirection: "row",
@@ -231,12 +224,6 @@ const styles = StyleSheet.create({
   metaText: {
     ...typography.meta,
     color: colors.textTertiary,
-  },
-  chevron: {
-    position: "absolute",
-    right: spacing.lg,
-    top: "50%",
-    marginTop: -10,
   },
   loading: { marginTop: spacing["3xl"] },
   empty: {

@@ -106,13 +106,16 @@ export default function VehiclesScreen() {
               {[item.maker, item.model, item.year].filter(Boolean).join(" ")}
             </Text>
           </View>
-          {certCount > 0 && (
-            <StatusBadge
-              label={`証明書 ${certCount}`}
-              severity="success"
-              compact
-            />
-          )}
+          <View style={styles.trailing}>
+            {certCount > 0 && (
+              <StatusBadge
+                label={`証明書 ${certCount}`}
+                severity="success"
+                compact
+              />
+            )}
+            <Icon source="chevron-right" size={20} color={colors.textTertiary} />
+          </View>
         </View>
 
         {/* Meta row */}
@@ -127,10 +130,6 @@ export default function VehiclesScreen() {
               <Text style={styles.metaText}>{item.customers.name}</Text>
             </View>
           )}
-        </View>
-
-        <View style={styles.chevron}>
-          <Icon source="chevron-right" size={20} color={colors.textTertiary} />
         </View>
       </Pressable>
     );
@@ -184,11 +183,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.card,
     padding: spacing.lg,
-    // chevron は position:absolute で右端 16〜36px を占める。行ごとに逃げ幅を
-    // 入れるとカードの縦中央に来た行を取りこぼすので、カード側で帯ごと確保する。
-    paddingRight: spacing["4xl"],
     ...shadows.card,
-    position: "relative",
   },
   cardHeader: {
     flexDirection: "row",
@@ -228,11 +223,12 @@ const styles = StyleSheet.create({
     ...typography.meta,
     color: colors.textTertiary,
   },
-  chevron: {
-    position: "absolute",
-    right: spacing.lg,
-    top: "50%",
-    marginTop: -10,
+  // バッジの右隣に置き、バッジと同じ高さに揃える（カード縦中央に置くとバッジより下にずれる）
+  trailing: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: spacing.xs,
   },
   empty: {
     alignItems: "center",
