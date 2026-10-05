@@ -65,7 +65,7 @@ describe("the trust list reaches both validation paths", () => {
     };
     const withJson = vi.fn(() => builder);
     vi.doMock("@contentauth/c2pa-node", () => ({ Builder: { withJson }, Reader: { fromAsset: vi.fn() } }));
-    vi.doMock("../providers/c2paSigner", () => ({ createC2paSigner: async () => ({}) }));
+    vi.doMock("../providers/c2paSigner", () => ({ createC2paSigner: async () => ({}), signWithTimeStamp: vi.fn() }));
     const { signC2pa } = await import("../providers/c2pa");
 
     const res = await signC2pa(Buffer.from("x"), "image/jpeg");

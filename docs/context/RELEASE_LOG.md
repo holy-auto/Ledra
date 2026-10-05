@@ -4,6 +4,40 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-05 指定整備記録簿の「保持期限後の消去」経路を実装（G2）
+
+- 内容: 完成検査（指定整備記録簿）は2年保存のためアプリに消去経路が無かった。**保持期限（`record_retention_until`）
+  を過ぎた記録のみ**を owner/admin が消去できる経路を `inspection-records` に追加（`DELETE`）。
+  - server 強制: (1) 権限は `minRole:"admin"`、(2) `isRetentionExpired`（`src/lib/retention.ts`・新設・純関数）で
+    期限経過を必須化（期限内＝409・保持期限未設定の記録＝対象外で409）、(3) 消去を `logTenantAuditEvent`
+    （`inspection_record_deleted`、期限日と inspection_type を付与）で記録。
+  - UI: 案件の点検タブ（`JobInspectionTab`）に「保持期限後の消去」ボタンを追加。**管理者以上 かつ 保持期限経過**の
+    完成検査にだけ表示（確認ダイアログ付き）。過去に staff 可視ボタン＋常時ブロックを入れて撤回した反省
+    （MISTAKE_LEDGER M-20261002-delete-ignored-legal-retention）を踏まえ、権限と期限の二重ゲートを UI と server の両方に。
+  - 期限判定は Asia/Tokyo の当日（`todayInJst`）。保存年数は2年スケールのため当日境界の差は実害なし。
+- 検証: `retention` 純関数の単体テスト 6 件（期限前/当日/期限後/不正日付/未設定/JST 境界）、tsc・eslint（変更 0 error）・check:schema 緑。
+
+## 2026-10-05 C2PA の claim 署名に RFC 3161 タイムスタンプを付ける（`C2PA_TSA_URL`）
+
+- #1231 で main にマージ（26959d80）。
+
+- `C2PA_TSA_URL` を設定すると、`signC2pa` が TSA のタイムスタンプ付きで署名する（`signWithTimeStamp`、`c2paSigner.ts`）。
+  期限切れ後も「署名時点で証明書が有効だった」と検証器が判断できる。未設定なら従来どおりタイムスタンプなし。
+- c2pa-rs は TSA に自前の HTTP クライアントで接続し、**タイムアウトが無い**（応答しない TSA に100秒以上待ち続けたことを実測）。
+  `signC2pa` の持ち時間は8秒なので、そのままだと写真が弾かれる。そこで c2pa-rs には 127.0.0.1 の中継を渡し、中継が
+  `tls13HttpsFetch`（https のみ・TLS 1.3）で TSA に転送し、2秒で打ち切る。
+- TSA が失敗・無応答なら、同じ写真をタイムスタンプなしで署名する（マニフェストは落とさない）。
+- TSA の連続失敗は既存の `withRetry` のブレーカー（`c2pa-tsa`、5回で30秒開く）で即失敗にし、障害中に写真ごとに待たない。
+  `C2PA_TSA_URL` が https でなければ起動時の env 検証で弾く（`envValidation.ts`）。
+- テスト: `c2paTimeStamp.test.ts`（openssl のローカル TSA で5件: 付与される・未設定なら付かない・503 と無応答でも
+  予算内でタイムスタンプなしの署名になる・同時の初回署名で dev 証明書が1枚）。配線を外すと付与テストが、中継を外すと
+  無応答テストが、資格情報の共有を外すと同時署名テストが落ちることを確認。12MP・8.3MB の JPEG で、TSA 無応答時の
+  署名は 2.7 秒（未設定時 0.65 秒）。
+- 中継は TSA の返答に常に `application/timestamp-reply` を付けて c2pa-rs に渡す（c2pa-rs はそれ以外の Content-Type を
+  返答ごと拒否するため。テストの TSA は `application/octet-stream` で返し、素通しに戻すと付与テストが落ちることを確認）。
+- 候補の TSA `https://ts-c2pa.ssl.com/ecc` は、TLS 1.3 で受けること、トークンが TSA Trust List にチェーンすることを確認済み。
+- 本番ではまだ効かない（`C2PA_MODE` が disabled、`C2PA_TSA_URL` も未設定）。
+
 ## 2026-10-05 一覧カードの「>」がバッジや本文に重なるのを6画面すべてで直す（#1232）
 
 - 症状: 代表のスクリーンショットで、作業一覧の行末の `>` が「来店」ステータスバッジに重なっていた。

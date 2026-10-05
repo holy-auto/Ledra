@@ -3,6 +3,21 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## C2PA 本番証明書を ssl.com の無料枠で取る: 残る確認（2026-10-05）
+
+TSA の URL（`https://ts-c2pa.ssl.com/ecc`）と、証明書・TSA とも ssl.com の無料枠で取ることは決定済み
+（DECISION_LOG 2026-10-05）。確認の根拠（TLS 1.3・TSA Trust List へのチェーンの実測）も同エントリにある。残るのは次の点。
+
+- **申込画面の形**: CSR を提出する方式か、ssl.com 側で鍵を持つ方式（eSigner 等）か。前者なら鍵は代表の PC で作り外に出さない
+  （CSR だけ提出）。後者は GPSA の鍵管理の記述と合うかを見直す必要がある。代表が申込画面を見て共有する。
+- **申込の時期**: 申込には Record ID（`01a06690-…`）が要る。Notice of Conformance は 2026-10-05 時点で未着（Gmail 確認、
+  最後は 10-02 の Administrator 返信）。推定: ssl.com は CPL 掲載を確認してから発行する — 根拠は CA が CPL 掲載製品にしか
+  発行しないという Program 規程（`docs/c2pa-conformance-application.md` 手順6〜8）。未検証。
+- **無料枠の条件**: タイムスタンプが年 2,500 件か 10,000 件か（Web 検索結果の要約で食い違い）、2年目以降も無料で更新できるか、
+  超過分の単価（非公開）、TSA を本番の量で使ってよいか。申込時に ssl.com で確認する。
+  Ledra の写真は本番 `certificate_images` で直近12か月 88 枚（全期間も 88 枚、最終 2026-09-20）で、少ない方の 2,500 件でも約 3.5%。
+- タイムスタンプなしに落ちた写真の件数は、今はログ（`[c2pa] time-stamped signing failed`）でしか分からない。
+
 ## Vercel の Preview デプロイが一部ブランチで連続失敗する（2026-10-05）
 
 `claude/mobile-app-opening-animation-s2a6m3` の Preview デプロイが **4コミット連続で失敗**している
@@ -67,17 +82,12 @@ Ledra ドメインから送れる。テナント UUID は推測しにくく、�
 3. **inspection_records（指定整備記録簿）の顧客向け電子交付**: 現状アプリに経路が無い（管理PDFのみ）。顧客へ電子交付する
    経路を設ける場合は同じ `delivery_consents` ゲートを通すこと。
 
-## G2 監査ログ: 作成/更新は inspection_records・documents・body_repair_jobs とも対応、残るは消去 cron（2026-10-02）
+## G2 監査ログ: 作成/更新/消去は対応、残るは cron の横断監査（2026-10-02）
 
-`inspection_records`（完成検査）に加え、`documents` / `body_repair_jobs` の作成/更新（documents は削除も）を
-`audit_logs` に記録した（RELEASE_LOG 2026-10-02・2026-10-03）。残り。
+`inspection_records`（完成検査）・`documents` / `body_repair_jobs` の作成/更新/削除を `audit_logs` に記録
+（RELEASE_LOG 2026-10-02・2026-10-03）。保持期限後の消去経路も実装（RELEASE_LOG 2026-10-05）。残り。
 
-1. **消去経路（保持期限後）**: 完成検査は `record_retention_until`＝2年保存で、保持期間中はアプリに消去経路を
-   持たない（保存義務に沿う）。保持期限後に管理者が消去できる経路を設けるなら、(a) `record_retention_until`
-   経過の確認を必須にし、(b) 消去を `logTenantAuditEvent`（`inspection_record_deleted`）で残すこと。
-   当初この PR で owner/admin 消去＋UI を入れたが、保持期間中は常にブロックされ無意味で保持義務とも衝突するため
-   撤回した（MISTAKE_LEDGER M-20261002-delete-ignored-legal-retention）。
-2. **保持期限 cron（`data-retention`）の横断監査**: cron は認証コード/セッション/通知ログ等の**非・記録簿**を
+1. **保持期限 cron（`data-retention`）の横断監査**: cron は認証コード/セッション/通知ログ等の**非・記録簿**を
    全テナント横断で削除する。`audit_logs.tenant_id` が NOT NULL なので単一行では残せない。テナント別に集計するか
    cron 専用の削除サマリ表を設けるか未決（運用ログの充実・優先度中。記録簿の消去要件には無関係）。
 

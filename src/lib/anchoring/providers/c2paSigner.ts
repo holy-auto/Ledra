@@ -10,6 +10,10 @@ import "reflect-metadata"; // tsyringe(@peculiar/x509 経由・@simplewebauthn �
  * so a binding failure on an unsupported platform never crashes the process.
  */
 
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { withRetry } from "@/lib/http/withRetry";
+import { tls13HttpsFetch } from "@/lib/net/tls13Fetch";
 import type { C2paMode } from "./c2pa";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,6 +76,40 @@ export async function generateDevCert(): Promise<{ certPem: string; keyPem: stri
   return { certPem, keyPem };
 }
 
+/** The signing certificate (PEM chain) and PKCS#8 key for a mode. dev-signed generates one per process. */
+type Credential = { certPem: string; keyPem: string };
+// The promise is cached, not the value: concurrent first calls must share one dev certificate.
+let cachedCredential: { mode: C2paMode; credential: Promise<Credential | null> } | null = null;
+
+function loadCredential(mode: C2paMode): Promise<Credential | null> {
+  if (cachedCredential?.mode !== mode) {
+    const entry = { mode, credential: readCredential(mode) };
+    cachedCredential = entry;
+    // A failure is not cached: the next call reads the env (or generates) again, as before.
+    const forget = () => {
+      if (cachedCredential === entry) cachedCredential = null;
+    };
+    entry.credential.then((c) => c ?? forget(), forget);
+  }
+  return cachedCredential.credential;
+}
+
+async function readCredential(mode: C2paMode): Promise<Credential | null> {
+  if (mode === "dev-signed") {
+    const credential = await generateDevCert();
+    console.info("[c2pa] generated ephemeral dev-signed ES256 certificate");
+    return credential;
+  }
+  // production: require env vars
+  const certPem = process.env.C2PA_SIGNER_CERT ?? "";
+  const keyPem = process.env.C2PA_SIGNER_KEY ?? "";
+  if (!certPem || !keyPem) {
+    console.error("[c2pa] production mode requires C2PA_SIGNER_CERT and C2PA_SIGNER_KEY env vars");
+    return null;
+  }
+  return { certPem, keyPem };
+}
+
 /**
  * Create (or return cached) a c2pa-node LocalSigner for the given mode.
  * Returns null if the signer cannot be created (missing env vars, load failure, etc).
@@ -84,37 +122,101 @@ export async function createC2paSigner(mode: C2paMode): Promise<LocalSignerInsta
 
   try {
     const { LocalSigner } = await import("@contentauth/c2pa-node");
+    const credential = await loadCredential(mode);
+    if (!credential) return null;
 
-    let certPem: string;
-    let keyPem: string;
-
-    if (mode === "dev-signed") {
-      const devCert = await generateDevCert();
-      certPem = devCert.certPem;
-      keyPem = devCert.keyPem;
-      console.info("[c2pa] generated ephemeral dev-signed ES256 certificate");
-    } else {
-      // production: require env vars
-      certPem = process.env.C2PA_SIGNER_CERT ?? "";
-      keyPem = process.env.C2PA_SIGNER_KEY ?? "";
-      if (!certPem || !keyPem) {
-        console.error("[c2pa] production mode requires C2PA_SIGNER_CERT and C2PA_SIGNER_KEY env vars");
-        return null;
-      }
-    }
-
-    // Do NOT wire the photo TSA into the C2PA signer: a slow/unreachable TSA
-    // during `builder.sign` would make signing throw and drop the whole manifest,
-    // coupling fail-open photo timestamping to C2PA availability. The capture-time
-    // seal is provided independently by the standalone RFC3161 token stored in
-    // certificate_images.tsa_token (see photoTsa.requestPhotoTimestamp), which
-    // already satisfies captureTimeSealOk. Keep C2PA signing self-contained.
-    const signer = LocalSigner.newSigner(Buffer.from(certPem), Buffer.from(keyPem), "es256", undefined);
+    // This signer never calls a TSA. Time-stamped signing is signWithTimeStamp (C2PA_TSA_URL);
+    // signC2pa falls back to this one when the TSA fails.
+    const signer = LocalSigner.newSigner(
+      Buffer.from(credential.certPem),
+      Buffer.from(credential.keyPem),
+      "es256",
+      undefined,
+    );
 
     cached = { mode, signer };
     return signer;
   } catch (err) {
     console.error("[c2pa] failed to create signer", err);
     return null;
+  }
+}
+
+/** How long the TSA gets before the photo is signed without a time-stamp (signC2pa has 8 s in all). */
+export const C2PA_TSA_TIMEOUT_MS = 2_000;
+
+/**
+ * Sign with an RFC 3161 time-stamp from `tsaUrl` in the claim signature. Returns the signed asset,
+ * or null when the TSA or the signing failed; the caller then signs without a time-stamp, so a
+ * TSA outage never drops the manifest. Without a time-stamp, validators judge the signing
+ * certificate at the current time, so every photo signed before the certificate expires turns
+ * `signingCredential.expired`. c2pa-node 0.9.7 calls a TSA only from the async signing path, hence
+ * CallbackSigner + `signAsync`.
+ *
+ * c2pa-rs sends the TSA request with its own HTTP client, which has no timeout (a TSA that accepts
+ * and never answers kept it pending for over 100 s) and no TLS 1.3 minimum. So it is pointed at a
+ * relay on 127.0.0.1 that forwards the request with `tls13HttpsFetch` (https only, TLS 1.3) and
+ * gives up after C2PA_TSA_TIMEOUT_MS. The `c2pa-tsa` circuit (withRetry: 5 failures open it for 30 s)
+ * makes the relay fail at once while the TSA is down, so an outage costs no wait per photo.
+ * ponytail: one relay per photo. Ceiling: a listening socket per concurrent signing.
+ */
+export async function signWithTimeStamp(
+  mode: Exclude<C2paMode, "disabled">,
+  tsaUrl: string,
+  builder: { signAsync(signer: unknown, input: unknown, output: { buffer: Buffer | null }): Promise<unknown> },
+  input: { buffer: Buffer; mimeType: string },
+): Promise<Buffer | null> {
+  const relay = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => chunks.push(c));
+    req.on("end", async () => {
+      try {
+        const r = await withRetry(
+          "c2pa-tsa",
+          async () => {
+            const r = await tls13HttpsFetch(tsaUrl, {
+              method: "POST",
+              headers: { "content-type": "application/timestamp-query" },
+              body: Buffer.concat(chunks),
+              signal: AbortSignal.timeout(C2PA_TSA_TIMEOUT_MS),
+            });
+            if (!r.ok) throw Object.assign(new Error(`TSA responded ${r.status}`), { status: r.status });
+            return Buffer.from(await r.arrayBuffer());
+          },
+          { maxAttempts: 1 },
+        );
+        // c2pa-rs refuses any other content type, whatever the TSA labelled its reply with; a body that
+        // is not a time-stamp reply still fails c2pa-rs's parsing and falls back to an unstamped signing.
+        res.writeHead(200, { "content-type": "application/timestamp-reply" }).end(r);
+      } catch (err) {
+        console.warn("[c2pa] TSA request failed", err instanceof Error ? err.message : err);
+        res.writeHead(504).end();
+      }
+    });
+  });
+  try {
+    await new Promise<void>((resolve, reject) => relay.once("error", reject).listen(0, "127.0.0.1", resolve));
+    const { port } = relay.address() as AddressInfo;
+    const { CallbackSigner } = await import("@contentauth/c2pa-node");
+    const { createPrivateKey, sign } = await import("node:crypto");
+    const credential = await loadCredential(mode);
+    if (!credential) return null;
+    const key = createPrivateKey(credential.keyPem);
+    const certs = (credential.certPem.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) ?? []).map(
+      (pem) => Buffer.from(pem),
+    );
+    const signer = CallbackSigner.newSigner(
+      { alg: "es256", certs, reserveSize: 20_000, tsaUrl: `http://127.0.0.1:${port}`, directCoseHandling: false },
+      async (data: Buffer) => sign("sha256", data, { key, dsaEncoding: "ieee-p1363" }),
+    );
+    const output: { buffer: Buffer | null } = { buffer: null };
+    await builder.signAsync(signer, input, output);
+    return output.buffer;
+  } catch (err) {
+    console.warn("[c2pa] time-stamped signing failed; signing without a time-stamp", err);
+    return null;
+  } finally {
+    relay.close();
+    relay.closeAllConnections();
   }
 }
