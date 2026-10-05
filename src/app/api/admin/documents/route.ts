@@ -4,13 +4,7 @@ import { requireMinRole } from "@/lib/auth/checkRole";
 import { DOC_TYPES, isDocumentEditable, isDocumentDeletable, type DocType } from "@/types/document";
 import { parsePagination } from "@/lib/api/pagination";
 import { parseAmountParam } from "@/lib/api/amountFilter";
-import {
-  apiJson,
-  apiForbidden,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { withCaller } from "@/lib/api/withCaller";
 import { documentCreateSchema, documentUpdateSchema, documentDeleteSchema } from "@/lib/validations/document";
 import { resolveBaseUrl } from "@/lib/url";
@@ -20,6 +14,8 @@ import { calcItems } from "@/lib/documents/calcItems";
 import { isValidRegistrationNumber } from "@/lib/invoice/taxBreakdown";
 import { recordPaymentOnPaid, runDocumentFinalizeEffects } from "@/lib/documents/statusEffects";
 import { sealDocumentOnFinalize, stripClientIntegritySeal, type SealableDocument } from "@/lib/documents/documentSeal";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
+import { changedFieldKeys } from "@/lib/inspection/auditDiff";
 
 export const dynamic = "force-dynamic";
 
@@ -293,6 +289,19 @@ export const POST = withCaller(
       return apiInternalError(error, "documents POST");
     }
 
+    // 作成の日時・作業者を監査ログに残す（第２ ２（３）/ G2）。失敗しても作成は止めない。
+    if (data?.id) {
+      await logTenantAuditEvent(admin, {
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        action: "document_created",
+        table: "documents",
+        recordId: data.id as string,
+        extra: { doc_type: data.doc_type ?? docType, doc_number: data.doc_number ?? null },
+        req,
+      });
+    }
+
     // 品目マスタに無い明細は自動登録する（保存自体は失敗させない fire-and-forget）。
     // staff_invoice の明細は cost_price/margin_rate が「案件金額/レス率」という別意味
     // なので、通常の原価/利益率として品目マスタへ登録してしまわないよう除外する。
@@ -360,14 +369,19 @@ export const PUT = withCaller(
       body.tax_rate !== undefined ||
       body.is_tax_inclusive !== undefined;
 
-    // 状態確認は PUT 全体で使うため（内容編集ガード・入金記帳の doc_type 判定）、
-    // isContentEdit の有無に関わらず一度だけ取得する。
-    const { data: existing } = await supabase
+    // 状態確認は PUT 全体で使うため（内容編集ガード・入金記帳の doc_type 判定・監査の更新前値）、
+    // isContentEdit の有無に関わらず一度だけ取得する。列は固定リテラル（監査の更新箇所算出に使う）。
+    const { data: existing, error: existingErr } = await supabase
       .from("documents")
-      .select("doc_type, status")
+      .select(
+        "doc_type, status, customer_id, staff_member_id, issued_at, due_date, payment_date, vehicle_id, vehicle_info_json, note, doc_number, is_invoice_compliant, show_seal, show_logo, show_bank_info, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, meta_json, items_json, subtotal, tax, total, tax_rate, tax_breakdown",
+      )
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
-      .single();
+      .maybeSingle();
+    // existing は編集可否・staff_invoice の管理者限定ガードを兼ねる。列エラーで null に落ちると
+    // ガードが素通りするので、取得エラーは fail-closed（行が無い＝null は下の UPDATE が not-found を返す）。
+    if (existingErr) return apiInternalError(existingErr, "documents PUT read");
 
     if (isContentEdit && existing && !isDocumentEditable(existing.doc_type, existing.status)) {
       return apiValidationError("送付済みの請求書は内容を編集できません。");
@@ -468,6 +482,26 @@ export const PUT = withCaller(
       return apiInternalError(error, "documents PUT");
     }
 
+    // 更新箇所・作業者・日時を監査ログに残す（第２ ２（３）/ G2）。帳票は宛先名・住所等の PII と
+    // 大きな明細 JSON を含むため、前後値ではなく**変わった列名だけ**を記録する（PII 複製・肥大の回避）。
+    const updatedForDiff = Object.fromEntries(Object.entries(updates).filter(([k]) => k !== "updated_at"));
+    const changed = changedFieldKeys(existing as Record<string, unknown> | null, updatedForDiff);
+    if (changed.length > 0) {
+      await logTenantAuditEvent(admin, {
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        action: "document_updated",
+        table: "documents",
+        recordId: id,
+        extra: {
+          changed,
+          doc_type: (data?.doc_type as string | null) ?? existing?.doc_type ?? null,
+          doc_number: (data?.doc_number as string | null) ?? null,
+        },
+        req,
+      });
+    }
+
     // 品目マスタに無い明細は自動登録する（保存自体は失敗させない fire-and-forget）。
     // staff_invoice は cost_price/margin_rate が別意味のため対象外（POST と同じ理由）。
     if (body.items !== undefined && data?.doc_type !== "staff_invoice") {
@@ -550,6 +584,22 @@ export const DELETE = withCaller(
       }
       return apiInternalError(error, "documents DELETE");
     }
+
+    // 削除の日時・作業者を監査ログに残す（第２ ２（３）/ G2）。下書き・領収書のみ削除可（上のフィルタ）。
+    // 一括削除でも直列にせず並行で記録する（本体の削除は既に完了・監査の失敗は非致命）。
+    await Promise.all(
+      eligible.map((d) =>
+        logTenantAuditEvent(admin, {
+          tenantId: caller.tenantId,
+          userId: caller.userId,
+          action: "document_deleted",
+          table: "documents",
+          recordId: d.id,
+          extra: { doc_type: d.doc_type, status: d.status },
+          req,
+        }),
+      ),
+    );
 
     return apiJson({ ok: true, deleted: eligibleIds.length, skipped: docs.length - eligibleIds.length });
   },

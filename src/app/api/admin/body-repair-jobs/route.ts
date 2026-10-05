@@ -9,6 +9,8 @@ import {
 } from "@/lib/validations/body-repair-job";
 import { maybeNotifyBodyRepairStageAdvance } from "@/lib/bodyRepair/stageNotify";
 import { retentionUntilYears } from "@/lib/retention";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
+import { changedFieldKeys } from "@/lib/inspection/auditDiff";
 
 import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
@@ -156,6 +158,19 @@ export const POST = withCaller(
         .single();
       if (error) return apiInternalError(error, "body-repair-jobs POST");
 
+      // 作成の日時・作業者を監査ログに残す（第２ ２（３）/ G2。特定整備記録簿は2年保存）。
+      if (created?.id) {
+        await logTenantAuditEvent(admin, {
+          tenantId: caller.tenantId,
+          userId: caller.userId,
+          action: "body_repair_job_created",
+          table: "body_repair_jobs",
+          recordId: created.id as string,
+          extra: { stage: created.stage ?? stage, is_specified_maintenance: isSpecified },
+          req,
+        });
+      }
+
       return apiJson({ ok: true, job: created }, { status: 201 });
     } catch (e) {
       return apiInternalError(e, "body-repair-jobs POST");
@@ -220,29 +235,32 @@ export const PATCH = withCaller(
       // この更新で記録に変更を加えた者を記録者として残す (ガイドライン4.2(2))。
       updates.recorded_by = caller.userId;
 
+      // 更新前値を1回だけ取得する（固定リテラル列）。ステージ到達タイムスタンプの既存値確認と、
+      // 監査の更新箇所算出を兼ねる。recorded_by / updated_at は毎回変わるので差分からは除く。
+      const { data: auditBefore, error: beforeErr } = await admin
+        .from("body_repair_jobs")
+        .select(
+          "stage, estimate_amount, actual_amount, due_date, insurance_company, claim_number, assigned_staff_id, intake_at, estimate_at, bodywork_start_at, paint_start_at, complete_at, delivered_at, notes, certificate_id, estimate_document_id, invoice_document_id, insurer_case_id, claim_status, claim_approved_amount, claim_decided_at, planned_work_json, actual_work_json, deviation_reason, is_specified_maintenance, record_retention_until",
+        )
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      if (beforeErr) return apiInternalError(beforeErr, "body-repair-jobs PATCH fetch");
+
       // ステージ変更時: 対応する到達タイムスタンプが未設定なら now() をセットする
       // (一度入った工程の到達時刻は上書きしない = 出戻りで時刻が消えない)。
       let previousStage: BodyRepairStage | null = null;
       let isForwardAdvance = false;
       if (stage !== undefined) {
-        // 現在の案件を取得して到達タイムスタンプの既存値を確認する。
-        const { data: existing, error: fetchErr } = await admin
-          .from("body_repair_jobs")
-          .select("id, stage, intake_at, estimate_at, bodywork_start_at, paint_start_at, complete_at, delivered_at")
-          .eq("id", id)
-          .eq("tenant_id", caller.tenantId)
-          .maybeSingle();
-        if (fetchErr) return apiInternalError(fetchErr, "body-repair-jobs PATCH fetch");
-        if (!existing) return apiValidationError("対象の案件が見つかりません。");
-
-        previousStage = (existing as { stage?: BodyRepairStage }).stage ?? null;
+        if (!auditBefore) return apiValidationError("対象の案件が見つかりません。");
+        previousStage = (auditBefore as { stage?: BodyRepairStage }).stage ?? null;
         // 工程インデックスが増える「前進」のときだけ顧客通知の対象とする。
         // 後退・補正 (admin/API のやり直し) で「進捗が進んだ」通知を送らない。
         isForwardAdvance =
           previousStage !== null && BODY_REPAIR_STAGES.indexOf(stage) > BODY_REPAIR_STAGES.indexOf(previousStage);
         updates.stage = stage;
         const tsColumn = STAGE_TIMESTAMP_COLUMN[stage];
-        const existingTs = (existing as Record<string, unknown>)[tsColumn];
+        const existingTs = (auditBefore as Record<string, unknown>)[tsColumn];
         if (!existingTs) {
           updates[tsColumn] = new Date().toISOString();
         }
@@ -270,6 +288,24 @@ export const PATCH = withCaller(
           if (current) return apiJson({ ok: true, job: current });
         }
         return apiValidationError("対象の案件が見つかりません。");
+      }
+
+      // 更新箇所・作業者・日時を監査ログに残す（第２ ２（３）/ G2。特定整備記録簿は2年保存）。
+      // 作業者（recorded_by）と updated_at は毎回変わるため差分からは除く。値ではなく変わった列名を記録。
+      const updatesForDiff = Object.fromEntries(
+        Object.entries(updates).filter(([k]) => k !== "updated_at" && k !== "recorded_by"),
+      );
+      const changed = changedFieldKeys(auditBefore as Record<string, unknown> | null, updatesForDiff);
+      if (changed.length > 0) {
+        await logTenantAuditEvent(admin, {
+          tenantId: caller.tenantId,
+          userId: caller.userId,
+          action: "body_repair_job_updated",
+          table: "body_repair_jobs",
+          recordId: id,
+          extra: { changed },
+          req,
+        });
       }
 
       // 工程が「前進」したときだけ、opt-in 済みテナントで顧客へ進捗を自動通知する
