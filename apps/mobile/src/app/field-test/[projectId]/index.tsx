@@ -58,7 +58,10 @@ export default function FieldTestJobsScreen() {
                   {item.job_code && <Text style={styles.code}>{item.job_code}</Text>}
                   <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
                 </View>
-                <StatusBadge label={cfg.label} severity={cfg.severity} />
+                <View style={styles.trailing}>
+                  <StatusBadge label={cfg.label} severity={cfg.severity} />
+                  <Icon source="chevron-right" size={20} color={colors.textTertiary} />
+                </View>
               </View>
               <View style={styles.meta}>
                 <Icon source="calendar-outline" size={14} color={colors.textTertiary} />
@@ -69,9 +72,6 @@ export default function FieldTestJobsScreen() {
                     <Text style={styles.metaText}>{item.completed_at.slice(0, 10)}</Text>
                   </>
                 )}
-              </View>
-              <View style={styles.chevron}>
-                <Icon source="chevron-right" size={20} color={colors.textTertiary} />
               </View>
             </Pressable>
           );
@@ -115,10 +115,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface, borderRadius: radius.card,
     padding: spacing.lg,
-    // chevron は position:absolute で右端 16〜36px を占める。行ごとに逃げ幅を
-    // 入れるとカードの縦中央に来た行を取りこぼすので、カード側で帯ごと確保する。
-    paddingRight: spacing["4xl"],
-    ...shadows.card, position: "relative",
+    ...shadows.card,
   },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   cardText: { flex: 1 },
@@ -126,7 +123,8 @@ const styles = StyleSheet.create({
   title: { ...typography.titleSmall, color: colors.textPrimary },
   meta: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.sm },
   metaText: { ...typography.meta, color: colors.textTertiary },
-  chevron: { position: "absolute", right: spacing.lg, top: "50%", marginTop: -10 },
+  // バッジの右隣に置き、バッジと同じ高さに揃える（カード縦中央に置くとバッジより下にずれる）
+  trailing: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: spacing.xs },
   navLinks: { gap: spacing.sm, marginBottom: spacing.md },
   navLink: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,

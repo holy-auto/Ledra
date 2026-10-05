@@ -156,7 +156,11 @@ export default function WorkScreen() {
               </Text>
             )}
           </View>
-          <StatusBadge label={cfg.label} severity={cfg.severity} />
+          <View style={styles.trailing}>
+            <StatusBadge label={cfg.label} severity={cfg.severity} />
+            {/* simple は下の CTA ボタンで開くので「>」を出さない */}
+            {!isSimple && <Icon source="chevron-right" size={20} color={colors.textTertiary} />}
+          </View>
         </View>
 
         {/* Service info */}
@@ -188,14 +192,10 @@ export default function WorkScreen() {
           )}
         </View>
 
-        {isSimple ? (
+        {isSimple && (
           <View style={styles.simpleCta}>
             <Text style={styles.simpleCtaText}>作業を開く</Text>
             <Icon source="arrow-right" size={20} color={colors.textOnPrimary} />
-          </View>
-        ) : (
-          <View style={[styles.chevron, isDense && styles.chevronDense]}>
-            <Icon source="chevron-right" size={20} color={colors.textTertiary} />
           </View>
         )}
       </Pressable>
@@ -285,22 +285,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.card,
     padding: spacing.lg,
-    // chevron は position:absolute で右端 16〜36px を占める。行ごとに逃げ幅を
-    // 入れるとカードの縦中央に来た行を取りこぼすので、カード側で帯ごと確保する。
-    paddingRight: spacing["4xl"],
     ...shadows.card,
-    position: "relative",
   },
-  // simple は chevron を出さない（CTA ボタンになる）ので左右対称に戻す
   cardSimple: {
     padding: spacing.xl,
-    paddingRight: spacing.xl,
   },
-  // dense は chevronDense が right: sm(8) なので帯は 8〜28px
   cardDense: {
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingRight: spacing["3xl"],
     paddingVertical: spacing.sm,
     shadowOpacity: 0,
     shadowRadius: 0,
@@ -379,14 +371,12 @@ const styles = StyleSheet.create({
     ...typography.meta,
     color: colors.textTertiary,
   },
-  chevron: {
-    position: "absolute",
-    right: spacing.lg,
-    top: "50%",
-    marginTop: -10,
-  },
-  chevronDense: {
-    right: spacing.sm,
+  // バッジの右隣に置き、バッジと同じ高さに揃える（カード縦中央に置くとバッジより下にずれる）
+  trailing: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: spacing.xs,
   },
   simpleCta: {
     minHeight: sizing.touchTarget,
