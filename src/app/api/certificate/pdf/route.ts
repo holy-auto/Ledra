@@ -138,10 +138,11 @@ export async function GET(req: Request) {
   // 判定できない（DB 一時障害）ときも出さないが、承諾の問題とは言わず再試行を案内する。
   // 店舗スタッフが書面交付用に印刷する場合（モバイルが発行する期限付き署名 st）は承諾ゲートを通さない（staffPdfLink.ts）。
   const staffToken = (searchParams.get("st") ?? "").trim();
+  const byStaff = !!(staffToken && fullCert?.tenant_id && isValidStaffPdfToken(staffToken, pid, fullCert.tenant_id));
   const blocked =
     fullErr || !fullCert?.tenant_id
       ? BLOCKED_UNVERIFIED
-      : staffToken && isValidStaffPdfToken(staffToken, pid, fullCert.tenant_id)
+      : byStaff
         ? null
         : await electronicDeliveryBlockMessage(adm, fullCert.tenant_id, fullCert.customer_id ?? null);
   if (blocked || !fullCert?.tenant_id) {
@@ -156,10 +157,12 @@ export async function GET(req: Request) {
       : apiJson({ error: "delivery_consent_blocked", message: PUBLIC_PDF_CONSENT_BLOCKED }, { status: 403 });
   }
 
-  // 公開PDF閲覧ログ（PDF を出すときだけ）
+  // 公開PDF閲覧ログ（PDF を出すときだけ）。スタッフ署名での出力は、誰が出したかを発行時（pdf-link）に記録済みなので
+  // ここでは種類を分けて残す（監査でお客様の閲覧と区別できるように）。
   const meta = getRequestMeta(req);
   logCertificateAction({
-    type: "certificate_public_pdf",
+    type: byStaff ? "certificate_pdf_generated" : "certificate_public_pdf",
+    ...(byStaff ? { description: `スタッフ用 PDF リンクで出力（書面交付用） / Public ID: ${pid}` } : {}),
     tenantId: fullCert.tenant_id,
     publicId: pid,
     certificateId: fullCert.id,

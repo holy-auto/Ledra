@@ -34,7 +34,7 @@ import { File, Paths } from "expo-file-system";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
-import { mobileApi } from "@/lib/api";
+import { mobileApi, ApiError } from "@/lib/api";
 import { publicCertUrl, certPdfUrl } from "@/lib/certificateLinks";
 import { StatusBadge, LedraButton } from "@/components/ui";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
@@ -179,8 +179,11 @@ export default function CertificateDetailScreen() {
         body: { public_id: cert.public_id },
       });
       if (token) url = `${base}&st=${encodeURIComponent(token)}`;
-    } catch {
-      // 署名なしで続行
+    } catch (e) {
+      // ログイン切れはサインアウト誘導済み。PDF は開かない（ログイン画面とブラウザが同時に出るのを防ぐ）
+      if (e instanceof ApiError && e.status === 401) return;
+      // 署名なしで続行するが、承諾のない顧客の PDF は出せないことを知らせる（黙って案内ページに飛ばさない）
+      setSnackbar("スタッフ用リンクを取得できませんでした。承諾のないお客様のPDFは出せない場合があります");
     }
     // 開けない端末がある（ブラウザ無し / MDM 制限）。黙って何も起きないと
     // 「押しても反応しない」に見えるので必ず知らせる

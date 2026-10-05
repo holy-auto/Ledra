@@ -7,6 +7,8 @@ vi.mock("@/lib/auth/checkRole", () => ({
   requireMinRole: (c: { role: string }) => c.role !== "viewer",
 }));
 vi.mock("@/lib/api/rateLimit", () => ({ checkRateLimit: async () => null }));
+const audit = vi.fn();
+vi.mock("@/lib/audit/certificateLog", () => ({ logCertificateAction: audit }));
 const eqCalls: [string, unknown][] = [];
 let row: unknown;
 vi.mock("@/lib/supabase/admin", () => ({
@@ -38,8 +40,10 @@ const call = () =>
 describe("POST /api/mobile/certificates/pdf-link", () => {
   beforeEach(() => {
     caller = { userId: "u1", tenantId: "t1", role: "staff" };
-    row = { id: "c1", status: "active" };
+    row = { id: "c1", status: "active", vehicle_id: null };
     eqCalls.length = 0;
+    audit.mockReset();
+    process.env.INTEGRATION_OAUTH_STATE_SECRET = "x".repeat(40);
   });
 
   it("自テナントの有効な証明書なら、その証明書・テナント用の署名を返す", async () => {
@@ -51,6 +55,10 @@ describe("POST /api/mobile/certificates/pdf-link", () => {
       ["tenant_id", "t1"],
       ["public_id", "PID-0001"],
     ]);
+    // 誰が書面交付用に出したかを残す
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "certificate_pdf_generated", tenantId: "t1", userId: "u1" }),
+    );
   });
   it("見つからない（他テナント含む）・無効な証明書には出さない", async () => {
     row = null;
@@ -63,5 +71,11 @@ describe("POST /api/mobile/certificates/pdf-link", () => {
     expect((await call()).status).toBe(401);
     caller = { userId: "u1", tenantId: "t1", role: "viewer" };
     expect((await call()).status).toBe(403);
+  });
+
+  it("専用の署名鍵が無ければ 503（発行しない・記録もしない）", async () => {
+    process.env.INTEGRATION_OAUTH_STATE_SECRET = "";
+    expect((await call()).status).toBe(503);
+    expect(audit).not.toHaveBeenCalled();
   });
 });

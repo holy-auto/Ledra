@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, vi, afterEach } from "vitest";
-import { createStaffPdfToken, isValidStaffPdfToken } from "../staffPdfLink";
+import { createStaffPdfToken, isValidStaffPdfToken, isStaffPdfLinkEnabled } from "../staffPdfLink";
+import { createOAuthState } from "@/lib/integrations/oauthState";
 
 beforeAll(() => {
   process.env.INTEGRATION_OAUTH_STATE_SECRET = "x".repeat(40);
@@ -20,7 +21,27 @@ describe("staffPdfLink [スタッフ用 PDF 署名]", () => {
     const tok = t();
     expect(isValidStaffPdfToken(tok.slice(0, -2) + "xx", "PID-0001", "t1")).toBe(false);
     vi.useFakeTimers();
-    vi.setSystemTime(Date.now() + 6 * 60 * 1000);
+    vi.setSystemTime(Date.now() + 2 * 60 * 1000);
     expect(isValidStaffPdfToken(tok, "PID-0001", "t1")).toBe(false);
+  });
+
+  it("専用鍵が無い・短いときは無効（会計連携のフォールバック鍵では発行も検証もしない）", () => {
+    const tok = t();
+    const saved = process.env.INTEGRATION_OAUTH_STATE_SECRET;
+    try {
+      process.env.INTEGRATION_OAUTH_STATE_SECRET = "";
+      process.env.FREEE_CLIENT_SECRET = "y".repeat(40);
+      expect(isStaffPdfLinkEnabled()).toBe(false);
+      expect(() => t()).toThrow();
+      expect(isValidStaffPdfToken(tok, "PID-0001", "t1")).toBe(false);
+      // フォールバック鍵（freee と共有）で正しく署名されたものも受け付けない
+      const viaFallback = createOAuthState({ tenantId: "t1", provider: "staff-pdf:PID-0001", ttlSeconds: 60 });
+      expect(isValidStaffPdfToken(viaFallback, "PID-0001", "t1")).toBe(false);
+      process.env.INTEGRATION_OAUTH_STATE_SECRET = "short";
+      expect(isStaffPdfLinkEnabled()).toBe(false);
+    } finally {
+      process.env.INTEGRATION_OAUTH_STATE_SECRET = saved;
+      delete process.env.FREEE_CLIENT_SECRET;
+    }
   });
 });
