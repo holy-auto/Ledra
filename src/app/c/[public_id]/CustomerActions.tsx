@@ -137,6 +137,7 @@ export default function CustomerActions(props: Props) {
         notice === "pdf_blocked" ||
         notice === "pdf_blocked_grace_expired" ||
         notice === "pdf_blocked_inactive" ||
+        notice === "pdf_blocked_consent" ||
         notice === "payment_required";
       setS({ pid, rt, tenant, pdfHref, listUrl, logoutAfter, showLogout, pdfBlocked, portalUrl });
     } catch {

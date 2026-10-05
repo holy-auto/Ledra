@@ -40,7 +40,7 @@ function json(status: number, body: Record<string, unknown>, extraHeaders?: Reco
   });
 }
 
-function isNavigation(req: Request) {
+export function isNavigation(req: Request) {
   const accept = req.headers.get("accept") ?? "";
   const mode = req.headers.get("sec-fetch-mode") ?? "";
   const dest = req.headers.get("sec-fetch-dest") ?? "";
@@ -65,7 +65,7 @@ function redirectToBilling(req: Request, reason: "inactive" | "plan", action?: s
   return new Response(null, { status: 303, headers: { Location: billing.toString() } });
 }
 
-function redirectToPublic(pid: string, notice: string) {
+export function redirectToPublic(pid: string, notice: string) {
   const dest = new URL(`/c/${pid}`, "https://example.invalid");
   dest.searchParams.set("notice", notice);
   // caller will replace origin
