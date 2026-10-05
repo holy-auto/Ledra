@@ -15494,6 +15494,7 @@ export type Database = {
           plan_tier: Database["public"]["Enums"]["plan_tier_enum"]
           prefecture: string | null
           registration_number: string | null
+          require_delivery_consent: boolean
           require_inspector_qualification: boolean
           slug: string
           square_merchant_id: string | null
@@ -15546,6 +15547,7 @@ export type Database = {
           plan_tier?: Database["public"]["Enums"]["plan_tier_enum"]
           prefecture?: string | null
           registration_number?: string | null
+          require_delivery_consent?: boolean
           require_inspector_qualification?: boolean
           slug: string
           square_merchant_id?: string | null
@@ -15598,6 +15600,7 @@ export type Database = {
           plan_tier?: Database["public"]["Enums"]["plan_tier_enum"]
           prefecture?: string | null
           registration_number?: string | null
+          require_delivery_consent?: boolean
           require_inspector_qualification?: boolean
           slug?: string
           square_merchant_id?: string | null

@@ -27,7 +27,7 @@ import { apiOk, apiError, apiValidationError, apiInternalError } from "@/lib/api
 import { computeDocumentHash } from "@/lib/signature/hash";
 import { generateCertificatePdfBytes } from "@/lib/signature/pdfUtils";
 import { CONSENT_VERSION, computeConsentTextHash, type ReceiptPayloadSnapshot } from "@/lib/signature/deliveryReceipt";
-import { isElectronicDeliveryBlockedForCustomer } from "@/lib/delivery/deliveryConsent";
+import { electronicDeliveryBlockMessage } from "@/lib/delivery/deliveryConsent";
 import { certificateBeforeAfterState, BEFORE_AFTER_PHOTO_REQUIRED_MESSAGE } from "@/lib/certificates/photoRequirement";
 import { computeSignoffDeadline } from "@/lib/signoff/state";
 import { escapeHtml } from "@/lib/sanitize";
@@ -179,19 +179,11 @@ export const POST = withCaller<{ id: string }>(
       const { admin } = createTenantScopedAdmin(caller.tenantId);
 
       // G4（第２ ４（４））: 使用者が電子交付の承諾を撤回している場合は電磁的交付をしてはならない。
-      // 証明書＝記録簿の写しの電子交付（この受領サイン依頼メール）をブロックする。顧客未紐付け
-      // （customer_id 無し）の証明書は顧客単位の判定ができないため従来どおり（OPEN_QUESTIONS）。
-      if (
-        cert.customer_id &&
-        (await isElectronicDeliveryBlockedForCustomer(admin, caller.tenantId, cert.customer_id))
-      ) {
-        return apiError({
-          code: "conflict",
-          message:
-            "この顧客は電子交付の承諾を撤回しています。電磁的方法での交付はできません（書面交付等に切り替えてください）。",
-          status: 409,
-        });
-      }
+      // 証明書＝記録簿の写しの電子交付（この受領サイン依頼メール）をブロックする。テナントが事前承諾を
+      // 必須にしていれば未承諾もブロック（G3 opt-in）。顧客未紐付け（customer_id 無し）の証明書は既定では
+      // 従来どおり通し（OPEN_QUESTIONS）、必須化テナントでは承諾を確認できないためブロックする。
+      const blocked = await electronicDeliveryBlockMessage(admin, caller.tenantId, cert.customer_id ?? null);
+      if (blocked) return apiError({ code: "conflict", message: blocked, status: 409 });
 
       // ── 案件サインオフ由来の依頼: 予約検証 + 施工前後写真ゲート ──
       // 「作業前後で傷など後から揉める」トラブルを潰すため、案件フロー経由の

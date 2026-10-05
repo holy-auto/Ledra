@@ -65,6 +65,10 @@ export async function updateTenantSettingsAction(formData: FormData): Promise<Se
   if (formData.has("require_inspector_qualification_present")) {
     payload.require_inspector_qualification = formData.get("require_inspector_qualification") === "on";
   }
+  // 電子交付の事前承諾の必須化（G3 opt-in）。同じ hidden マーカー方式。
+  if (formData.has("require_delivery_consent_present")) {
+    payload.require_delivery_consent = formData.get("require_delivery_consent") === "on";
+  }
 
   // レバーレート (工賃単価、円/時)。空欄 = 未設定 (null)
   let laborRate: number | null | undefined;
