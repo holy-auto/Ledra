@@ -16,6 +16,7 @@
 import { createHash } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DeliveryConsentState } from "@/lib/domain/states";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 
 export const DELIVERY_CONSENT_VERSION = "delivery-consent-v1";
 
@@ -113,4 +114,55 @@ export async function electronicDeliveryBlockMessage(
   if (status === "revoked") return BLOCKED_REVOKED;
   if (status === "granted") return null;
   return (await tenantRequiresDeliveryConsent(db, tenantId)) ? BLOCKED_NO_CONSENT : null;
+}
+
+/** お客様向け画面（署名・受領リンク）で電子交付を止めるときの応答（apiError にそのまま渡せる形）。店舗向けの理由は含めない。 */
+export type CustomerFacingDeliveryBlock = { code: "conflict" | "db_error"; status: 409 | 503; message: string };
+
+const CUSTOMER_BLOCKED: CustomerFacingDeliveryBlock = {
+  code: "conflict",
+  status: 409,
+  message:
+    "電子データでのお渡しに必要なご承諾が確認できないため、このリンクはご利用いただけません。書面でのお渡しは発行店舗へお問い合わせください。",
+};
+const CUSTOMER_UNAVAILABLE: CustomerFacingDeliveryBlock = {
+  code: "db_error",
+  status: 503,
+  message: "現在このリンクを確認できません。時間をおいて再度お試しください。",
+};
+
+/**
+ * 発行済みの署名/受領リンク（お客様が開く・送信する時点）で、その証明書の電子交付を止めるべきかを返す。 [G3/G4]
+ * リンク発行後に承諾が撤回された・テナントが事前承諾を必須にした場合も、開いた時点の状態で判定する（失効の代わり）。
+ * 判定できない（DB 一時障害）ときは承諾の問題とせず再試行を案内する。止めたときは audit_logs に残す（G4 の証跡）。
+ * `db` は service-role（トークンで引いたセッションの certificate_id は信頼できる）。
+ */
+export async function customerFacingDeliveryBlock(
+  db: Pick<SupabaseClient, "from">,
+  certificateId: string | null | undefined,
+  ctx: { sessionId: string; req?: Request },
+): Promise<CustomerFacingDeliveryBlock | null> {
+  // 証明書に紐付かないセッション（修理同意など）は記録簿の写しの交付ではないので対象外
+  if (!certificateId) return null;
+  const { data, error } = await db
+    .from("certificates")
+    .select("tenant_id, customer_id")
+    .eq("id", certificateId)
+    .maybeSingle();
+  if (error) return CUSTOMER_UNAVAILABLE;
+  const row = data as { tenant_id: string; customer_id: string | null } | null;
+  if (!row) return null; // 証明書が無い＝交付するものが無い（後続の処理が扱う）
+  const m = await electronicDeliveryBlockMessage(db, row.tenant_id, row.customer_id ?? null);
+  if (!m) return null;
+  const block = m === BLOCKED_UNVERIFIED ? CUSTOMER_UNAVAILABLE : CUSTOMER_BLOCKED;
+  void logTenantAuditEvent(db, {
+    tenantId: row.tenant_id,
+    actorType: "system",
+    action: "delivery_link_blocked",
+    table: "signature_sessions",
+    recordId: ctx.sessionId,
+    extra: { certificate_id: certificateId, status: block.status },
+    req: ctx.req,
+  });
+  return block;
 }

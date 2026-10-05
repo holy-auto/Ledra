@@ -21,6 +21,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { customerFacingDeliveryBlock } from "@/lib/delivery/deliveryConsent";
 import { apiOk, apiError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { signPayloadWithProvider } from "@/lib/signature/signer";
@@ -102,6 +103,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       await admin.from("signature_sessions").update({ status: "expired" }).eq("id", session.id);
       return apiError({ code: "not_found", message: "受領サインリンクの有効期限が切れています", status: 404 });
     }
+
+    // G3/G4: 発行後に承諾が撤回された・事前承諾が必須になった場合は、開いた時点で止める（リンクの失効の代わり）。
+    const deliveryBlock = await customerFacingDeliveryBlock(admin, session.certificate_id, {
+      sessionId: session.id,
+      req,
+    });
+    if (deliveryBlock) return apiError(deliveryBlock);
 
     // ── 二要素認証: 電話番号下4桁の照合 ──────────────────────
     if (!session.phone_last4_hash) {

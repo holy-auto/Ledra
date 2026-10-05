@@ -12,6 +12,7 @@
 
 import { NextRequest } from "next/server";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { customerFacingDeliveryBlock } from "@/lib/delivery/deliveryConsent";
 import { apiOk, apiError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { computeConsentTextHash, getConsentTextByVersion } from "@/lib/signature/deliveryReceipt";
@@ -91,6 +92,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
           session.status === "signed" ? "この受領サインリンクはすでに使用されています" : "無効な受領サインリンクです",
       });
     }
+
+    // G3/G4: 発行後に承諾が撤回された・事前承諾が必須になった場合は、開いた時点で止める（リンクの失効の代わり）。
+    const deliveryBlock = await customerFacingDeliveryBlock(supabase, session.certificate_id, {
+      sessionId: session.id,
+      req: req,
+    });
+    if (deliveryBlock) return apiError(deliveryBlock);
 
     // page_opened 監査ログ
     await supabase.from("signature_audit_logs").insert({

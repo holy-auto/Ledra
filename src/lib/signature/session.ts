@@ -97,6 +97,9 @@ export async function getValidSessionByToken(token: string): Promise<SignatureSe
     .from("signature_sessions")
     .select("*")
     .eq("token", token)
+    // 一般の署名（/api/signature/sign）は証明書用のセッションだけ。受領サインのトークンでここを通すと
+    // 電話番号下4桁の照合を飛ばして「署名済み」にできてしまう（受領・修理同意は専用ルート）。
+    .eq("purpose", "certificate")
     .eq("status", "pending")
     .gt("expires_at", new Date().toISOString())
     .single();

@@ -13,6 +13,7 @@
 
 import { NextRequest } from "next/server";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { customerFacingDeliveryBlock } from "@/lib/delivery/deliveryConsent";
 import { apiOk, apiError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
@@ -52,6 +53,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
       `,
       )
       .eq("token", token)
+      // 一般の署名リンクは証明書用のセッションだけ。受領サイン（電話番号下4桁の照合あり）や修理同意のトークンを
+      // この経路で開いて署名できないようにする（各用途は専用ルートで扱う）。
+      .eq("purpose", "certificate")
       .single();
 
     if (error || !session) {
@@ -88,6 +92,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
         message: session.status === "signed" ? "この署名リンクはすでに使用されています" : "無効な署名リンクです",
       });
     }
+
+    // G3/G4: 発行後に承諾が撤回された・事前承諾が必須になった場合は、開いた時点で止める（リンクの失効の代わり）。
+    const deliveryBlock = await customerFacingDeliveryBlock(supabase, session.certificate_id, {
+      sessionId: session.id,
+      req: req,
+    });
+    if (deliveryBlock) return apiError(deliveryBlock);
 
     // page_opened 監査ログを記録
     await supabase.from("signature_audit_logs").insert({
