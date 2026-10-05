@@ -4,7 +4,29 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-10-03
+最終更新: 2026-10-05
+
+> 2026-10-05 追記（**C2PA 署名に時刻証明（RFC 3161）を付けられるようにした**）: `C2PA_TSA_URL` を設定すると、Ledra の
+> claim 署名に TSA のタイムスタンプが入る。付いていないと、署名証明書の期限が切れた日から、それまでに署名した写真が
+> すべて `signingCredential.expired` と判定される。**未設定なら従来どおり**（本番の C2PA もまだ disabled）。
+> TSA が落ちている・2秒で返らないときは、写真を止めずにタイムスタンプなしで署名する。TSA への通信は TLS 1.3・https のみ。
+> #1231 で main にマージ済み（26959d80）。**TSA は `https://ts-c2pa.ssl.com/ecc` に決定**（TLS 1.3 で受けること、トークンが
+> TSA Trust List にチェーンすることを実測）。**本番証明書と TSA は ssl.com の C2PA 無料枠で取る**と代表が決定
+> （DECISION_LOG 2026-10-05）。ssl.com は問い合わせに、CSR 方式で可・subject `CN=Ledra, O=HOLY Inc., C=JP` で可・
+> **発行は Notice of Conformance の受領後**・**無料は1年のみ（無料更新なし）**と返答した。鍵と CSR の作り方は
+> `docs/c2pa-production-deployment.md` §2。Notice of Conformance は 2026-10-05 時点で未着。
+> **2026-10-05 鍵と CSR を代表の PC で作成済み**（`Documents\c2pa`、Git 同梱の OpenSSL 3.5.5。CSR の自己署名 verify OK・
+> subject `C=JP, O=HOLY Inc., CN=Ledra` を代表の画面出力で確認、鍵は PKCS#8）。秘密鍵は PC から出していない。**代表がバックアップ済み**。
+> 通知が届いたら CSR と一緒に ssl.com へ送る。**Notice of Conformance の着信は Routine「Watch C2PA Notice」が毎日 8:45 / 17:45（JST）に
+> Gmail を確認し、届いたら代表に通知する**（2026-10-05 設定、届いたら自動で止める）。
+
+> 2026-10-05 追記（**モバイル一覧カードの右端は `>` の帯のために空けてある**）: 一覧カードの `>`
+> （`chevron`）は `position: "absolute"` ＋ `top: "50%"` で、**カードの縦中央に置かれた高さ20pxの帯**。
+> 水平方向はカードの右端から16〜36px（dense は8〜28px）を占める。6画面すべてで、この帯は
+> カードの `paddingRight`（既定 `spacing["4xl"]`=40、`work/cardDense` は `spacing["3xl"]`=32）で確保してある。
+> **カード内の行に `paddingRight` を足して逃がす形にしないこと**——どの行が帯に潜るかはカードの高さで
+> 決まるので必ず取りこぼす（#1232・DECISION_LOG 2026-10-05）。`>` を出さない `work/cardSimple` だけは
+> 左右対称（20）。実機での見た目確認は未了（OPEN_QUESTIONS 2026-10-05）。
 
 > 2026-10-02 追記（**Japan Mobility Show Bizweek 2026 に Ledra を出展**）: 会期 2026-10-13〜16・幕張メッセ
 > 展示ホール2・3、小間位置 ZONE1「滞らないシステムで、広がる安心。」S-06。出展内容は Ledra（代表回答）。

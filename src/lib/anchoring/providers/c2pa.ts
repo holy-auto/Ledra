@@ -271,7 +271,7 @@ export async function signC2pa(
   if (mode === "disabled") return DISABLED_RESULT;
 
   try {
-    const { createC2paSigner } = await import("./c2paSigner");
+    const { createC2paSigner, signWithTimeStamp } = await import("./c2paSigner");
     const signer = await createC2paSigner(mode);
     // 署名器が無い理由はモジュール不在・env 未投入・鍵/証明書不正のいずれか（createC2paSigner が
     // console.error を出す）。disabled と混ぜない。
@@ -339,7 +339,10 @@ export async function signC2pa(
     const input = { buffer, mimeType: mime };
     const output: { buffer: Buffer | null } = { buffer: null };
 
-    await builder.sign(signer, input, output);
+    // 時刻証明（RFC 3161）付きで署名し、TSA が落ちていれば付けずに署名する（写真は止めない）。
+    const tsaUrl = process.env.C2PA_TSA_URL;
+    if (tsaUrl) output.buffer = await signWithTimeStamp(mode, tsaUrl, builder, input);
+    if (!output.buffer) await builder.sign(signer, input, output);
 
     if (!output.buffer) {
       console.error("[c2pa] signing produced no output buffer");

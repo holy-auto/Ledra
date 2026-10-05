@@ -32,10 +32,30 @@ C2PA Trust List の CA から署名証明書を得るには、Ledra を「Confor
      証明書発行時に求められることがある。【要確認: Ledra が狙う Assurance Level】
 3. Trust List CA（DigiCert または SSL.com 等）から end-entity 署名証明書を発行。
    - 費用は CA の商用条件次第。【要確認: 発行費用・更新頻度・年額】
+   - 2026-10-05 追記: ssl.com は適合済み Generator 製品向けに AL1 証明書（1年）を無料で発行し、タイムスタンプ枠
+     （年 2,500 件。2026-10-05 代表の申告）が付く。無料は1年のみで、無料の更新は無い（ssl.com の返答）。
+     詳細は OPEN_QUESTIONS 2026-10-05。
    - 【要確認: 日本からの契約可否・請求通貨・審査期間】
 
 > メモ: 一次情報は `c2pa-org/conformance-public` の `docs/current/`（Program 規程）と
 > `legal-agreements/`。CA 側は SSL.com / DigiCert の「Content Credentials / C2PA」製品ページ。
+
+### ssl.com 無料枠での手順（2026-10-05 決定・ssl.com 了承済み）
+
+1. **鍵と CSR を代表の PC で作る**（秘密鍵は PC から出さない。リポジトリの外のフォルダで作る）:
+   ```
+   openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out c2pa-signer.key.pem
+   openssl req -new -key c2pa-signer.key.pem -subj "/C=JP/O=HOLY Inc./CN=Ledra" -out c2pa-signer.csr.pem
+   ```
+   1行目は最初から PKCS#8（`-----BEGIN PRIVATE KEY-----`）で出るので、変換は要らない。
+   このコマンドで作った鍵と CSR から、手元のテスト CA で同じ形の証明書を作り、§4 のプリフライトで `Trusted`・GO に
+   なることを 2026-10-05 に確認した（無関係な信頼点では NO-GO）。
+   Windows で `openssl` が見つからない場合は Git for Windows 同梱の `<Git>\mingw64\bin\openssl.exe` を使う
+   （2026-10-05 に代表の PC で OpenSSL 3.5.5 により作成済み）。
+   **鍵ファイルは安全な場所に複製して保管する**: 無料枠は無料の再発行が無い（ssl.com の返答）ので、鍵を失うと
+   証明書を取り直すことになる。
+2. **Notice of Conformance が届いたら**、通知と `c2pa-signer.csr.pem`（CSR だけ）を ssl.com の担当者へ送る。
+3. 証明書が届いたら §3〜§4。
 
 ## 3. 証明書が用意できたら（env 投入）
 
@@ -51,7 +71,25 @@ end-entity 証明書は c2pa-rs の profile を満たすこと（通常 CA 発�
 `KeyUsage=digitalSignature` / `ExtendedKeyUsage=emailProtection`(OID 1.3.6.1.5.5.7.3.4) /
 `SubjectKeyIdentifier` / `BasicConstraints CA:FALSE`。署名アルゴリズムは鍵に応じて
 `es256`(P-256) / `es384`(P-384) / `ps256`(RSA) 等。現状コードは `es256` 固定
-（P-384 や RSA 証明書を使う場合は `c2paSigner.ts` の `newSigner` 第3引数を合わせる）。
+（P-384 や RSA 証明書を使う場合は `c2paSigner.ts` の2箇所を合わせる: `LocalSigner.newSigner` の第3引数と、
+`signWithTimeStamp` の `CallbackSigner` の `alg` および署名コールバックのハッシュ・形式。片方だけ変えると
+タイムスタンプ付きの署名が毎回失敗し、黙ってタイムスタンプなしに落ちる）。
+
+### 署名のタイムスタンプ（`C2PA_TSA_URL`）
+
+`C2PA_TSA_URL` に TSA の URL を入れると、claim 署名に RFC 3161 のタイムスタンプが入る。入れないと、検証器は
+署名証明書を「今」の時刻で判定するので、証明書の期限が切れた日から、それまでに署名した写真がすべて
+`signingCredential.expired` になる。**本番証明書と一緒に設定する。**
+
+- C2PA の **TSA Trust List** にチェーンする TSA を使う。チェーンしないと `timeStamp.untrusted` になり、期限切れの救済にならない。
+  汎用の `timestamp.digicert.com` は、推定: チェーンしない（リストにある DigiCert の TSA 中間 CA は C2PA 専用のものだけ）。未検証。
+- https のみ（中継が TLS 1.3 で送る）。
+- **決定: `https://ts-c2pa.ssl.com/ecc`**（DECISION_LOG 2026-10-05）。2026-10-05 に、https・TLS 1.3 で受けること、発行されたタイムスタンプが
+  TSA Trust List のルート（SSL.com C2PA ECC Root CA 2025）にチェーンすることを確認済み（OPEN_QUESTIONS 2026-10-05）。
+  利用条件・料金は【要確認】。
+- TSA が失敗・2秒で返らないときは、写真を止めずにタイムスタンプなしで署名し、ログに
+  `[c2pa] time-stamped signing failed` が出る。
+- 実装: `signWithTimeStamp`（`c2paSigner.ts`）。c2pa-rs の TSA 通信にはタイムアウトが無いので、127.0.0.1 の中継を挟んでいる。
 
 ## 4. 切替前チェック（必須）
 
