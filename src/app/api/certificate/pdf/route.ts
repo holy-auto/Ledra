@@ -1,5 +1,6 @@
 import { enforceBilling, isNavigation, redirectToPublic } from "@/lib/billing/guard";
 import { electronicDeliveryBlockMessage, BLOCKED_UNVERIFIED } from "@/lib/delivery/deliveryConsent";
+import { isValidStaffPdfToken } from "@/lib/certificates/staffPdfLink";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
@@ -135,10 +136,14 @@ export async function GET(req: Request) {
   // 電子交付の承諾ゲート（G3/G4）: 公開 PDF は記録簿の写しの電子交付経路。承諾を撤回した顧客
   // （事前承諾を必須にしたテナントでは未承諾・顧客未紐付けも）には出さない。公開ページの閲覧自体は止めない。
   // 判定できない（DB 一時障害）ときも出さないが、承諾の問題とは言わず再試行を案内する。
+  // 店舗スタッフが書面交付用に印刷する場合（モバイルが発行する期限付き署名 st）は承諾ゲートを通さない（staffPdfLink.ts）。
+  const staffToken = (searchParams.get("st") ?? "").trim();
   const blocked =
     fullErr || !fullCert?.tenant_id
       ? BLOCKED_UNVERIFIED
-      : await electronicDeliveryBlockMessage(adm, fullCert.tenant_id, fullCert.customer_id ?? null);
+      : staffToken && isValidStaffPdfToken(staffToken, pid, fullCert.tenant_id)
+        ? null
+        : await electronicDeliveryBlockMessage(adm, fullCert.tenant_id, fullCert.customer_id ?? null);
   if (blocked || !fullCert?.tenant_id) {
     const transient = blocked === BLOCKED_UNVERIFIED || !blocked;
     if (isNavigation(req)) {

@@ -165,10 +165,22 @@ export default function CertificateDetailScreen() {
       setSnackbar("PDFは有効化してから発行できます");
       return;
     }
-    const url = certPdfUrl(cert.public_id);
-    if (!url) {
+    const base = certPdfUrl(cert.public_id);
+    if (!base) {
       setSnackbar("PDFのURLが設定されていません（EXPO_PUBLIC_API_URL）");
       return;
+    }
+    // 公開ルートは電子交付の承諾を撤回した顧客には PDF を出さない。店舗は書面で渡すために印刷するので、
+    // スタッフ用の期限付き署名を付けて開く。署名を取れなくても、承諾のある顧客なら署名なしで出せるので続行する。
+    let url = base;
+    try {
+      const { token } = await mobileApi<{ token: string }>("/certificates/pdf-link", {
+        method: "POST",
+        body: { public_id: cert.public_id },
+      });
+      if (token) url = `${base}&st=${encodeURIComponent(token)}`;
+    } catch {
+      // 署名なしで続行
     }
     // 開けない端末がある（ブラウザ無し / MDM 制限）。黙って何も起きないと
     // 「押しても反応しない」に見えるので必ず知らせる
