@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createCustomerResolverFromCandidates } from "@/lib/customers/resolveCustomer";
+import { createCustomerResolver, createCustomerResolverFromCandidates } from "@/lib/customers/resolveCustomer";
 import type { CustomerCandidate } from "@/lib/ai/customerFuzzyMatch";
 
 /**
@@ -93,5 +93,28 @@ describe("resolveCustomer", () => {
     expect(second.method).toBe("linked");
     expect(second.customerId).toBe("new-1");
     expect(inserted).toHaveLength(1);
+  });
+});
+
+describe("createCustomerResolver", () => {
+  it("候補の読み込みに失敗したら新規作成せず skipped（重複顧客を作らない）", async () => {
+    const inserted: unknown[] = [];
+    const admin = {
+      from: () => ({
+        select: () => ({ eq: async () => ({ data: null, error: { message: "boom" } }) }),
+        insert: (row: unknown) => (
+          inserted.push(row),
+          { select: () => ({ single: async () => ({ data: row, error: null }) }) }
+        ),
+      }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    const resolver = await createCustomerResolver(admin, TENANT, { ai: false });
+    expect(await resolver.resolve({ name: "山田太郎" })).toEqual({
+      customerId: null,
+      method: "skipped",
+      confidence: 0,
+    });
+    expect(inserted).toEqual([]);
   });
 });

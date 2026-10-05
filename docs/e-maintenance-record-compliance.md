@@ -166,7 +166,7 @@ PDF ダウンロード（`content-disposition: attachment`）により、使用�
 
 | 規制要求 | 実装 |
 | --- | --- |
-| 承諾なし・承諾撤回時は電磁的交付を禁止 | ✅ **撤回フロー＋撤回後ブロックを追加（2026-10-02 / G4）**。使用者本人の撤回（`POST /api/customer/delivery-consent/revoke`、顧客ポータルセッション）と店舗代行の撤回（`DELETE /api/admin/customers/:id/delivery-consent`）。**撤回済みの顧客には規制対象記録（証明書＝記録簿の写し）の電子交付（受領サイン依頼メール）をブロック**（`certificates/:id/delivery-receipt-request` で判定、409）。**未承諾（none）のハードブロックはテナント opt-in**（`tenants.require_delivery_consent`、既定 false＝非破壊。2026-10-05）。ON のテナントでは承諾未記録の顧客への電子交付（受領サイン依頼・署名依頼）も 409。ON のテナントでは顧客未紐付けの証明書もブロック。判定は共通ゲート `electronicDeliveryBlockMessage`（承諾状態の確認不能は fail-closed、テナント設定の読み取り失敗は既定扱い）。⚠️ 公開証明書ページ・発行済みリンクはゲート対象外（OPEN_QUESTIONS）。見積/請求の送付（`documents/share`）は対象外。顧客未紐付け（customer_id 無し）の証明書は顧客単位判定不可のため従来どおり（後続）。 |
+| 承諾なし・承諾撤回時は電磁的交付を禁止 | ✅ **撤回フロー＋撤回後ブロックを追加（2026-10-02 / G4）**。使用者本人の撤回（`POST /api/customer/delivery-consent/revoke`、顧客ポータルセッション）と店舗代行の撤回（`DELETE /api/admin/customers/:id/delivery-consent`）。**撤回済みの顧客には規制対象記録（証明書＝記録簿の写し）の電子交付（受領サイン依頼メール）をブロック**（`certificates/:id/delivery-receipt-request` で判定、409）。**未承諾（none）のハードブロックはテナント opt-in**（`tenants.require_delivery_consent`、既定 false＝非破壊。2026-10-05）。ON のテナントでは承諾未記録の顧客への電子交付（受領サイン依頼・署名依頼）も 409。ON のテナントでは顧客未紐付けの証明書もブロック。判定は共通ゲート `electronicDeliveryBlockMessage`（承諾状態の確認不能は fail-closed、テナント設定の読み取り失敗は既定扱い）。⚠️ 公開証明書ページ・発行済みリンクはゲート対象外（OPEN_QUESTIONS）。見積/請求の送付（`documents/share`）は対象外。新規の証明書は作成時に顧客マスタへ自動で紐付ける（管理画面/モバイルは従来から、API 経路は 2026-10-05 に対応）。過去データの未紐付け証明書（とその複製）は既定テナントでは従来どおり交付（OPEN_QUESTIONS）。 |
 
 ### （５）閲覧・表示・書面作成方法の教示 — 🏢/⚠️ 運用（導線あり）
 
