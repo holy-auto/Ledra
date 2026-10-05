@@ -3865,6 +3865,7 @@
 "plan_tier",
 "prefecture",
 "registration_number",
+"require_delivery_consent",
 "require_inspector_qualification",
 "slug",
 "square_merchant_id",
