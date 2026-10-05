@@ -4,6 +4,7 @@ import {
   deliveryConsentStatus,
   isElectronicDeliveryBlocked,
   electronicDeliveryBlockMessage,
+  customerFacingDeliveryBlock,
   computeDeliveryConsentTextHash,
   deliveryConsentText,
   DELIVERY_CONSENT_VERSION,
@@ -95,5 +96,38 @@ describe("electronicDeliveryBlockMessage [G3/G4 交付ゲート]", () => {
       ["customer_id", "c1"],
     ]);
     expect(calls.tenants).toEqual([["id", "t1"]]);
+  });
+});
+
+describe("customerFacingDeliveryBlock [発行済みの署名/受領リンク]", () => {
+  const CERT = ok({ tenant_id: "t1", customer_id: "c1" });
+
+  it("証明書に紐付かないセッションは対象外（DB を読まない）", async () => {
+    const { db, calls } = makeDb({});
+    expect(await customerFacingDeliveryBlock(db, null)).toBeNull();
+    expect(calls).toEqual({});
+  });
+  it("撤回済みなら 409。お客様向けの文面で、店舗向けの理由（撤回の有無）は出さない", async () => {
+    const r = await customerFacingDeliveryBlock(
+      makeDb({ certificates: CERT, delivery_consents: ok({ status: "revoked" }) }).db,
+      "cert1",
+    );
+    expect(r?.status).toBe(409);
+    expect(r?.message).not.toMatch(/撤回/);
+  });
+  it("承諾済みなら通す・その証明書の顧客で判定する", async () => {
+    const { db, calls } = makeDb({ certificates: CERT, delivery_consents: ok({ status: "granted" }) });
+    expect(await customerFacingDeliveryBlock(db, "cert1")).toBeNull();
+    expect(calls.certificates).toEqual([["id", "cert1"]]);
+    expect(calls.delivery_consents).toEqual([
+      ["tenant_id", "t1"],
+      ["customer_id", "c1"],
+    ]);
+  });
+  it("証明書・承諾状態を読めないときは 503（承諾の問題とは言わない）", async () => {
+    expect((await customerFacingDeliveryBlock(makeDb({ certificates: fail }).db, "cert1"))?.status).toBe(503);
+    expect(
+      (await customerFacingDeliveryBlock(makeDb({ certificates: CERT, delivery_consents: fail }).db, "cert1"))?.status,
+    ).toBe(503);
   });
 });

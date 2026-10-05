@@ -18,6 +18,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { customerFacingDeliveryBlock } from "@/lib/delivery/deliveryConsent";
 import { apiOk, apiError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { getValidSessionByToken } from "@/lib/signature/session";
@@ -117,6 +118,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   }
 
   const supabase = createServiceRoleAdmin("signature flow — opaque token lookup, customer is unauthenticated");
+  // G3/G4: 発行後に承諾が撤回された・事前承諾が必須になった場合は、開いた時点で止める（リンクの失効の代わり）。
+  const deliveryBlock = await customerFacingDeliveryBlock(supabase, session.certificate_id);
+  if (deliveryBlock) {
+    return apiError({
+      code: deliveryBlock.status === 409 ? "conflict" : "db_error",
+      message: deliveryBlock.message,
+      status: deliveryBlock.status,
+    });
+  }
+
   const signedAt = new Date().toISOString();
   const normalizedEmail = signer_email;
 
