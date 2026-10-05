@@ -3,6 +3,20 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## C2PA の claim 署名に使う TSA の URL（2026-10-05）
+
+- `C2PA_TSA_URL` に入れる URL が未決。条件は2つ: (1) C2PA の TSA Trust List（同梱の22件）にチェーンすること、
+  (2) https で、TLS 1.3 で受けること（中継は `tls13HttpsFetch` で、http は送らない）。
+- 汎用の `timestamp.digicert.com` は、推定: TSA Trust List にチェーンしない — 根拠は、リストにある DigiCert の TSA 中間 CA が
+  「DigiCert … TSA ICA for C2PA G1」だけであること。未検証。
+- SSL.com は C2PA 用 TSA として `http://ts-c2pa.ssl.com/ecc` と `/rsa` を案内している（2026-10-05 の Web 検索結果の要約。
+  公式ページは環境から開けず未確認）。**https・TLS 1.3 で受けるかは未確認**。代表の PC で
+  `curl.exe --tlsv1.3 -sI https://ts-c2pa.ssl.com/ecc` を打てば分かる。https で受けない場合、TSA だけ http を許すかは代表判断
+  （トークンは TSA の署名付きなので改ざんは検知できる。送るのは画像のハッシュだけ）。
+- DigiCert の C2PA 用 TSA の URL は【要確認】（DigiCert の資料はこの環境から開けない）。
+- 本番の証明書と同じ CA の TSA にするかも未決。
+- タイムスタンプなしに落ちた写真の件数は、今はログ（`[c2pa] time-stamped signing failed`）でしか分からない。
+
 ## 実証テスト: 契約同意の控えが ft_job_assigned を流用している（2026-10-03）
 
 `/api/{admin,mobile}/field-test/agreements/[id]` は、同意した施工店自身へ「契約に同意しました」を `ft_job_assigned` で出している

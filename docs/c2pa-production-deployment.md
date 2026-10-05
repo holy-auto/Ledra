@@ -53,6 +53,19 @@ end-entity 証明書は c2pa-rs の profile を満たすこと（通常 CA 発�
 `es256`(P-256) / `es384`(P-384) / `ps256`(RSA) 等。現状コードは `es256` 固定
 （P-384 や RSA 証明書を使う場合は `c2paSigner.ts` の `newSigner` 第3引数を合わせる）。
 
+### 署名のタイムスタンプ（`C2PA_TSA_URL`）
+
+`C2PA_TSA_URL` に TSA の URL を入れると、claim 署名に RFC 3161 のタイムスタンプが入る。入れないと、検証器は
+署名証明書を「今」の時刻で判定するので、証明書の期限が切れた日から、それまでに署名した写真がすべて
+`signingCredential.expired` になる。**本番証明書と一緒に設定する。**
+
+- C2PA の **TSA Trust List** にチェーンする TSA を使う。チェーンしないと `timeStamp.untrusted` になり、期限切れの救済にならない。
+  汎用の `timestamp.digicert.com` は、推定: チェーンしない（リストにある DigiCert の TSA 中間 CA は C2PA 専用のものだけ）。未検証。
+- https のみ（中継が TLS 1.3 で送る）。候補の URL と https 対応の確認は OPEN_QUESTIONS（2026-10-05）。
+- TSA が失敗・2秒で返らないときは、写真を止めずにタイムスタンプなしで署名し、ログに
+  `[c2pa] time-stamped signing failed` が出る。
+- 実装: `signWithTimeStamp`（`c2paSigner.ts`）。c2pa-rs の TSA 通信にはタイムアウトが無いので、127.0.0.1 の中継を挟んでいる。
+
 ## 4. 切替前チェック（必須）
 
 **本番反映の前に、証明書がちゃんと「Trusted」になるかをローカルで確認する。**
