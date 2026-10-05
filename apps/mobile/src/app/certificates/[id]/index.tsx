@@ -34,7 +34,7 @@ import { File, Paths } from "expo-file-system";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
-import { mobileApi } from "@/lib/api";
+import { mobileApi, ApiError } from "@/lib/api";
 import { publicCertUrl, certPdfUrl } from "@/lib/certificateLinks";
 import { StatusBadge, LedraButton } from "@/components/ui";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
@@ -165,10 +165,25 @@ export default function CertificateDetailScreen() {
       setSnackbar("PDFは有効化してから発行できます");
       return;
     }
-    const url = certPdfUrl(cert.public_id);
-    if (!url) {
+    const base = certPdfUrl(cert.public_id);
+    if (!base) {
       setSnackbar("PDFのURLが設定されていません（EXPO_PUBLIC_API_URL）");
       return;
+    }
+    // 公開ルートは電子交付の承諾を撤回した顧客には PDF を出さない。店舗は書面で渡すために印刷するので、
+    // スタッフ用の期限付き署名を付けて開く。署名を取れなくても、承諾のある顧客なら署名なしで出せるので続行する。
+    let url = base;
+    try {
+      const { token } = await mobileApi<{ token: string }>("/certificates/pdf-link", {
+        method: "POST",
+        body: { public_id: cert.public_id },
+      });
+      if (token) url = `${base}&st=${encodeURIComponent(token)}`;
+    } catch (e) {
+      // ログイン切れはサインアウト誘導済み。PDF は開かない（ログイン画面とブラウザが同時に出るのを防ぐ）
+      if (e instanceof ApiError && e.status === 401) return;
+      // 署名なしで続行するが、承諾のない顧客の PDF は出せないことを知らせる（黙って案内ページに飛ばさない）
+      setSnackbar("スタッフ用リンクを取得できませんでした。承諾のないお客様のPDFは出せない場合があります");
     }
     // 開けない端末がある（ブラウザ無し / MDM 制限）。黙って何も起きないと
     // 「押しても反応しない」に見えるので必ず知らせる
