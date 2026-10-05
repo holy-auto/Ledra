@@ -1388,12 +1388,20 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
     できていなければ、`C2PA_MODE=production` にした瞬間に全アップロードが
     `signer_unavailable` で断られる。**オンにする前に本番環境での読み込み可否を確かめること。**
     先行検査を入れたので、落ちるとしても「1枚も保存されず 503」という分かる形になる。
-  - 【要確認】**HEIC を c2pa-node が署名できるか。** `validateMagicBytes` は `image/heic` を受け、
-    管理画面の `accept` にも入っているが、`c2paSignValidate.test.ts` は jpeg/png/webp しか見ていない。
-    `stripGpsAndReadExif` は `toFormat` を指定しないので入力形式のまま署名へ渡る。
-    署名できない場合、**本番オン後に iPhone 既定の HEIC が全部 503 になる**（以前は黙って
-    未署名で保存されていた）。手元の sharp の heif は avif 専用で HEIC を作れず検証できなかったので、
-    **実機で撮った HEIC で確かめること。**
+  - **決着（2026-10-05 実測）: HEIC は署名できる。** `c2paSignValidate.test.ts` に `image/heic` を
+    恒久ケースとして追加した（計4形式）。読み戻した manifest の failure コードは
+    `signingCredential.untrusted` と `claimSignature.mismatch` の2つだけで、これは jpeg/png/webp と
+    同じ＝**dev 自己署名証明書の癖だけで、内容・構造のエラーはゼロ**。入口も通る:
+    `detectMagicByteMime` はブランド `heic` / `mif1` を `image/heic` と判定する（`avif` は null＝不受理）。
+    - **検証の作り方と天井**: sharp のプリビルドは HEVC を書けないので、同じ ISO BMFF（HEIF）族の
+      AVIF を作り `ftyp` のメジャーブランドだけ `heic` に差し替えて署名させた。manifest の埋め込みは
+      コンテナの box 構造しか触らず画素をデコードしないので、この経路で「`image/heic` の資産に署名して
+      読み戻せるか」は見られる。**天井: 実機 HEVC 写真の多 item な box 構成（iinf/iloc のオフセット
+      書き換え）は見ていない。** 実機 HEIC が手に入ったらバイト列を fixture にして差し替えるのが本筋。
+    - **以前ここに書いていた「手元では検証できないので実機で確かめること」は誤り**だった。
+      sharp が HEIC を作れないことは事実だが、**署名はデコードを要さない**ので、道具の限界が
+      問いの限界ではなかった（MISTAKE_LEDGER `M-20261005-took-sharps-limit-as-the-limit-of-what-i-could-verify`）。
+      **「本番オン後に iPhone 既定の HEIC が全部 503」という以前の見立ては、もう生きていない。**
 - **未決（今回の変更で残ったもう1つ）**: `providers.test.ts` の
   「c2pa-node が無ければ graceful-degradation の契約だけを見る」分岐。
   これは skip ではなく実際に assert しているので沈黙ではないが、**強い検証が
@@ -2224,7 +2232,10 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
 ## C2PA Conformance Program 申請（AL1・Backend）の未確定事項（2026-08-11）
 - 状況: 申請方針は「GP / Backend / Max Assurance Level 1 先行」に決定（DECISION_LOG 2026-08-11、詳細は `docs/c2pa-conformance-application.md`）。申請前に埋める必要のある事実が残る。
 - 進捗（2026-09-03）: **EOI → Legal Agreement 署名 → Program Intake Form 提出済み**（提出値は `docs/c2pa-conformance-application.md` §11）。次は Administrator のレビュー→証拠提出（サンプル＋GPSA）。
-- **一部修正済み（2026-09-03、詳細は §12）**: 証拠用サンプルで判明したマニフェスト非準拠のうち **(1) actions の C2PA 2.x 非準拠を修正済み**（`c2pa.opened`→`c2pa.created`+`digitalSourceType`、`orientation`/`converted`/`edited` 維持）。実署名検証テスト `c2paSignValidate.test.ts` を新設。**全て解決（2026-09-03）**: (2) `claimSignature.mismatch` は dev 自己署名証明書だけの癖と確定 — c2patool 公式 ES256 証明書で署名すると `validation_state: Valid`／署名エラーなし（残は untrusted のみ＝適合後に解消）。**製品の署名ロジックは健全、本番鍵は不要で証明済み**。(3) HEIC も署名可能・準拠。本番鍵は適合認定後に CA から発行されるため申請時点では未保有だが、証拠サンプルは適合前でも正しい署名で提示できる。→ **署名・マニフェスト面のブロッカーは解消**。**GPSA 提出用ドラフト `docs/c2pa-gpsa.md`＋アーキ図作成済み**。v0.2 追加要件（specVersion/allActionsIncluded）も対応済み（0f860fc）。
+- **一部修正済み（2026-09-03、詳細は §12）**: 証拠用サンプルで判明したマニフェスト非準拠のうち **(1) actions の C2PA 2.x 非準拠を修正済み**（`c2pa.opened`→`c2pa.created`+`digitalSourceType`、`orientation`/`converted`/`edited` 維持）。実署名検証テスト `c2paSignValidate.test.ts` を新設。**全て解決（2026-09-03）**: (2) `claimSignature.mismatch` は dev 自己署名証明書だけの癖と確定 — c2patool 公式 ES256 証明書で署名すると `validation_state: Valid`／署名エラーなし（残は untrusted のみ＝適合後に解消）。**製品の署名ロジックは健全、本番鍵は不要で証明済み**。(3) HEIC も署名可能・準拠 —— **ただしこの一文は書かれた時点（2026-09-08）では根拠が無かった**。
+同じ 2026-09-03 の DECISION_LOG は「(d) HEIC 署名可否を実ファイルで確認」を**残**と書き、「まだ答えが
+出ていないこと: HEIC 署名可否」と明記している。**結論は正しかったが、確かめずに「解決」に入れていた。**
+実測で裏が取れたのは 2026-10-05（`c2paSignValidate.test.ts` の `image/heic` ケース）。本番鍵は適合認定後に CA から発行されるため申請時点では未保有だが、証拠サンプルは適合前でも正しい署名で提示できる。→ **署名・マニフェスト面のブロッカーは解消**。**GPSA 提出用ドラフト `docs/c2pa-gpsa.md`＋アーキ図作成済み**。v0.2 追加要件（specVersion/allActionsIncluded）も対応済み（0f860fc）。
 
 - **2026-09-03 Administrator が Intake 受理・証拠パッケージ要求（Record ID 01a06690-d01e-7608-ad8a-cd4f1a49d76e）**。
 - **2026-09-04 方針: validate 申告を取り下げ、Generator（生成）のみで申請**（DECISION_LOG 2026-09-04）。これに伴い ingredient サンプル・crJSON harness は**不要化**（validate 依存の残タスクを削除）。

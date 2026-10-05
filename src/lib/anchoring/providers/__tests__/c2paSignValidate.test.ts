@@ -26,10 +26,21 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
   let Reader: C2paReader;
   let originalMode: string | undefined;
 
-  const TYPES: Array<{ fmt: "jpeg" | "png" | "webp"; mime: string }> = [
+  const TYPES: Array<{ fmt: "jpeg" | "png" | "webp" | "avif"; mime: string; rebrand?: string }> = [
     { fmt: "jpeg", mime: "image/jpeg" },
     { fmt: "png", mime: "image/png" },
     { fmt: "webp", mime: "image/webp" },
+    // **iPhone 既定の HEIC**。ここが抜けていたため、「c2pa-node が HEIC を署名できるか」は
+    // 長く【要確認】のままだった（本番で署名必須にした今は、署名できなければ HEIC が全部
+    // 断られる）。2026-10-05 に実測して通ることを確認し、この行で恒久的に見張る。
+    //
+    // ponytail: sharp のプリビルドは HEVC を書けないので、同じ ISO BMFF（HEIF）族の AVIF を
+    // 作り、`ftyp` のメジャーブランドだけ `heic` に差し替えて署名させる。manifest の埋め込みは
+    // コンテナの box 構造しか触らず画素をデコードしないので、この経路で「image/heic の資産に
+    // 署名して読み戻せるか」は見られる。**天井**: 実機 HEVC 写真の多 item な box 構成
+    // （iinf/iloc のオフセット書き換え）は見ていない。実機で撮った HEIC が手に入ったら、
+    // そのバイト列を fixture にしてこの行を差し替えるのが本筋。
+    { fmt: "avif", mime: "image/heic", rebrand: "heic" },
   ];
 
   // Codes acceptable for a dev-signed (ephemeral self-signed) cert. These are
@@ -52,12 +63,23 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
     if (!Reader) throw new Error("c2pa-node の Reader export が見つかりません（API 形状の退行）");
 
     const { signC2pa } = await import("../c2pa");
-    for (const { fmt, mime } of TYPES) {
+    for (const { fmt, mime, rebrand } of TYPES) {
       const buf = await sharp({
         create: { width: 240, height: 160, channels: 3, background: { r: 20, g: 90, b: 160 } },
       })
         [fmt]()
         .toBuffer();
+      if (rebrand) {
+        // 差し替えたブランドが本当に入ったことを確かめてから署名する。黙って avif のまま
+        // 署名すると「HEIC を見ている」と誤解したまま緑になる。
+        if (buf.subarray(4, 8).toString("ascii") !== "ftyp") {
+          throw new Error(`${fmt} の先頭に ftyp box が無い（sharp の出力形式が変わった）`);
+        }
+        buf.write(rebrand, 8, 4, "ascii");
+        if (buf.subarray(8, 12).toString("ascii") !== rebrand) {
+          throw new Error(`ftyp のメジャーブランドを ${rebrand} に差し替えられなかった`);
+        }
+      }
       const res = await signC2pa(buf, mime);
       if (res.signedBuffer) signedByType[mime] = res.signedBuffer;
     }
