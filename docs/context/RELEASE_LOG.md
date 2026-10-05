@@ -4,6 +4,19 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-05 指定整備記録簿の「保持期限後の消去」経路を実装（G2）
+
+- 内容: 完成検査（指定整備記録簿）は2年保存のためアプリに消去経路が無かった。**保持期限（`record_retention_until`）
+  を過ぎた記録のみ**を owner/admin が消去できる経路を `inspection-records` に追加（`DELETE`）。
+  - server 強制: (1) 権限は `minRole:"admin"`、(2) `isRetentionExpired`（`src/lib/retention.ts`・新設・純関数）で
+    期限経過を必須化（期限内＝409・保持期限未設定の記録＝対象外で409）、(3) 消去を `logTenantAuditEvent`
+    （`inspection_record_deleted`、期限日と inspection_type を付与）で記録。
+  - UI: 案件の点検タブ（`JobInspectionTab`）に「保持期限後の消去」ボタンを追加。**管理者以上 かつ 保持期限経過**の
+    完成検査にだけ表示（確認ダイアログ付き）。過去に staff 可視ボタン＋常時ブロックを入れて撤回した反省
+    （MISTAKE_LEDGER M-20261002-delete-ignored-legal-retention）を踏まえ、権限と期限の二重ゲートを UI と server の両方に。
+  - 期限判定は Asia/Tokyo の当日（`todayInJst`）。保存年数は2年スケールのため当日境界の差は実害なし。
+- 検証: `retention` 純関数の単体テスト 6 件（期限前/当日/期限後/不正日付/未設定/JST 境界）、tsc・eslint（変更 0 error）・check:schema 緑。
+
 ## 2026-10-03 documents / body_repair_jobs の作成・更新・削除を監査ログ化（G2）
 
 - 内容: 第２ ２（３）の「作成・更新の日時／更新箇所／作業者」の自動記録を、inspection_records（完成検査）に続いて
