@@ -3,6 +3,27 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## staging（Ledra-staging）の残作業（2026-10-05）
+
+スキーマ投入と DB 層の確認までは済んだ（DECISION_LOG 2026-10-05）。残りは次のとおり。
+
+- **アプリ経由の E2E が未実施**。手順書（`docs/operations/certificate-photo-e2e-checklist.md`）の B（HTTP）を流すには、
+  Vercel の Preview（`staging` ブランチ）の環境変数を `Ledra-staging` の URL・anon キー・service_role キーに向け、staff の
+  テストユーザーを作る必要がある。Vercel のダッシュボード作業なので代表の操作が要る。
+- **マイグレーションの適用履歴が無い**。スキーマはダンプで入れたので、`supabase_migrations.schema_migrations` が空。この状態で
+  `supabase db push` すると 520 本を最初から流し直そうとする。使う前に `supabase migration repair --status applied` で履歴を
+  合わせるか、staging を作り直す（未実施。コマンドの挙動は要確認）。
+- **main との差が1本**。staging は 520 本の時点（48b4a4e5）。`20261005140000_require_delivery_consent.sql` が未適用。
+- **作業用の残骸**: `public._schema_loader`（中身はスキーマ定義のみ、anon の権限は外した）、空の `_probe_c` 〜 `_probe_f`、
+  関数 `_probe_fn`。私の接続からは DROP が確認待ちのまま止まるので消せていない。SQL エディタで
+  `drop table public._schema_loader, public._probe_c, public._probe_d, public._probe_e, public._probe_f; drop function public._probe_fn();`
+- **pooler の認証が通らなかった原因**が不明（英数字のパスワードにリセットしても `password authentication failed`）。
+  ダッシュボードのリセットが反映されていなかったのか、別の理由かは未確認。staging の DB パスワードはチャットに出たので、
+  原因を調べるときに一緒にリセットする。
+- **staging の作り方を Branching に切り替えるか**。独立プロジェクトは環境変数・バケット・マスタデータを手で揃える必要がある。
+  Supabase の Branching ならプレビュー分岐が自動で作られる。本番の `assets` バケットがマイグレーションに無い点（手作業で作られた）も
+  含めて、どちらに寄せるか未決。
+
 ## C2PA 本番証明書を ssl.com の無料枠で取る: 残る確認（2026-10-05）
 
 TSA の URL（`https://ts-c2pa.ssl.com/ecc`）と、証明書・TSA とも ssl.com の無料枠で取ることは決定済み
