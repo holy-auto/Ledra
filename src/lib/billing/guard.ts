@@ -40,7 +40,7 @@ function json(status: number, body: Record<string, unknown>, extraHeaders?: Reco
   });
 }
 
-function isNavigation(req: Request) {
+export function isNavigation(req: Request) {
   const accept = req.headers.get("accept") ?? "";
   const mode = req.headers.get("sec-fetch-mode") ?? "";
   const dest = req.headers.get("sec-fetch-dest") ?? "";

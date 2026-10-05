@@ -218,6 +218,8 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
     notice === "pdf_blocked_grace_expired" ||
     notice === "pdf_blocked_inactive" ||
     notice === "pdf_blocked_plan";
+  // 電子交付の承諾（G3/G4）が確認できない顧客の証明書。課金停止とは理由が違うので文言を分ける。
+  const isPdfConsentBlocked = notice === "pdf_blocked_consent";
 
   const passportVin = (data as { passport_vin?: string | null }).passport_vin ?? null;
   const manufacturer =
@@ -327,6 +329,15 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
           <div className="mb-1.5 font-extrabold">この証明書は無効化されています</div>
           <div className="text-sm leading-relaxed">
             この公開ページでは記録の存在確認のみ可能です。PDF出力と添付画像の公開表示は停止しています。詳細確認は発行店舗へお問い合わせください。
+          </div>
+        </div>
+      ) : null}
+
+      {isPdfConsentBlocked ? (
+        <div className="mb-4 rounded-xl border border-amber-500/30 bg-[rgba(245,158,11,0.1)] p-4 text-amber-400">
+          <div className="mb-1.5 font-bold">この証明書のPDF出力は停止しています</div>
+          <div className="text-sm leading-relaxed">
+            電子データでのお渡しに必要なご承諾が確認できないため、PDFは出力できません。このページの閲覧は引き続きご利用いただけます。書面でのお渡しは発行店舗へお問い合わせください。
           </div>
         </div>
       ) : null}
