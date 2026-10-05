@@ -12,8 +12,9 @@
 > TSA が落ちている・2秒で返らないときは、写真を止めずにタイムスタンプなしで署名する。TSA への通信は TLS 1.3・https のみ。
 > #1231 で main にマージ済み（26959d80）。**TSA は `https://ts-c2pa.ssl.com/ecc` に決定**（TLS 1.3 で受けること、トークンが
 > TSA Trust List にチェーンすることを実測）。**本番証明書と TSA は ssl.com の C2PA 無料枠で取る**と代表が決定
-> （DECISION_LOG 2026-10-05）。次は代表が ssl.com のポータルで申込画面を開き、鍵の作り方（CSR か否か）を決める。
-> Notice of Conformance は 2026-10-05 時点で未着。
+> （DECISION_LOG 2026-10-05）。ssl.com は問い合わせに、CSR 方式で可・subject `CN=Ledra, O=HOLY Inc., C=JP` で可・
+> **発行は Notice of Conformance の受領後**・**無料は1年のみ（無料更新なし）**と返答した。鍵と CSR の作り方は
+> `docs/c2pa-production-deployment.md` §2。Notice of Conformance は 2026-10-05 時点で未着。
 
 > 2026-10-02 追記（**Japan Mobility Show Bizweek 2026 に Ledra を出展**）: 会期 2026-10-13〜16・幕張メッセ
 > 展示ホール2・3、小間位置 ZONE1「滞らないシステムで、広がる安心。」S-06。出展内容は Ledra（代表回答）。

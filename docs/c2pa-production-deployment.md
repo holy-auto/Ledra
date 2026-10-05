@@ -40,6 +40,19 @@ C2PA Trust List の CA から署名証明書を得るには、Ledra を「Confor
 > メモ: 一次情報は `c2pa-org/conformance-public` の `docs/current/`（Program 規程）と
 > `legal-agreements/`。CA 側は SSL.com / DigiCert の「Content Credentials / C2PA」製品ページ。
 
+### ssl.com 無料枠での手順（2026-10-05 決定・ssl.com 了承済み）
+
+1. **鍵と CSR を代表の PC で作る**（秘密鍵は PC から出さない。リポジトリの外のフォルダで作る）:
+   ```
+   openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out c2pa-signer.key.pem
+   openssl req -new -key c2pa-signer.key.pem -subj "/C=JP/O=HOLY Inc./CN=Ledra" -out c2pa-signer.csr.pem
+   ```
+   1行目は最初から PKCS#8（`-----BEGIN PRIVATE KEY-----`）で出るので、変換は要らない。
+   このコマンドで作った鍵と CSR から、手元のテスト CA で同じ形の証明書を作り、§4 のプリフライトで `Trusted`・GO に
+   なることを 2026-10-05 に確認した（無関係な信頼点では NO-GO）。
+2. **Notice of Conformance が届いたら**、通知と `c2pa-signer.csr.pem`（CSR だけ）を ssl.com の担当者へ送る。
+3. 証明書が届いたら §3〜§4。
+
 ## 3. 証明書が用意できたら（env 投入）
 
 `.env` に以下を設定（詳細は `.env.example` の C2PA セクション）:
