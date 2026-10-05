@@ -23,6 +23,36 @@ TSA の URL（`https://ts-c2pa.ssl.com/ecc`）と、証明書・TSA とも ssl.c
   Ledra の写真は本番 `certificate_images` で直近12か月 88 枚（全期間も 88 枚、最終 2026-09-20）で、少ない方の 2,500 件でも約 3.5%。
 - タイムスタンプなしに落ちた写真の件数は、今はログ（`[c2pa] time-stamped signing failed`）でしか分からない。
 
+## Vercel の Preview デプロイが一部ブランチで連続失敗する（2026-10-05）
+
+`claude/mobile-app-opening-animation-s2a6m3` の Preview デプロイが **4コミット連続で失敗**している
+（`355824b` / `dd8ef08` / `797b5e6` / `ef48f90`）。`dd8ef08` は #1232 の head で、そのままマージされ main は緑。
+同様の失敗は #1220 / #1222 / #1224（いずれも 2026-10-03）でも起きており、すべてマージ後の main は success。
+
+測った事実:
+
+- **本番は正常**: main の `a70a5eb` の Vercel は 11:20:46Z に success。その**約3分後** 11:24:07Z に
+  同 PR の Preview が failure。Vercel 全体の障害では説明できない。
+- **他ブランチの Preview は通る**: #1230（`8e2e955`）の Preview は同日 10:16:22Z に success。
+- **差分の内容とは無関係**: #1237 は Markdown 5ファイルのみ、#1220 はコード18ファイル。両方失敗。
+- **マージはブロックされない**: #1237 の `mergeable_state` は `unstable`（＝必須チェックではない）。
+- 失敗までの時間は約3分（11:29:51 building → 11:32:57 error）。
+
+**原因は未特定。** ビルドログを読めば確定するが、セッションに Vercel の資格情報が無く
+`npx vercel inspect <dpl_id> --logs` を実行できない。推定の候補（いずれも未検証）: Preview 環境だけに
+足りない環境変数 / キャッシュ無しフルビルドの OOM（DECISION_LOG 2026-09-29 に同種の記録）/
+ブランチ名から生成される Preview エイリアスが 63 文字ちょうどで、その付与に失敗。
+**推定で潰しにいかず、まずログを読むこと。**
+
+
+## モバイル一覧カードの `>` 修正: 実機での見た目確認が未了（2026-10-05）
+
+#1232（RELEASE_LOG 2026-10-05）で、6画面の一覧カードに `paddingRight` を入れて絶対配置の `>` の帯を避けた。
+検証は「カードの実効 `paddingRight` が帯の右端以上か」を座標で突き合わせたスクリプト（8バリアント / NG 0）までで、
+**実機の見た目は確認できていない**。確認手順は `git pull` → `npx expo start -c` → 作業一覧で
+**メニュー名が長くて折り返す予約**を見る（最初の誤った修正で壊れたままだった行がそこ）。
+重なりが残っていれば帯の幅の見積もり（`right` + アイコン20px）が違う。
+
 ## 実証テスト: 契約同意の控えが ft_job_assigned を流用している（2026-10-03）
 
 `/api/{admin,mobile}/field-test/agreements/[id]` は、同意した施工店自身へ「契約に同意しました」を `ft_job_assigned` で出している
@@ -57,17 +87,12 @@ Ledra ドメインから送れる。テナント UUID は推測しにくく、�
 3. **inspection_records（指定整備記録簿）の顧客向け電子交付**: 現状アプリに経路が無い（管理PDFのみ）。顧客へ電子交付する
    経路を設ける場合は同じ `delivery_consents` ゲートを通すこと。
 
-## G2 監査ログ: 作成/更新は inspection_records・documents・body_repair_jobs とも対応、残るは消去 cron（2026-10-02）
+## G2 監査ログ: 作成/更新/消去は対応、残るは cron の横断監査（2026-10-02）
 
-`inspection_records`（完成検査）に加え、`documents` / `body_repair_jobs` の作成/更新（documents は削除も）を
-`audit_logs` に記録した（RELEASE_LOG 2026-10-02・2026-10-03）。残り。
+`inspection_records`（完成検査）・`documents` / `body_repair_jobs` の作成/更新/削除を `audit_logs` に記録
+（RELEASE_LOG 2026-10-02・2026-10-03）。保持期限後の消去経路も実装（RELEASE_LOG 2026-10-05）。残り。
 
-1. **消去経路（保持期限後）**: 完成検査は `record_retention_until`＝2年保存で、保持期間中はアプリに消去経路を
-   持たない（保存義務に沿う）。保持期限後に管理者が消去できる経路を設けるなら、(a) `record_retention_until`
-   経過の確認を必須にし、(b) 消去を `logTenantAuditEvent`（`inspection_record_deleted`）で残すこと。
-   当初この PR で owner/admin 消去＋UI を入れたが、保持期間中は常にブロックされ無意味で保持義務とも衝突するため
-   撤回した（MISTAKE_LEDGER M-20261002-delete-ignored-legal-retention）。
-2. **保持期限 cron（`data-retention`）の横断監査**: cron は認証コード/セッション/通知ログ等の**非・記録簿**を
+1. **保持期限 cron（`data-retention`）の横断監査**: cron は認証コード/セッション/通知ログ等の**非・記録簿**を
    全テナント横断で削除する。`audit_logs.tenant_id` が NOT NULL なので単一行では残せない。テナント別に集計するか
    cron 専用の削除サマリ表を設けるか未決（運用ログの充実・優先度中。記録簿の消去要件には無関係）。
 

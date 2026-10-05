@@ -4,6 +4,19 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-05 指定整備記録簿の「保持期限後の消去」経路を実装（G2）
+
+- 内容: 完成検査（指定整備記録簿）は2年保存のためアプリに消去経路が無かった。**保持期限（`record_retention_until`）
+  を過ぎた記録のみ**を owner/admin が消去できる経路を `inspection-records` に追加（`DELETE`）。
+  - server 強制: (1) 権限は `minRole:"admin"`、(2) `isRetentionExpired`（`src/lib/retention.ts`・新設・純関数）で
+    期限経過を必須化（期限内＝409・保持期限未設定の記録＝対象外で409）、(3) 消去を `logTenantAuditEvent`
+    （`inspection_record_deleted`、期限日と inspection_type を付与）で記録。
+  - UI: 案件の点検タブ（`JobInspectionTab`）に「保持期限後の消去」ボタンを追加。**管理者以上 かつ 保持期限経過**の
+    完成検査にだけ表示（確認ダイアログ付き）。過去に staff 可視ボタン＋常時ブロックを入れて撤回した反省
+    （MISTAKE_LEDGER M-20261002-delete-ignored-legal-retention）を踏まえ、権限と期限の二重ゲートを UI と server の両方に。
+  - 期限判定は Asia/Tokyo の当日（`todayInJst`）。保存年数は2年スケールのため当日境界の差は実害なし。
+- 検証: `retention` 純関数の単体テスト 6 件（期限前/当日/期限後/不正日付/未設定/JST 境界）、tsc・eslint（変更 0 error）・check:schema 緑。
+
 ## 2026-10-05 C2PA の claim 署名に RFC 3161 タイムスタンプを付ける（`C2PA_TSA_URL`）
 
 - #1231 で main にマージ（26959d80）。
@@ -24,6 +37,32 @@
   返答ごと拒否するため。テストの TSA は `application/octet-stream` で返し、素通しに戻すと付与テストが落ちることを確認）。
 - 候補の TSA `https://ts-c2pa.ssl.com/ecc` は、TLS 1.3 で受けること、トークンが TSA Trust List にチェーンすることを確認済み。
 - 本番ではまだ効かない（`C2PA_MODE` が disabled、`C2PA_TSA_URL` も未設定）。
+
+## 2026-10-05 一覧カードの「>」がバッジや本文に重なるのを6画面すべてで直す（#1232）
+
+- 症状: 代表のスクリーンショットで、作業一覧の行末の `>` が「来店」ステータスバッジに重なっていた。
+  その後「他の項目でも `>` がおかしくなってる」との指摘。
+- 原因: `chevron` は `position: "absolute"` ＋ `top: "50%"` ＋ `marginTop: -10` で、**カードの縦中央に置かれた
+  高さ20pxの帯**。水平方向はカードの右端から `right: spacing.lg(16)` 〜 `+20` ＝ **16〜36px** を占める
+  （dense は `right: spacing.sm(8)` なので 8〜28px）。カードは `paddingRight` を取っていなかったので、
+  **カードの高さ次第でどの行でもこの帯に潜る**。
+- 直し方: 逃げ幅を行ではなく**カード側**に置いた。`card` に `paddingRight: spacing["4xl"](40)`、
+  `work/cardDense` に `spacing["3xl"](32)`。`work/cardSimple` は `>` を出さず CTA ボタンになるので
+  `paddingRight: spacing.xl(20)` で左右対称に戻す。行ごとの逃げ幅（`cardHeaderChevron`・`metaRowDense`・
+  `field-test/[projectId]` の `meta`）は削除。
+- 対象6画面: `(tabs)/work`・`(tabs)/vehicles`・`(tabs)/certificates`・`customers`・`field-test`・`field-test/[projectId]`。
+  変更は7ファイル（6画面＋ MISTAKE_LEDGER）。
+- 検証: 絶対配置 chevron を持つ `.tsx` を列挙し、カードの各バリアントの実効 `paddingRight` が帯の右端以上かを
+  座標で突き合わせるスクリプト（8バリアント / NG 0）。**見た目の最終確認は実機で未了**（OPEN_QUESTIONS 2026-10-05）。
+- 経緯: 最初の修正は「重なって見えた1行（ヘッダー行）にだけ逃げ幅を入れる」もので、**誤りだった**。
+  `/code-review` が「帯はカードの縦中央なので `serviceText` / `desc` / 折り返した `metaRow` も潜る」と指摘し、
+  カード側に移した。MISTAKE_LEDGER `M-20261005-abs-chevron-reserved-space-in-one-row-only`（型 J）。
+- **追加検証（この修正の前提そのもの）**: 「カードに `paddingRight` を足しても `>` は動かない」は前提であって自明ではない。
+  Yoga には絶対配置の子にインセットが指定されていないとき親の padding を無視する旧挙動があり
+  （erratum `AbsolutePositionWithoutInsetsExcludesPadding`、Yoga 3.2 で旧 `AbsolutePositioningIncorrect` から改名）、
+  もしそれが効くなら `paddingRight` の分だけ `>` が内側へ寄り、**本文の上に乗って悪化する**。
+  適用条件は「インセットが指定されていない」場合で、`chevron` は `right` と `top` を指定しているため該当しない
+  ＝インセットは padding box（枠の内側）起点で測られ、親の `paddingRight` では動かない。RN は 0.83.10（Yoga 3 系）。
 
 ## 2026-10-03 documents / body_repair_jobs の作成・更新・削除を監査ログ化（G2）
 
