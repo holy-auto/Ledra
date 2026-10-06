@@ -229,12 +229,12 @@ export async function createCertificate(
   // Auto-create customer record if not linked to existing master
   // (Allows "type-to-create" — name entered freely will be registered to customer master.)
   // 名寄せ（電話/メール一致 → 氏名類似度、AI 判定オフ）と自動作成は、車両取込/CSV/API と同じ共通リゾルバで行う。
-  const resolvedCustomerId =
-    customer_id ??
-    (customer_name
-      ? (await (await createCustomerResolver(supabase, tenantId, { ai: false })).resolve({ name: customer_name }))
-          .customerId
-      : null);
+  // 顧客候補を読めないときは重複顧客を作らず未紐付けにする（DECISION_LOG 2026-10-06）。customer_name は上で必須検査済み。
+  let resolvedCustomerId = customer_id;
+  if (!resolvedCustomerId) {
+    const resolver = await createCustomerResolver(supabase, tenantId, { ai: false });
+    resolvedCustomerId = (await resolver.resolve({ name: customer_name })).customerId;
+  }
 
   // Auto-create vehicle record if not linked to existing master
   let resolvedVehicleId = vehicle_id;
