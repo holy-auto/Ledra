@@ -36,6 +36,14 @@
 - 検証: 集計の単体テスト 3 件（テナント別・削除と秘匿化の分離・テナント無しの NULL 行・処理なしなら書かない）。NULL 行の集計と
   削除/秘匿化の振り分けをそれぞれ壊すとテストが落ちることを確認。cron・監査関連 175 件、tsc・eslint（0 error）・check:schema 緑。
 
+## 2026-10-06 sharp を 0.35.5 に上げる（CVE-2026-96889 / GHSA-wq5f-xc86-pv6w）
+
+- 2026-10-06 に sharp へ high の脆弱性が公表され（`npm audit` の表記は「Vulnerability in librsvg dependency」）、CI の `npm audit --audit-level=high --omit=dev` が main で落ちるようになった
+  （#1252 のマージコミット 5e16119 で初めて検出。直前の 7700324 では未公表で通過）。
+- #1257 で `package.json` の dependencies と overrides の `sharp` を `^0.35.3` → `^0.35.5`。lockfile の変更は、ルートの `sharp` 範囲指定と、
+  `sharp`・`@img/*`（各プラットフォームのバイナリ）の各エントリのみ（同じ修正を並行して作った #1258 は、この記録だけを残して取り込む）。
+- 検証: `npm audit --audit-level=high --omit=dev` が 0 件、`scripts/ci-parallel-checks.sh` 全項目通過。
+
 ## 2026-10-06 お客様が顧客ポータルで電子交付を承諾できる（G3）
 
 - 内容: これまで顧客ポータルでは電子交付の承諾の**撤回**しかできず、承諾は店舗が顧客詳細で記録するしかなかった。
