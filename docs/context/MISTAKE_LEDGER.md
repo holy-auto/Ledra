@@ -102,6 +102,11 @@
 **再発防止**: 今回の分はテストで止める（`route.consolidated.test.ts`）。一般形は仕組み無し（判断に依存）。
 - 習慣: 削除できる範囲を広げるときは、その種別の行を**作る経路**を全部 grep し、各経路が他テーブルへ書き込む値（FK でない番号・ID のコピーを含む）を並べる。
 
+**同じ PR でもう1件（Codex 指摘）**: `on delete cascade` の FK を migrations で grep したとき、出力に `billing_splits`（支払者按分）が
+**載っていたのに**、守ったのは `payment_entries` だけだった。按分は `BillingSplitPanel` が合算請求書にも作れる。grep の結果を
+「1行ずつ、この行が消えて困るか」で読まず、思い当たった1つで止めた。按分も削除対象から外し、テストを足した。
+- 習慣: cascade を grep したら、出てきた全行について「消えてよいか」を1行ずつ書いてから閉じる。
+
 ## M-20261006-breakdown-ids-wiped-by-draft-edit 合算内訳を meta_json の ID に頼って載せたのに、帳票の編集保存が meta_json を丸ごと置き換えることを確かめなかった（2026-10-06・型 C／K）
 
 **Before**: 2026-10-01 に合算請求書の内訳を詳細画面・PDF・顧客共有へ載せた。元帳票は作成時に保存する `meta_json.source_document_ids` から引く。

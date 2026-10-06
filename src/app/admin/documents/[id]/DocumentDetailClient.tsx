@@ -13,7 +13,6 @@ import { describeEmailError } from "@/lib/documents/emailError";
 import {
   CONVERSION_TARGETS,
   DOC_TYPES,
-  isDocumentDeletable,
   isDocumentEditable,
   nextStatusesFor,
   statusLabel,
@@ -68,6 +67,7 @@ export default function DocumentDetailClient({
   canSendLinePayment = false,
   customerHasLine = false,
   consolidatedSources = [],
+  canDelete = false,
 }: {
   document: DocumentRow;
   customerName: string | null;
@@ -82,6 +82,8 @@ export default function DocumentDetailClient({
   customerHasLine?: boolean;
   /** 合算請求書の元帳票（合算時の並び順）。合算請求書以外は空。 */
   consolidatedSources?: ConsolidatedSource[];
+  /** 削除ボタンを出すか（サーバ側で DELETE API と同じ判定をした結果） */
+  canDelete?: boolean;
 }) {
   const router = useRouter();
   const [doc, setDoc] = useState(initial);
@@ -316,7 +318,7 @@ export default function DocumentDetailClient({
             <button type="button" className="btn-primary text-xs" onClick={() => setShareOpen(true)}>
               共有
             </button>
-            {isDocumentDeletable(doc.doc_type, doc.status) && (
+            {canDelete && (
               <button type="button" className="btn-danger text-xs" disabled={deleting} onClick={handleDelete}>
                 {deleting ? "削除中…" : "削除"}
               </button>

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // 合算請求書: 下書き編集で合算元ID（＝送付 PDF の合算内訳）が消えないこと、
-// 送付後の合算請求書は削除できるが、入金記録あり・オーダー締め・管理者未満は消さないことを確かめる。
+// 送付後の合算請求書は削除できるが、入金記録・按分あり・オーダー締め・管理者未満は消さないことを確かめる。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -31,7 +31,7 @@ import { PUT, DELETE } from "@/app/api/admin/documents/route";
 const DOC_ID = "11111111-1111-4111-8111-111111111111";
 
 /** 終端（maybeSingle / single / await）で rows を返す素朴なビルダ。呼ばれた update/delete を記録する。 */
-function client(tables: Record<string, unknown>, calls: { update?: any; deleted?: unknown[] } = {}) {
+function client(tables: Record<string, unknown>, calls: { update?: any; deleted?: unknown[]; deleteOr?: string } = {}) {
   return {
     calls,
     from(table: string) {
@@ -51,13 +51,20 @@ function client(tables: Record<string, unknown>, calls: { update?: any; deleted?
           b._delete = true;
           return b;
         },
+        or: (expr: string) => {
+          if (b._delete) calls.deleteOr = expr;
+          return b;
+        },
         maybeSingle: async () => ({ data: rows, error: null }),
         single: async () => ({
           data: { id: DOC_ID, doc_type: "consolidated_invoice", ...(calls.update ?? {}) },
           error: null,
         }),
         then: (res: any) => {
-          if (b._delete) calls.deleted = b._in;
+          if (b._delete) {
+            calls.deleted = b._in;
+            return Promise.resolve({ data: b._in.map((id: string) => ({ id })), error: null }).then(res);
+          }
           return Promise.resolve({ data: rows, error: null }).then(res);
         },
       };
@@ -106,12 +113,25 @@ describe("PUT /api/admin/documents（合算請求書の下書き編集）", () =
 describe("DELETE /api/admin/documents（合算請求書）", () => {
   it("送付済みでも入金記録が無ければ削除する", async () => {
     mocks.userClient = client({ documents: [{ id: DOC_ID, status: "sent", doc_type: "consolidated_invoice" }] });
-    mocks.admin = client({ payment_entries: [], documents: null });
+    mocks.admin = client({ payment_entries: [], billing_splits: [], documents: null });
 
     const res = await DELETE(req("DELETE", { id: DOC_ID }));
 
     expect(res.status).toBe(200);
     expect(mocks.admin.calls.deleted).toEqual([DOC_ID]);
+    // 確認から DELETE までの間に入金済になった合算請求書を消さないよう、DELETE 文にも条件を入れる
+    expect(mocks.admin.calls.deleteOr).toBe("doc_type.neq.consolidated_invoice,status.neq.paid");
+    expect(await res.json()).toMatchObject({ deleted: 1, skipped: 0 });
+  });
+
+  it("支払者按分（billing_splits）がある合算請求書は（按分ごと消えるので）削除しない", async () => {
+    mocks.userClient = client({ documents: [{ id: DOC_ID, status: "sent", doc_type: "consolidated_invoice" }] });
+    mocks.admin = client({ payment_entries: [], billing_splits: [{ document_id: DOC_ID }], documents: null });
+
+    const res = await DELETE(req("DELETE", { id: DOC_ID }));
+
+    expect(res.status).toBe(400);
+    expect(mocks.admin.calls.deleted).toBeUndefined();
   });
 
   it("入金記録がある合算請求書は（入金履歴ごと消えるので）削除しない", async () => {
