@@ -14,6 +14,13 @@ describe("detectMagicByteMime", () => {
     expect(detectMagicByteMime(buf(0x47, 0x49, 0x46, 0x38))).toBe("image/gif");
     expect(detectMagicByteMime(buf(0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50))).toBe("image/webp");
     expect(detectMagicByteMime(ftyp("heic"))).toBe("image/heic");
+    // iPhone の HEIC は `mif1` ブランドでも来る。**本番の C2PA 署名を必須にした今、
+    // ここが HEIC と判定しなくなると写真が入口で落ちる**ので固定する。
+    expect(detectMagicByteMime(ftyp("mif1"))).toBe("image/heic");
+    expect(detectMagicByteMime(ftyp("heix"))).toBe("image/heic");
+    // `avif` は受け口に無い（HEIC として受けてはいけない）。sharp が出力できる形式なので、
+    // うっかりブランド一覧に足されると「HEIC を見ているつもりで AVIF を通す」になる。
+    expect(detectMagicByteMime(ftyp("avif"))).toBeNull();
     expect(detectMagicByteMime(ftyp("isom"))).toBe("video/mp4");
     expect(detectMagicByteMime(ftyp("qt  "))).toBe("video/quicktime");
   });

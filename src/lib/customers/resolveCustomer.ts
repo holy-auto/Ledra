@@ -95,23 +95,41 @@ export function createCustomerResolverFromCandidates(
 
 /**
  * テナントの顧客をすべて読み込んでリゾルバを組み立てる。
- * バルク取込の入口で 1 回だけ呼ぶ想定。
+ * バルク取込（車両取込/CSV）では入口で 1 回、証明書作成（画面/API）では 1 件ごとに呼ぶ。
  */
 export async function createCustomerResolver(
   admin: TenantAdmin,
   tenantId: string,
   opts?: { ai?: boolean },
 ): Promise<CustomerResolver> {
-  const { data, error } = await admin
-    .from("customers")
-    .select("id, name, name_kana, phone, email")
-    .eq("tenant_id", tenantId);
-
-  if (error) {
-    // 候補を読めないまま進むと、既存顧客を「未一致」と誤判定して重複顧客を作ってしまう。連携しない（skipped）。
-    logger.warn("[resolveCustomer] candidate load failed", { tenantId, err: error.message });
-    return { resolve: async () => ({ customerId: null, method: "skipped", confidence: 0 }) };
+  // PostgREST は 1 回の応答を max_rows（既定 1000）で打ち切るので、ページに分けて全件読む。打ち切られたまま照合すると、
+  // 上限より後ろの既存顧客を「未一致」と誤判定して重複顧客を作る（電子交付の承諾・履歴が 2 行に割れる）。
+  // キーセット方式（直前の id より後ろ）で読む: オフセット方式だと、読む間に他の操作で行が消えると後ろが詰まって 1 件飛ぶ。
+  // 終端は「空のページ」で判定する（サーバ側の上限が PAGE より小さくても取りこぼさない。代わりに最後に 1 往復多い）。
+  // ponytail: テナントの全顧客をメモリに載せて照合する（呼ぶたびに O(顧客数)、証明書 1 件の作成でも）。数万件規模で
+  //   重くなったら、DB 側の類似検索（pg_trgm 等の RPC）で候補を絞ってから fuzzyMatchCustomer に渡す形へ移す。
+  const PAGE = 1000;
+  const candidates: CustomerCandidate[] = [];
+  let lastId: string | null = null;
+  for (;;) {
+    let q = admin
+      .from("customers")
+      .select("id, name, name_kana, phone, email")
+      .eq("tenant_id", tenantId)
+      .order("id")
+      .limit(PAGE);
+    if (lastId) q = q.gt("id", lastId);
+    const { data, error } = await q;
+    if (error) {
+      // 候補を読めないまま進むと、既存顧客を「未一致」と誤判定して重複顧客を作ってしまう。連携しない（skipped）。
+      logger.warn("[resolveCustomer] candidate load failed", { tenantId, err: error.message });
+      return { resolve: async () => ({ customerId: null, method: "skipped", confidence: 0 }) };
+    }
+    const rows = (data ?? []) as CustomerCandidate[];
+    if (rows.length === 0) break;
+    candidates.push(...rows);
+    lastId = rows[rows.length - 1].id;
   }
 
-  return createCustomerResolverFromCandidates(admin, tenantId, (data ?? []) as CustomerCandidate[], opts);
+  return createCustomerResolverFromCandidates(admin, tenantId, candidates, opts);
 }
