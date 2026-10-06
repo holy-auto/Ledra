@@ -565,7 +565,7 @@ export const DELETE = withCaller(
 
     const { data: docs } = await supabase
       .from("documents")
-      .select("id, status, doc_type, meta_json")
+      .select("id, status, doc_type, meta_json, counterparty_tenant_id")
       .in("id", ids)
       .eq("tenant_id", caller.tenantId);
 

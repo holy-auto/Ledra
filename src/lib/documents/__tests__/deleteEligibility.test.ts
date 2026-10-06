@@ -52,6 +52,9 @@ describe("filterDeletableDocuments", () => {
     const draft = { id: "doc-draft", doc_type: "consolidated_invoice", status: "draft", meta_json: {} };
 
     expect((await filterDeletableDocuments(client as never, "t1", [cycle, draft], true)).eligible).toEqual([draft]);
+    // 以前の編集で meta_json.source が消えたオーダー締め合算も、counterparty_tenant_id で見分けて外す
+    const legacyCycle = { ...sent("doc-legacy"), counterparty_tenant_id: "tenant-from" };
+    expect((await filterDeletableDocuments(client as never, "t1", [legacyCycle], true)).eligible).toEqual([]);
     expect((await filterDeletableDocuments(client as never, "t1", [sent("x"), draft], false)).eligible).toEqual([
       draft,
     ]);

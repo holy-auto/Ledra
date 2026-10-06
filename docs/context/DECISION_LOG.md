@@ -680,7 +680,7 @@
      `square_order_id` など他のキーも編集で消えなくなる。
    - (2) 合算請求書は**入金済以外なら送付後でも削除可**。ただし API で次を削除対象から外す:
      入金記録（`payment_entries`、一部入金を含む）・支払者按分（`billing_splits`）があるもの（どちらも on delete cascade で履歴ごと消える。按分は Codex 指摘で追加）、
-     オーダー締めの合算（`meta_json.source = 'job_order_cycle'`。`job_orders.invoice_number` に番号を刻むので、消すと次の締めで拾われず二度と請求されない）、
+     オーダー締めの合算（`meta_json.source = 'job_order_cycle'` または `counterparty_tenant_id` あり。前者は以前の編集で消えている既存帳票があるため後者でも見る。`job_orders.invoice_number` に番号を刻むので、消すと次の締めで拾われず二度と請求されない）、
      管理者ロール未満の操作（発行済みの請求を消すので。下書き・領収書は従来どおり staff 可）。
      一括削除で除外があったら件数を表示する。詳細画面にも削除ボタンを付けた。ボタンの出し分けは DELETE API と同じ判定関数
      （`src/lib/documents/deleteEligibility.ts`）で行い、API が拒否する削除は出さない（画面上でステータスを変えたらボタンを隠す）。

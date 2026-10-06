@@ -1,7 +1,21 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isDocumentDeletable } from "@/types/document";
 
-type DeletableCandidate = { id: string; doc_type: string; status: string; meta_json?: unknown };
+type DeletableCandidate = {
+  id: string;
+  doc_type: string;
+  status: string;
+  meta_json?: unknown;
+  counterparty_tenant_id?: string | null;
+};
+
+/**
+ * オーダー締め（cycleInvoice）の合算か。`meta_json.source` は以前の帳票更新が meta_json を丸ごと
+ * 置き換えていたため、下書きを編集した既存帳票では消えている。cycleInvoice は加盟店間の請求として
+ * `counterparty_tenant_id` も入れ、こちらは更新 API で書き換わらないので両方で見る。
+ */
+const isOrderCycleInvoice = (d: DeletableCandidate) =>
+  (d.meta_json as { source?: unknown } | null)?.source === "job_order_cycle" || !!d.counterparty_tenant_id;
 
 const isSentConsolidated = (d: { doc_type: string; status: string }) =>
   d.doc_type === "consolidated_invoice" && d.status !== "draft";
@@ -27,9 +41,7 @@ export async function filterDeletableDocuments<T extends DeletableCandidate>(
 ): Promise<{ eligible: T[]; error?: { message: string } }> {
   let eligible = docs.filter(
     (d) =>
-      isDocumentDeletable(d.doc_type, d.status) &&
-      (!isSentConsolidated(d) ||
-        (isAdmin && (d.meta_json as { source?: unknown } | null)?.source !== "job_order_cycle")),
+      isDocumentDeletable(d.doc_type, d.status) && (!isSentConsolidated(d) || (isAdmin && !isOrderCycleInvoice(d))),
   );
   const sentConsolidatedIds = eligible.filter(isSentConsolidated).map((d) => d.id);
   if (sentConsolidatedIds.length === 0) return { eligible };
