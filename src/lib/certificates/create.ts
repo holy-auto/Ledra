@@ -20,7 +20,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { makePublicId } from "@/lib/publicId";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
-import { fuzzyMatchCustomer, type CustomerCandidate } from "@/lib/ai/customerFuzzyMatch";
+import { createCustomerResolver } from "@/lib/customers/resolveCustomer";
 import { recordCoatingConsumableInstallations } from "@/lib/parts/coatingIntegration";
 import { issueCaptureNonce } from "@/lib/certificates/captureNonce";
 import { parseDamageMap } from "@/lib/certificates/damageMap";
@@ -228,41 +228,12 @@ export async function createCertificate(
 
   // Auto-create customer record if not linked to existing master
   // (Allows "type-to-create" — name entered freely will be registered to customer master.)
+  // 名寄せ（電話/メール一致 → 氏名類似度、AI 判定オフ）と自動作成は、車両取込/CSV/API と同じ共通リゾルバで行う。
+  // 顧客候補を読めないときは重複顧客を作らず未紐付けにする（DECISION_LOG 2026-10-06）。customer_name は上で必須検査済み。
   let resolvedCustomerId = customer_id;
-  if (!resolvedCustomerId && customer_name) {
-    // 表記揺れ (「山田たろう / ヤマダ タロウ」等) も既存顧客に寄せるため、
-    // 完全一致ではなく名寄せ (電話/メール一致 → 氏名類似度) で照合する。
-    // バルクではないが単発なので AI 判定はオフ (決定的マッチのみ) で十分。
-    const { data: candidates } = await supabase
-      .from("customers")
-      .select("id, name, name_kana, phone, email")
-      .eq("tenant_id", tenantId);
-
-    let matchedId: string | null = null;
-    if (candidates && candidates.length > 0) {
-      const match = await fuzzyMatchCustomer(
-        { query: { name: customer_name }, candidates: candidates as CustomerCandidate[] },
-        { ai: false },
-      );
-      if (match.best && match.confidence >= 0.85) {
-        matchedId = match.best.candidate.id;
-      }
-    }
-
-    if (matchedId) {
-      resolvedCustomerId = matchedId;
-    } else {
-      const { data: newCustomer, error: customerErr } = await supabase
-        .from("customers")
-        .insert({ tenant_id: tenantId, name: customer_name })
-        .select("id")
-        .single();
-      if (customerErr) {
-        console.warn("[cert] auto customer create failed:", customerErr);
-      } else if (newCustomer?.id) {
-        resolvedCustomerId = newCustomer.id as string;
-      }
-    }
+  if (!resolvedCustomerId) {
+    const resolver = await createCustomerResolver(supabase, tenantId, { ai: false });
+    resolvedCustomerId = (await resolver.resolve({ name: customer_name })).customerId;
   }
 
   // Auto-create vehicle record if not linked to existing master
