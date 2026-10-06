@@ -125,7 +125,9 @@ TSA の URL（`https://ts-c2pa.ssl.com/ecc`）と、証明書・TSA とも ssl.c
 （RELEASE_LOG 2026-10-02・2026-10-03）。保持期限後の消去経路も実装（RELEASE_LOG 2026-10-05）。残り。
 
 1. **保持期限 cron（`data-retention`）の横断監査** → ✅ テナント別に集計して 1 実行 1 テナント 1 行で `audit_logs` に残す形で実装
-   （2026-10-06、RELEASE_LOG）。`tenant_id` を持たない表（`stripe_processed_events`）はアプリログのみ。
+   （2026-10-06、RELEASE_LOG・DECISION_LOG）。`tenant_id` を持たない表（`stripe_processed_events`）の分は `tenant_id = NULL` の 1 行。
+   なお、この項目にあった「`audit_logs.tenant_id` が NOT NULL」は誤りだった（`20260929150300` で NULL 可に変更済み・本番で実測）
+   （MISTAKE_LEDGER `M-20261006-built-on-a-not-null-premise-from-my-own-log`）。
 
 ## G1 法定資格ロール: 強制・番号/有効期限・実施者紐付けは実装、残る運用判断（2026-10-02）
 

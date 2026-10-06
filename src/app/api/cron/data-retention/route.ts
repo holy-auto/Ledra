@@ -15,8 +15,8 @@
  * - reservations.work_lat/lng : 完了 (work_completed_at) + 90 日経過 → 座標を NULL 化
  *   (出張作業場所の位置情報は顧客宅になり得るため最小権限・短期保持。行は消さず座標のみ消す)
  *
- * 消した件数はテナントごとに集計し、1 回の実行につきテナントあたり 1 行を `audit_logs`
- * （`data_retention_pruned`、テーブル別件数）に残す。テナントを持たない行（stripe_processed_events）はログのみ。
+ * 処理した件数はテナントごとに集計し、1 回の実行につきテナントあたり 1 行を `audit_logs`
+ * （`data_retention_pruned`、削除/秘匿化それぞれのテーブル別件数）に残す。テナントを持たない行は tenant_id=NULL の 1 行。
  *
  * 失敗は Sentry + Resend (`sendCronFailureAlert`) で通知される。
  * 件数が多い場合は cron 1 回で全消化せず、次回に持ち越す。
@@ -57,40 +57,41 @@ const RULES: DeletionRule[] = [
   { table: "customer_sessions", column: "revoked_at", days: 90 },
   { table: "notification_logs", column: "sent_at", days: 180 },
   { table: "outbox_events", column: "delivered_at", days: 90, filter: { col: "status", val: "delivered" } },
-  { table: "stripe_processed_events", column: "received_at", days: 90, noTenant: true },
+  // 列は created_at（received_at という列は無く、以前は毎回 select が失敗して一度も消えていなかった）。
+  { table: "stripe_processed_events", column: "created_at", days: 90, noTenant: true },
 ];
+
+/** `.in("id", …)` は ID を URL に載せるので、1 回あたりの件数を抑える（UUID 200 件 ≒ 7.4KB）。 */
+const ID_BATCH = 200;
 
 async function pruneRule(admin: ReturnType<typeof createServiceRoleAdmin>, rule: DeletionRule): Promise<PruneResult> {
   const cutoff = new Date(Date.now() - rule.days * 24 * 3600 * 1000).toISOString();
+  const empty: PruneResult = { table: rule.table, kind: "deleted", count: 0, byTenant: {} };
 
-  // Fetch a batch of IDs first (DELETE without limit on Postgrest is fine,
-  // but we want the count and a hard cap per cron tick). tenant_id は監査の集計用。
-  let q = admin
-    .from(rule.table)
-    .select(rule.noTenant ? "id" : "id, tenant_id")
-    .lte(rule.column, cutoff)
-    .limit(CHUNK);
+  // Fetch a batch of IDs first (hard cap per cron tick).
+  let q = admin.from(rule.table).select("id").lte(rule.column, cutoff).limit(CHUNK);
   if (rule.filter) q = q.eq(rule.filter.col, rule.filter.val);
   const { data, error } = await q;
   if (error) {
     logger.warn("retention: select failed", { table: rule.table, error: error.message });
-    return { table: rule.table, deleted: 0, byTenant: {} };
+    return empty;
   }
-  const rows = (data ?? []) as unknown as Array<{ id: string; tenant_id?: string | null }>;
-  if (rows.length === 0) return { table: rule.table, deleted: 0, byTenant: {} };
+  const ids = (data ?? []).map((r) => (r as { id: string }).id);
 
-  const { error: delErr, count } = await admin
-    .from(rule.table)
-    .delete({ count: "exact" })
-    .in(
-      "id",
-      rows.map((r) => r.id),
-    );
-  if (delErr) {
-    logger.warn("retention: delete failed", { table: rule.table, error: delErr.message });
-    return { table: rule.table, deleted: 0, byTenant: {} };
+  // 監査の件数は「実際に消えた行」から数える（delete … returning）。テナント別の集計に tenant_id も返させる。
+  const deleted: Array<{ tenant_id?: string | null }> = [];
+  for (let i = 0; i < ids.length; i += ID_BATCH) {
+    const batch = ids.slice(i, i + ID_BATCH);
+    const { data: rows, error: delErr } = rule.noTenant
+      ? await admin.from(rule.table).delete().in("id", batch).select("id")
+      : await admin.from(rule.table).delete().in("id", batch).select("id, tenant_id");
+    if (delErr) {
+      logger.warn("retention: delete failed", { table: rule.table, error: delErr.message });
+      break;
+    }
+    deleted.push(...((rows ?? []) as Array<{ tenant_id?: string | null }>));
   }
-  return { table: rule.table, deleted: count ?? rows.length, byTenant: countByTenant(rows) };
+  return { table: rule.table, kind: "deleted", count: deleted.length, byTenant: countByTenant(deleted) };
 }
 
 /** 出張作業場所GPSの保持期間ポリシー（完了から N 日）。 */
@@ -103,29 +104,33 @@ const WORK_GPS_RETENTION_DAYS = 90;
  */
 async function redactExpiredWorkGps(admin: ReturnType<typeof createServiceRoleAdmin>): Promise<PruneResult> {
   const cutoff = new Date(Date.now() - WORK_GPS_RETENTION_DAYS * 24 * 3600 * 1000).toISOString();
+  const table = "reservations.work_gps";
   const { data, error } = await admin
     .from("reservations")
-    .select("id, tenant_id")
+    .select("id")
     .lte("work_completed_at", cutoff)
     .not("work_lat", "is", null)
     .limit(CHUNK);
   if (error) {
     logger.warn("retention: work_gps select failed", { error: error.message });
-    return { table: "reservations.work_gps", deleted: 0, byTenant: {} };
+    return { table, kind: "redacted", count: 0, byTenant: {} };
   }
-  const rows = (data ?? []) as Array<{ id: string; tenant_id: string | null }>;
-  const ids = rows.map((r) => r.id);
-  if (ids.length === 0) return { table: "reservations.work_gps", deleted: 0, byTenant: {} };
+  const ids = (data ?? []).map((r) => (r as { id: string }).id);
 
-  const { error: upErr, count } = await admin
-    .from("reservations")
-    .update({ work_lat: null, work_lng: null, work_gps_at: null }, { count: "exact" })
-    .in("id", ids);
-  if (upErr) {
-    logger.warn("retention: work_gps redact failed", { error: upErr.message });
-    return { table: "reservations.work_gps", deleted: 0, byTenant: {} };
+  const redacted: Array<{ tenant_id: string | null }> = [];
+  for (let i = 0; i < ids.length; i += ID_BATCH) {
+    const { data: rows, error: upErr } = await admin
+      .from("reservations")
+      .update({ work_lat: null, work_lng: null, work_gps_at: null })
+      .in("id", ids.slice(i, i + ID_BATCH))
+      .select("id, tenant_id");
+    if (upErr) {
+      logger.warn("retention: work_gps redact failed", { error: upErr.message });
+      break;
+    }
+    redacted.push(...((rows ?? []) as Array<{ tenant_id: string | null }>));
   }
-  return { table: "reservations.work_gps", deleted: count ?? ids.length, byTenant: countByTenant(rows) };
+  return { table, kind: "redacted", count: redacted.length, byTenant: countByTenant(redacted) };
 }
 
 export async function GET(req: NextRequest) {
@@ -147,10 +152,10 @@ export async function GET(req: NextRequest) {
 
     if (!result.acquired) return apiOk({ skipped: "lock_held" });
 
-    const total = result.value.reduce((s, r) => s + r.deleted, 0);
-    const breakdown = result.value.map(({ table, deleted }) => ({ table, deleted }));
+    const total = result.value.reduce((s, r) => s + r.count, 0);
+    const breakdown = result.value.map(({ table, kind, count }) => ({ table, kind, count }));
     logger.info("data-retention cron complete", { total, breakdown });
-    // テナント別の監査（audit_logs.tenant_id は NOT NULL なので、横断の 1 行ではなくテナントごとに 1 行）。
+    // テナント別の監査（テナントの管理者が自分の audit_logs で見られるよう、テナントごとに 1 行。テナント無しは NULL の 1 行）。
     await logTenantAuditEvents(admin, buildRetentionAuditEvents(result.value, new Date().toISOString().slice(0, 10)));
 
     return apiOk({ ok: true, total, breakdown });

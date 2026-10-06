@@ -21,7 +21,8 @@ import { getRequestMeta } from "./certificateLog";
 type ActorType = "tenant" | "system";
 
 export interface TenantAuditEvent {
-  tenantId: string;
+  /** テナントに属さない横断処理（cron 等）は null（audit_logs.tenant_id は NULL 可） */
+  tenantId: string | null;
   /** 操作した利用者。cron など人がいない経路では null */
   userId?: string | null;
   /** 例: "certificate_activated"。既存行に合わせて動詞の過去形で書く */
@@ -66,6 +67,8 @@ export async function logTenantAuditEvents(
 ): Promise<void> {
   if (events.length === 0) return;
   const { error } = await db.from("audit_logs").insert(events.map(toRow));
-  if (error)
-    console.error(`[audit] audit_logs bulk insert failed (${events[0].action} x${events.length}):`, error.message);
+  if (!error) return;
+  // 一括 insert は 1 行の不正（消えたテナントの FK 等）で全行が落ちるので、1 行ずつ入れ直して他のテナントの記録を残す。
+  console.error(`[audit] audit_logs bulk insert failed (${events[0].action} x${events.length}):`, error.message);
+  for (const e of events) await logTenantAuditEvent(db, e);
 }
