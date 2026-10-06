@@ -240,6 +240,45 @@
 - テスト: `dispatch.test.ts` に2タイプのケースを追加（管理者ごとの in_app と管理者全員へのメール）。
   `ft_defect_reported` の `targetRole` を外すと落ちることを確認。
 
+## 2026-10-05 HEIC の C2PA 署名を実測で確かめ、恒久テストにした
+
+- 内容: `c2paSignValidate.test.ts` に `image/heic` を追加（jpeg/png/webp の3形式 → 4形式）。
+  **本番で署名必須にした（#1209）あと、HEIC が署名できなければ iPhone 既定の写真が全部 503 になる**のに、
+  リポジトリのどのテストも HEIC を署名していなかった。
+- **結果: `image/heic` という形式名の資産には署名できる**（実機 HEVC 写真そのものではない。天井を参照）。
+  読み戻した manifest の failure コードは `signingCredential.untrusted` と
+  `claimSignature.mismatch` の2つだけ —— jpeg/png/webp と同じで、**dev 自己署名証明書の癖だけ。
+  内容・構造のエラーはゼロ**（本番証明書で解消するもの）。署名後も `ftyp` のブランドは `heic` のまま。
+- 入口も実測: `detectMagicByteMime` はブランド `heic` / `mif1` を `image/heic` と判定し、`avif` は null
+  （不受理）。つまり実機 HEIC はアップロード入口を通って署名へ渡る。
+- **検証の作り方**: sharp のプリビルドは HEVC を書けない。そこで同じ ISO BMFF（HEIF）族の AVIF を作り、
+  `ftyp` のメジャーブランドだけ `heic` に差し替えて署名させた。**manifest の埋め込みはコンテナの box
+  構造しか触らず画素をデコードしない**ので、この経路で「`image/heic` の資産に署名して読み戻せるか」は見られる。
+  差し替えが効いたことをテスト内で確かめてから署名する（黙って avif のまま署名して「HEIC を見ている」と
+  誤解したまま緑になるのを防ぐ）。
+- **天井は2つある（`ponytail:` でコードにも明記）。** `/code-review` の指摘で2つ目に気づいた。
+  1. 実機 HEVC 写真の**多 item な box 構成**（`iinf`/`iloc` のオフセット書き換え）を踏んでいない。
+  2. **この fixture は sharp が読めてしまう**（実体は AVIF なので `metadata()` も `rotate()` も通る）。
+     実機 HEIC は sharp が読めず `stripGpsAndReadExif` が例外 → catch で原本をそのまま返す
+     **fallback**（`reencoded:false`）に落ちる。つまり**実機 HEIC の肝心な性質を再現していない**。
+  実機で撮った HEIC のバイト列を fixture にすれば、どちらも一度に埋まる。それが本筋。
+- **実機 HEIC が通る経路（fallback）も見るようにした**: 当初は全形式ループ（FULL_TRANSFORM）にだけ
+  HEIC を足していたが、それは**実機 HEIC が決して作らない manifest の形**（`c2pa.orientation` などを
+  含む）を見張るもので、実機側の形（`c2pa.opened` だけ）は無検査のままだった（`/code-review` 指摘）。
+  既存の fallback テストを全形式ループに広げた（テスト 7 件 → 10 件）。
+- **本番証明書のスイートにも HEIC を足した**（`c2paSignValidateProduction.test.ts`）。503 が起きるのは
+  `C2PA_MODE=production` のときだけで、本番署名器で走るスイートはここしかない。
+- `magicBytes.test.ts` に `mif1` / `heix` → `image/heic`、`avif` → null を固定した。この判定が
+  事業ログの「実機 HEIC は入口を通る」という結論の根拠なのに、テストは `heic` ブランドしか見ていなかった
+  （`/code-review` 指摘）。
+- 変異2本で当たりを取った: (1) 署名できない形式名にすると `expected undefined to be truthy` で赤
+  ＝署名失敗を拾える。(2) ブランド差し替えを無効化すると明示ガードが例外＝avif を見ながら緑にはならない。
+- **以前の記録の訂正**: この件を【要確認】にしたとき「手元では検証できないので実機で確かめること」と
+  書いたが誤りだった（MISTAKE_LEDGER `M-20261005-took-sharps-limit-as-the-limit-of-what-i-could-verify`）。
+  また `OPEN_QUESTIONS` には 2026-09-05 に「HEIC も署名可能・準拠」（`09888187`・PR #914。`git log -S` は 2026-09-08 の復元コミット `98b3aaae` も返すが、そちらは 1760 行挿入 0 行削除の復元で、書かれた日ではない）と**根拠なしで**「全て解決」に
+  入れた一文があり（同日の DECISION_LOG は「残」と書いている）、そこにも印を付けた。
+  **結論は当たっていたが、確かめずに解決にしていた。**
+
 ## 2026-10-03 C2PA の検証に公式 Trust List（CA・TSA）を使う
 
 - Conformance Administrator の助言（2026-10-02）を受けて実装。c2pa-org/conformance-public の `C2PA-TRUST-LIST.pem`（30件）と
@@ -478,9 +517,12 @@ insert が通り、かつ**両方 NULL で入る**ことを行を入れて確か
   本番証明書を入れてオンにした日から効く。**オンにする前に、本番で `@contentauth/c2pa-node` が
   実際に読み込めるかの確認が必要**【要確認】。先行検査があるので、読み込めなければ
   「写真が1枚も保存されず 503」という**分かる形**で落ちる（以前は黙って未署名だった）。
-- 【要確認】**HEIC の署名**: iPhone 既定の HEIC で c2pa-node が署名できるかはリポジトリのどのテストも
+- ~~【要確認】**HEIC の署名**: iPhone 既定の HEIC で c2pa-node が署名できるかはリポジトリのどのテストも
   見ていない（手元の sharp の heif は avif 専用で HEIC を作れず検証不可）。署名できない場合、
-  本番オン後に HEIC が全部 503 になる。オン前に実機 HEIC で確かめること。
+  本番オン後に HEIC が全部 503 になる。オン前に実機 HEIC で確かめること。~~
+  **2026-10-05 一部決着（下の 2026-10-05 のエントリ）。** 「検証不可」は誤りだった —— 署名はデコードを
+  要さないので、sharp が HEIC を作れないことは問いの限界ではなかった。ただし**「全部 503」の懸念が
+  消えたわけではない**（実機 HEVC 写真そのものでは署名していない。下のエントリの天井を参照）。
 - **2026-10-03 `main` にマージ（squash `e9dbb95e`・PR #1209）。** マージ時点で CI 10 本緑
   （9 success ＋ Supabase Preview skipped）、`mergeable_state: clean`。マージ直前に数え直して
   MISTAKE_LEDGER 2件・変更13ファイルを確認した。
