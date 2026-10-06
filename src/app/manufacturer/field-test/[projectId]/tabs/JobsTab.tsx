@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import type { FtJobStatus } from "@/types/manufacturer";
 import { FT_JOB_STATUS_LABELS } from "@/types/manufacturer";
-import { approvedTenants, type ApprovedTenant } from "@/lib/fieldTest/applicationGate";
+import ApprovedTenantSelect from "./ApprovedTenantSelect";
 
 type Job = {
   id: string;
@@ -32,7 +32,8 @@ export default function JobsTab({ projectId, isAdmin }: { projectId: string; isA
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [tenants, setTenants] = useState<ApprovedTenant[] | null>(null);
+  const [hasTenants, setHasTenants] = useState(false);
+  const onTenantsAvailable = useCallback((v: boolean) => setHasTenants(v), []);
 
   const load = () => {
     setLoading(true);
@@ -45,19 +46,9 @@ export default function JobsTab({ projectId, isAdmin }: { projectId: string; isA
   useEffect(load, [projectId]);
 
   const toggleForm = () => {
-    const next = !showForm;
-    setShowForm(next);
+    setShowForm((v) => !v);
     setFormError(null);
-    if (!next) return;
-    // 開くたびに取り直す（別タブで応募を承認した直後でも選べるように）。
-    setTenants(null);
-    fetch(`/api/manufacturer/field-test/applications?project_id=${projectId}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((json) => setTenants(approvedTenants(json.applications ?? [])))
-      .catch(() => {
-        setTenants([]);
-        setFormError("承認済みの施工店を読み込めませんでした。");
-      });
+    setHasTenants(false);
   };
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -104,29 +95,7 @@ export default function JobsTab({ projectId, isAdmin }: { projectId: string; isA
 
       {showForm && (
         <form onSubmit={handleCreate} className="rounded-2xl border border-border-subtle bg-surface p-4 space-y-3">
-          {tenants === null ? (
-            <div className="text-sm text-secondary">施工店を読み込み中...</div>
-          ) : tenants.length === 0 ? (
-            <div className="text-sm text-secondary">
-              割当できる施工店がありません。応募タブで施工店の応募を承認すると選べるようになります。
-            </div>
-          ) : (
-            <select
-              name="tenant_id"
-              required
-              defaultValue=""
-              className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
-            >
-              <option value="" disabled>
-                施工店を選択（応募承認済み）
-              </option>
-              {tenants.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name ?? t.id}
-                </option>
-              ))}
-            </select>
-          )}
+          <ApprovedTenantSelect projectId={projectId} onAvailableChange={onTenantsAvailable} />
           <input
             name="title"
             required
@@ -149,7 +118,7 @@ export default function JobsTab({ projectId, isAdmin }: { projectId: string; isA
           )}
           <button
             type="submit"
-            disabled={saving || !tenants?.length}
+            disabled={saving || !hasTenants}
             className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
           >
             {saving ? "割当中..." : "割当"}

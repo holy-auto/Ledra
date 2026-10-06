@@ -4,14 +4,17 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
-## 2026-10-06 実証テスト: 割当先を承認済みの施工店から選ぶ／契約同意の控えを専用の通知種類に
+## 2026-10-06 実証テスト: 割当・契約の相手を承認済みの施工店から選ぶ／契約同意の控えを専用の通知種類に
 
-- メーカーの案件割当フォーム（JobsTab）の施工店欄を、UUID 手入力から「そのプロジェクトで応募が承認された施工店」の選択式に変更。
-  フォームを開くたびに `GET /api/manufacturer/field-test/applications?project_id=` から取り直す。候補が無ければ応募タブで承認するよう案内し、
-  送信ボタンを押せなくする。抽出は `approvedTenants`（`src/lib/fieldTest/applicationGate.ts`。割当 API の判定と同じ approved 条件）。
+- メーカーの案件割当フォーム（JobsTab）と契約追加フォーム（AgreementsTab）の施工店欄を、UUID 手入力から「そのプロジェクトで応募が
+  承認された施工店」の選択式に変更（共通部品 `ApprovedTenantSelect`）。フォームを開くたびに
+  `GET /api/manufacturer/field-test/applications?project_id=&status=approved`（`status` 絞り込みを今回追加）から取り直し、閉じた後に届いた
+  古い応答は捨てる。候補なし・読み込み失敗は別々に案内し、どちらも送信ボタンを押せなくする。契約フォームも失敗理由を表示するようにした。
+- `POST /api/manufacturer/field-test/agreements` と `POST .../training/completions` にも、案件割当と同じ応募チェック（未承認なら 403）を追加。
 - 通知種類 `ft_agreement_accepted`（in_app のみ）を追加し、施工店が契約に同意したときの自分向けの控えをそれで出す
-  （これまでは案件割当の `ft_job_assigned` を流用）。モバイルの通知アイコン（`file-sign`）も追加。DECISION_LOG 2026-10-06。
-- テスト: `applicationGate.test.ts` に `approvedTenants`（approved のみ・施工店ごとに1件・tenants が配列/null）を追加。
+  （これまでは案件割当の `ft_job_assigned` を流用）。Web・モバイルで重複していた送信処理を `notifyAgreementAccepted` にまとめ、中央 dispatch 経由に。
+  モバイルの通知アイコン（`file-sign`）も追加。DECISION_LOG 2026-10-06。
+- テスト: `applicationGate.test.ts` に `approvedTenants`、`agreementNotify.test.ts`（種類・文面・in_app のみ）を追加。
   カタログとモバイルのアイコン表の一致は既存の `mobileIcons.test.ts` が検査。
 
 ## 2026-10-05 発行済みの署名・受領リンクも、開いた時点で承諾を確認する（G3/G4）

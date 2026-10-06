@@ -2,15 +2,9 @@ import { NextRequest, after } from "next/server";
 import { withCaller } from "@/lib/api/withCaller";
 import { apiJson, apiValidationError } from "@/lib/api/response";
 import { acceptAgreement } from "@/lib/fieldTest/tenantQueries";
-import { notifyFtTenant } from "@/lib/fieldTest/ftNotify";
+import { notifyAgreementAccepted } from "@/lib/fieldTest/agreementNotify";
 
 export const dynamic = "force-dynamic";
-
-const AGREEMENT_TYPE_JA: Record<string, string> = {
-  nda: "秘密保持契約",
-  terms: "利用規約",
-  other: "契約書",
-};
 
 /** PATCH /api/admin/field-test/agreements/[id] — 同意 */
 export const PATCH = withCaller<{ id: string }>(
@@ -28,17 +22,8 @@ export const PATCH = withCaller<{ id: string }>(
       throw e;
     }
 
-    after(async () => {
-      const label = AGREEMENT_TYPE_JA[result.agreement_type as string] ?? "契約書";
-      // 同意した施工店自身への控え（in_app のみ。DECISION_LOG 2026-10-06）。
-      await notifyFtTenant({
-        tenantId: caller.tenantId,
-        type: "ft_agreement_accepted",
-        title: "契約に同意しました",
-        body: `${label}に同意しました。`,
-        linkPath: `/admin/field-test`,
-      });
-    });
+    // 同意した施工店自身への控え（DECISION_LOG 2026-10-06）。
+    after(() => notifyAgreementAccepted(caller.tenantId, result.agreement_type));
 
     return apiJson(result);
   },

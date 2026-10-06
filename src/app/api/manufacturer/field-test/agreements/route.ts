@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { APPLICATION_REQUIRED_MESSAGE, hasApprovedApplication } from "@/lib/fieldTest/applicationGate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,6 +75,14 @@ export async function POST(req: NextRequest) {
   try {
     const admin = createServiceRoleAdmin("ft agreements create — admin caller");
     const manufacturerId = caller.manufacturerId;
+
+    // 契約は応募が承認された施工店とだけ結ぶ（DECISION_LOG 2026-10-06。メーカー一致も同時に見る）。
+    const approved = await hasApprovedApplication(admin, {
+      manufacturerId,
+      projectId: parsed.data.project_id,
+      tenantId: parsed.data.tenant_id,
+    });
+    if (!approved) return apiForbidden(APPLICATION_REQUIRED_MESSAGE);
 
     const { data, error } = await admin
       .from("ft_agreements")
