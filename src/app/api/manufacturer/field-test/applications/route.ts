@@ -7,11 +7,13 @@ import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const APPLICATION_STATUSES = ["pending", "approved", "rejected", "withdrawn"];
+
 /**
  * GET /api/manufacturer/field-test/applications
  *
- * List applications filtered by ?project_id or ?recruitment_id.
- * Joins tenant name for display.
+ * List applications filtered by ?project_id or ?recruitment_id (and optionally ?status).
+ * Joins tenant name for display. 割当・契約フォームの施工店候補は ?status=approved で取る。
  */
 export async function GET(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
@@ -21,9 +23,13 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const projectId = url.searchParams.get("project_id");
   const recruitmentId = url.searchParams.get("recruitment_id");
+  const status = url.searchParams.get("status");
 
   if (!projectId && !recruitmentId) {
     return apiValidationError("project_id または recruitment_id のいずれかは必須です。");
+  }
+  if (status && !APPLICATION_STATUSES.includes(status)) {
+    return apiValidationError("status が不正です。");
   }
 
   try {
@@ -38,6 +44,7 @@ export async function GET(req: NextRequest) {
 
     if (projectId) query = query.eq("project_id", projectId);
     if (recruitmentId) query = query.eq("recruitment_id", recruitmentId);
+    if (status) query = query.eq("status", status);
 
     const { data, error } = await query;
     if (error) return apiInternalError(error, "ft applications GET");

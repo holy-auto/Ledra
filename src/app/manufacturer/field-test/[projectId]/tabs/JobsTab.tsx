@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import type { FtJobStatus } from "@/types/manufacturer";
 import { FT_JOB_STATUS_LABELS } from "@/types/manufacturer";
+import ApprovedTenantSelect from "./ApprovedTenantSelect";
 
 type Job = {
   id: string;
@@ -31,6 +32,8 @@ export default function JobsTab({ projectId, isAdmin }: { projectId: string; isA
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [hasTenants, setHasTenants] = useState(false);
+  const onTenantsAvailable = useCallback((v: boolean) => setHasTenants(v), []);
 
   const load = () => {
     setLoading(true);
@@ -41,6 +44,12 @@ export default function JobsTab({ projectId, isAdmin }: { projectId: string; isA
   };
 
   useEffect(load, [projectId]);
+
+  const toggleForm = () => {
+    setShowForm((v) => !v);
+    setFormError(null);
+    setHasTenants(false);
+  };
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -76,7 +85,7 @@ export default function JobsTab({ projectId, isAdmin }: { projectId: string; isA
       {isAdmin && (
         <div className="flex justify-end">
           <button
-            onClick={() => setShowForm((v) => !v)}
+            onClick={toggleForm}
             className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white hover:bg-accent/90"
           >
             {showForm ? "閉じる" : "案件を割当"}
@@ -86,12 +95,7 @@ export default function JobsTab({ projectId, isAdmin }: { projectId: string; isA
 
       {showForm && (
         <form onSubmit={handleCreate} className="rounded-2xl border border-border-subtle bg-surface p-4 space-y-3">
-          <input
-            name="tenant_id"
-            required
-            placeholder="テナントID (UUID)"
-            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
-          />
+          <ApprovedTenantSelect projectId={projectId} onAvailableChange={onTenantsAvailable} />
           <input
             name="title"
             required
@@ -114,7 +118,7 @@ export default function JobsTab({ projectId, isAdmin }: { projectId: string; isA
           )}
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || !hasTenants}
             className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
           >
             {saving ? "割当中..." : "割当"}

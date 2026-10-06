@@ -27,3 +27,25 @@ export async function hasApprovedApplication(
   if (error) throw error;
   return (data ?? []).length > 0;
 }
+
+export type ApprovedTenant = { id: string; name: string | null };
+
+type ApplicationRow = {
+  tenant_id: string;
+  status: string;
+  tenants?: { name: string | null } | { name: string | null }[] | null;
+};
+
+/**
+ * 応募一覧（`GET /api/manufacturer/field-test/applications` の行）から、割当できる施工店を重複なしで取り出す。
+ * 割当フォームの選択肢に使う。条件は hasApprovedApplication と同じ（approved のみ）。
+ */
+export function approvedTenants(rows: readonly ApplicationRow[]): ApprovedTenant[] {
+  const byId = new Map<string, ApprovedTenant>();
+  for (const r of rows) {
+    if (r.status !== "approved" || byId.has(r.tenant_id)) continue;
+    const t = Array.isArray(r.tenants) ? r.tenants[0] : r.tenants;
+    byId.set(r.tenant_id, { id: r.tenant_id, name: t?.name ?? null });
+  }
+  return [...byId.values()];
+}

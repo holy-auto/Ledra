@@ -233,6 +233,13 @@ export const NOTIFICATION_TYPE_CATALOG = {
     defaultChannels: ["in_app"],
     category: "job",
   },
+  // 施工店が契約に同意したときの、施工店自身への控え。以前は ft_job_assigned を流用していた
+  // （管理者宛メール付きの種類なので dispatch に載せられなかった）。DECISION_LOG 2026-10-06。
+  ft_agreement_accepted: {
+    severity: "informational",
+    defaultChannels: ["in_app"],
+    category: "job",
+  },
 } as const satisfies Record<string, NotificationTypeConfig>;
 
 export type NotificationType = keyof typeof NOTIFICATION_TYPE_CATALOG;
