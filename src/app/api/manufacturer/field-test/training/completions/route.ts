@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { APPLICATION_REQUIRED_MESSAGE, hasApprovedApplication } from "@/lib/fieldTest/applicationGate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -94,13 +95,21 @@ export async function POST(req: NextRequest) {
     // Verify the module belongs to this manufacturer
     const { data: mod } = await admin
       .from("ft_training_modules")
-      .select("id")
+      .select("id, project_id")
       .eq("id", parsed.data.module_id)
       .eq("manufacturer_id", manufacturerId)
       .maybeSingle();
     if (!mod) {
       return apiValidationError("指定の研修モジュールが見つかりません。");
     }
+
+    // 研修修了も応募が承認された施工店にだけ記録する（DECISION_LOG 2026-10-06）。
+    const approved = await hasApprovedApplication(admin, {
+      manufacturerId,
+      projectId: mod.project_id as string,
+      tenantId: parsed.data.tenant_id,
+    });
+    if (!approved) return apiForbidden(APPLICATION_REQUIRED_MESSAGE);
 
     const { data, error } = await admin
       .from("ft_training_completions")

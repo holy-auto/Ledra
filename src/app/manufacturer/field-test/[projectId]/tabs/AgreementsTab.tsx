@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { FT_AGREEMENT_TYPE_LABELS } from "@/types/manufacturer";
 import type { FtAgreementType } from "@/types/manufacturer";
+import ApprovedTenantSelect from "./ApprovedTenantSelect";
 
 type Agreement = {
   id: string;
@@ -19,6 +20,9 @@ export default function AgreementsTab({ projectId, isAdmin }: { projectId: strin
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [hasTenants, setHasTenants] = useState(false);
+  const onTenantsAvailable = useCallback((v: boolean) => setHasTenants(v), []);
 
   const load = () => {
     setLoading(true);
@@ -33,8 +37,9 @@ export default function AgreementsTab({ projectId, isAdmin }: { projectId: strin
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSaving(true);
+    setFormError(null);
     const fd = new FormData(e.currentTarget);
-    await fetch("/api/manufacturer/field-test/agreements", {
+    const res = await fetch("/api/manufacturer/field-test/agreements", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -44,8 +49,14 @@ export default function AgreementsTab({ projectId, isAdmin }: { projectId: strin
         document_text: fd.get("document_text") || undefined,
       }),
     });
-    setShowForm(false);
     setSaving(false);
+    if (!res.ok) {
+      // 応募が承認されていない施工店との契約などは 403 で断られる。フォームは閉じずに理由を出す。
+      const json = await res.json().catch(() => null);
+      setFormError(json?.message ?? "契約の追加に失敗しました。");
+      return;
+    }
+    setShowForm(false);
     load();
   };
 
@@ -65,7 +76,11 @@ export default function AgreementsTab({ projectId, isAdmin }: { projectId: strin
       {isAdmin && (
         <div className="flex justify-end">
           <button
-            onClick={() => setShowForm((v) => !v)}
+            onClick={() => {
+              setShowForm((v) => !v);
+              setFormError(null);
+              setHasTenants(false);
+            }}
             className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white hover:bg-accent/90"
           >
             {showForm ? "閉じる" : "契約を追加"}
@@ -75,12 +90,7 @@ export default function AgreementsTab({ projectId, isAdmin }: { projectId: strin
 
       {showForm && (
         <form onSubmit={handleCreate} className="rounded-2xl border border-border-subtle bg-surface p-4 space-y-3">
-          <input
-            name="tenant_id"
-            required
-            placeholder="テナントID (UUID)"
-            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
-          />
+          <ApprovedTenantSelect projectId={projectId} onAvailableChange={onTenantsAvailable} />
           <select
             name="agreement_type"
             required
@@ -96,9 +106,12 @@ export default function AgreementsTab({ projectId, isAdmin }: { projectId: strin
             rows={4}
             className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
           />
+          {formError && (
+            <div className="rounded-md border border-danger-border bg-danger-dim p-3 text-sm text-danger-text">{formError}</div>
+          )}
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || !hasTenants}
             className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
           >
             {saving ? "保存中..." : "追加"}
