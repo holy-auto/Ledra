@@ -201,6 +201,8 @@ export type DocumentRow = {
   tenant_id: string;
   customer_id: string | null;
   customer_name?: string | null;
+  /** 一覧 API が付ける削除可否（DELETE API と同じ判定）。無ければ種別・ステータスだけで判定する。 */
+  deletable?: boolean;
   /** 外注請求書 (doc_type=staff_invoice) の宛先となる外注職人。顧客向け帳票では常に null。 */
   staff_member_id?: string | null;
   doc_type: DocType;

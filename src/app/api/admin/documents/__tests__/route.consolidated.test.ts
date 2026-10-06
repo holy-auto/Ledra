@@ -26,7 +26,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 
-import { PUT, DELETE } from "@/app/api/admin/documents/route";
+import { GET, PUT, DELETE } from "@/app/api/admin/documents/route";
 
 const DOC_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -55,6 +55,7 @@ function client(
           return b;
         },
         order: () => b,
+        range: () => b,
         limit: () => b,
         // キーセットの2ページ目以降は空（1ページで読み切れる量のテスト）
         gt: () => {
@@ -189,5 +190,36 @@ describe("DELETE /api/admin/documents（合算請求書）", () => {
     mocks.admin = client({ documents: null });
     expect((await DELETE(req("DELETE", { id: DOC_ID }))).status).toBe(200);
     expect(mocks.admin.calls.deleted).toEqual([DOC_ID]);
+  });
+});
+
+describe("GET /api/admin/documents（一覧の削除可否）", () => {
+  const SENT = { id: "doc-sent", doc_type: "consolidated_invoice", status: "sent", customer_id: null, total: 0 };
+  const PAID_LINKED = { ...SENT, id: "doc-with-payment" };
+  const CYCLE = { ...SENT, id: "doc-cycle", counterparty_tenant_id: "tenant-from" };
+  const DRAFT = { ...SENT, id: "doc-draft", status: "draft" };
+  const list = () => {
+    mocks.admin = client({
+      documents: [SENT, PAID_LINKED, CYCLE, DRAFT],
+      payment_entries: [{ id: "p1", document_id: "doc-with-payment" }],
+      billing_splits: [],
+    });
+    return GET(new Request("http://localhost/api/admin/documents") as any);
+  };
+  const deletableOf = async (res: Response) =>
+    Object.fromEntries(((await res.json()).documents as any[]).map((d) => [d.id, d.deletable]));
+
+  it("管理者には、DELETE API が通すものだけ deletable を立てる（入金あり・オーダー締めは false）", async () => {
+    expect(await deletableOf(await list())).toEqual({
+      "doc-sent": true,
+      "doc-with-payment": false,
+      "doc-cycle": false,
+      "doc-draft": true,
+    });
+  });
+
+  it("staff には送付済み合算請求書の削除を出さない（下書きは出す）", async () => {
+    mocks.role = "staff";
+    expect(await deletableOf(await list())).toMatchObject({ "doc-sent": false, "doc-draft": true });
   });
 });

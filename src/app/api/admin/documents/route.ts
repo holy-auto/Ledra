@@ -3,6 +3,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { DOC_TYPES, isDocumentEditable, type DocType } from "@/types/document";
 import { filterDeletableDocuments } from "@/lib/documents/deleteEligibility";
+import { logger } from "@/lib/logger";
 import { parsePagination } from "@/lib/api/pagination";
 import { parseAmountParam } from "@/lib/api/amountFilter";
 import { apiJson, apiError, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
@@ -42,7 +43,7 @@ export const GET = withCaller(
     const { page, perPage, from, to } = parsePagination(req, { maxPerPage: 200 });
 
     const selectCols =
-      "id, tenant_id, customer_id, staff_member_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, note, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, created_at, updated_at";
+      "id, tenant_id, customer_id, staff_member_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, note, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, created_at, updated_at, counterparty_tenant_id";
 
     // 本番で帳票一覧が「非決定的に0件」になる事象への恒久対処。
     // - ユーザーセッション(RLS)経由は documents に対して実行時に0件を返すことがある
@@ -120,9 +121,22 @@ export const GET = withCaller(
       }
     }
 
+    // 削除ボタンを DELETE API と同じ判定で出す（送付済み合算請求書は管理者のみ・入金/按分なし・オーダー締め以外）。
+    // 一覧は重い meta_json を引かないので、オーダー締めは counterparty_tenant_id で見分ける（cycleInvoice が必ず入れる）。
+    // 判定の取得に失敗したら deletable を付けない（画面は従来の種別・ステータス判定に戻り、削除自体は API が止める）。
+    const { eligible: deletableDocs, error: deletableErr } = await filterDeletableDocuments(
+      admin,
+      caller.tenantId,
+      docs,
+      requireMinRole(caller, "admin"),
+    );
+    if (deletableErr) logger.warn("[documents GET] deletable check failed", { err: deletableErr.message });
+    const deletableIds = deletableErr ? null : new Set(deletableDocs.map((d) => d.id));
+
     const enriched = (docs ?? []).map((d) => ({
       ...d,
       customer_name: d.customer_id ? (customerNames[d.customer_id] ?? null) : null,
+      ...(deletableIds ? { deletable: deletableIds.has(d.id) } : {}),
     }));
 
     // 統計

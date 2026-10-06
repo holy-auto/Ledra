@@ -21,7 +21,7 @@ const isSentConsolidated = (d: { doc_type: string; status: string }) =>
   d.doc_type === "consolidated_invoice" && d.status !== "draft";
 
 /**
- * 削除してよい帳票だけを返す。DELETE API（実際に消す側）と詳細画面（削除ボタンを出すか）の両方で使う。
+ * 削除してよい帳票だけを返す。DELETE API（実際に消す側）と、一覧・詳細画面（削除ボタンを出すか）で使う。
  *
  * 送付後の合算請求書（＝発行済みの請求）は `isDocumentDeletable` で通っても、次のものは外す。
  * - 管理者ロール未満の操作（下書き・領収書の削除は従来どおり staff 可）
@@ -47,15 +47,20 @@ export async function filterDeletableDocuments<T extends DeletableCandidate>(
   if (sentConsolidatedIds.length === 0) return { eligible };
 
   const linked = new Set<string>();
-  for (const table of ["payment_entries", "billing_splits"]) {
-    const error = await collectLinkedDocumentIds(client, table, tenantId, sentConsolidatedIds, linked);
-    if (error) return { eligible: [], error };
+  // 一覧（全件）から呼ぶと ID が数百件になりうるので、`.in()` の URL が長くなりすぎないよう分けて引く
+  for (let i = 0; i < sentConsolidatedIds.length; i += ID_CHUNK) {
+    const chunk = sentConsolidatedIds.slice(i, i + ID_CHUNK);
+    for (const table of ["payment_entries", "billing_splits"]) {
+      const error = await collectLinkedDocumentIds(client, table, tenantId, chunk, linked);
+      if (error) return { eligible: [], error };
+    }
   }
   eligible = eligible.filter((d) => !linked.has(d.id));
   return { eligible };
 }
 
 const PAGE = 1000;
+const ID_CHUNK = 100;
 
 /**
  * table の document_id を全件読んで linked に足す。PostgREST は1回の応答を max_rows（1000）で切るので、

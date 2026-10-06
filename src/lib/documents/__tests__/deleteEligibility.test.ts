@@ -7,9 +7,13 @@ function cappedClient(tables: Record<string, { id: string; document_id: string }
     from(table: string) {
       const all = [...(tables[table] ?? [])].sort((a, b) => a.id.localeCompare(b.id));
       let after: string | null = null;
+      let ids: string[] = [];
       const b = {
         select: () => b,
-        in: () => b,
+        in: (_c: string, v: string[]) => {
+          ids = v;
+          return b;
+        },
         eq: () => b,
         order: () => b,
         limit: () => b,
@@ -18,7 +22,10 @@ function cappedClient(tables: Record<string, { id: string; document_id: string }
           return b;
         },
         then: (res: (v: unknown) => unknown) =>
-          Promise.resolve({ data: all.filter((r) => !after || r.id > after).slice(0, pageCap), error: null }).then(res),
+          Promise.resolve({
+            data: all.filter((r) => ids.includes(r.document_id) && (!after || r.id > after)).slice(0, pageCap),
+            error: null,
+          }).then(res),
       };
       return b;
     },
@@ -44,6 +51,16 @@ describe("filterDeletableDocuments", () => {
     );
 
     expect(eligible.map((d) => d.id)).toEqual(["doc-c"]);
+  });
+
+  it("帳票 ID を分けて問い合わせても、後ろの塊にある入金記録を拾う", async () => {
+    const docs = Array.from({ length: 150 }, (_, i) => sent(`doc-${String(i).padStart(3, "0")}`));
+    const client = cappedClient({ payment_entries: [{ id: "p1", document_id: "doc-130" }], billing_splits: [] }, 1000);
+
+    const { eligible } = await filterDeletableDocuments(client as never, "t1", docs, true);
+
+    expect(eligible).toHaveLength(149);
+    expect(eligible.some((d) => d.id === "doc-130")).toBe(false);
   });
 
   it("管理者未満・オーダー締めの送付済み合算請求書は外し、下書きはそのまま通す", async () => {
