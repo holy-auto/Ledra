@@ -101,7 +101,9 @@ describe("createCustomerResolver", () => {
     const inserted: unknown[] = [];
     const admin = {
       from: () => ({
-        select: () => ({ eq: async () => ({ data: null, error: { message: "boom" } }) }),
+        select: () => ({
+          eq: () => ({ order: () => ({ limit: async () => ({ data: null, error: { message: "boom" } }) }) }),
+        }),
         insert: (row: unknown) => (
           inserted.push(row),
           { select: () => ({ single: async () => ({ data: row, error: null }) }) }
@@ -115,6 +117,73 @@ describe("createCustomerResolver", () => {
       method: "skipped",
       confidence: 0,
     });
+    expect(inserted).toEqual([]);
+  });
+
+  /**
+   * customers をキーセット（order(id).limit(n).gt(id, last)）でページ取得する偽 admin。
+   * cap はサーバ側の max_rows（1 回で返す最大件数）。failAfterPages ページ目以降はエラーを返す。
+   */
+  function pagedAdmin(rows: CustomerCandidate[], cap: number, failAfterPages = Infinity) {
+    const inserted: unknown[] = [];
+    let pages = 0;
+    const sorted = [...rows].sort((x, y) => (x.id < y.id ? -1 : 1));
+    const admin = {
+      from: () => {
+        let after: string | null = null;
+        let lim = Infinity;
+        const q: Record<string, unknown> = {
+          select: () => q,
+          eq: () => q,
+          order: () => q,
+          limit: (n: number) => ((lim = n), q),
+          gt: (_c: string, v: string) => ((after = v), q),
+          then: (resolve: (r: unknown) => unknown) => {
+            pages += 1;
+            if (pages > failAfterPages) return resolve({ data: null, error: { message: "timeout" } });
+            const from = after ? sorted.findIndex((r) => r.id > after!) : 0;
+            const data = from < 0 ? [] : sorted.slice(from, from + Math.min(lim, cap));
+            return resolve({ data, error: null });
+          },
+          insert: (row: unknown) => (
+            inserted.push(row),
+            { select: () => ({ single: async () => ({ data: { id: "new", ...(row as object) }, error: null }) }) }
+          ),
+        };
+        return q;
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    return { admin, inserted };
+  }
+  const filler = (n: number): CustomerCandidate[] =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `f${i}`,
+      name: `別人${i}号`,
+      name_kana: null,
+      phone: null,
+      email: null,
+    }));
+
+  it("1000 件を超える顧客でも、後ろのページの既存顧客に連携する（重複顧客を作らない）", async () => {
+    const target: CustomerCandidate = { id: "z-last", name: "山田太郎", name_kana: null, phone: null, email: null };
+    const { admin, inserted } = pagedAdmin([...filler(1500), target], 1000);
+    const r = await (await createCustomerResolver(admin, TENANT, { ai: false })).resolve({ name: "山田太郎" });
+    expect(r).toMatchObject({ customerId: "z-last", method: "linked" });
+    expect(inserted).toEqual([]);
+  });
+
+  it("サーバ側の上限が 1000 より小さくても取りこぼさない", async () => {
+    const target: CustomerCandidate = { id: "z-last", name: "山田太郎", name_kana: null, phone: null, email: null };
+    const { admin } = pagedAdmin([...filler(700), target], 300);
+    const r = await (await createCustomerResolver(admin, TENANT, { ai: false })).resolve({ name: "山田太郎" });
+    expect(r.customerId).toBe("z-last");
+  });
+
+  it("2 ページ目以降の読み込みに失敗したら、重複顧客を作らず未連携（skipped）", async () => {
+    const { admin, inserted } = pagedAdmin(filler(1500), 1000, 1);
+    const r = await (await createCustomerResolver(admin, TENANT, { ai: false })).resolve({ name: "山田太郎" });
+    expect(r.method).toBe("skipped");
     expect(inserted).toEqual([]);
   });
 });
