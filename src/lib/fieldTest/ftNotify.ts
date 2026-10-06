@@ -12,7 +12,8 @@ type FtNotificationType =
   | "ft_evidence_submitted"
   | "ft_inspection_completed"
   | "ft_defect_reported"
-  | "ft_recruitment_opened";
+  | "ft_recruitment_opened"
+  | "ft_agreement_accepted";
 
 interface FtNotifyParams {
   tenantId: string;
