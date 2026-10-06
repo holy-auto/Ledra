@@ -3,8 +3,10 @@
  * 合算請求書の詳細で、元帳票ごとの明細（合算内訳）が表示されることを確認する。
  * 合算請求書自体の明細は「元帳票1件=1行（合計額のみ）」なので、内訳が無いと何の請求か分からない。
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+
 import DocumentDetailClient from "../DocumentDetailClient";
 import type { ConsolidatedSource } from "@/lib/documents/consolidatedSources";
 import type { DocumentRow } from "@/types/document";

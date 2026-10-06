@@ -1,10 +1,11 @@
 import { after } from "next/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { requireMinRole } from "@/lib/auth/checkRole";
-import { DOC_TYPES, isDocumentEditable, isDocumentDeletable, type DocType } from "@/types/document";
+import { DOC_TYPES, isDocumentEditable, type DocType } from "@/types/document";
+import { filterDeletableDocuments } from "@/lib/documents/deleteEligibility";
 import { parsePagination } from "@/lib/api/pagination";
 import { parseAmountParam } from "@/lib/api/amountFilter";
-import { apiJson, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiError, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { withCaller } from "@/lib/api/withCaller";
 import { documentCreateSchema, documentUpdateSchema, documentDeleteSchema } from "@/lib/validations/document";
 import { resolveBaseUrl } from "@/lib/url";
@@ -462,10 +463,13 @@ export const PUT = withCaller(
       updates.total = total;
       updates.tax_rate = taxRate;
       updates.tax_breakdown = taxBreakdown;
-      // meta_json は他の更新と共存させるため、明示的に渡された meta_json があればマージ
-      // （封印キーはサーバ専用なのでクライアント入力からは剥がす）
+      // meta_json は既存値（合算元の source_document_ids 等）を残したうえで、明示的に渡された
+      // meta_json と税込フラグを重ねる。編集フォームは meta_json を送らないので、既存値を土台に
+      // しないと下書き編集で合算内訳が消え、送付 PDF に内訳が出なくなる。
+      // 封印は内容が変わると無効になるので、既存値・クライアント入力の双方から剥がす。
+      const existingMeta = stripClientIntegritySeal(existing?.meta_json as Record<string, unknown> | null);
       const baseMeta = stripClientIntegritySeal(body.meta_json as Record<string, unknown> | undefined);
-      updates.meta_json = { ...baseMeta, is_tax_inclusive: isTaxInclusive };
+      updates.meta_json = { ...existingMeta, ...baseMeta, is_tax_inclusive: isTaxInclusive };
     }
 
     const { data, error } = await admin
@@ -550,7 +554,7 @@ export const PUT = withCaller(
   { routeName: "documents PUT" },
 );
 
-// ─── DELETE: 帳票削除（下書きのみ） ───
+// ─── DELETE: 帳票削除（下書き・領収書・送付後の合算請求書） ───
 export const DELETE = withCaller(
   async (req, { caller, supabase }) => {
     const parsed = documentDeleteSchema.safeParse(await req.json().catch(() => ({})));
@@ -561,21 +565,45 @@ export const DELETE = withCaller(
 
     const { data: docs } = await supabase
       .from("documents")
-      .select("id, status, doc_type")
+      .select("id, status, doc_type, meta_json, counterparty_tenant_id")
       .in("id", ids)
       .eq("tenant_id", caller.tenantId);
 
     if (!docs || docs.length === 0) return apiNotFound("帳票が見つかりません。");
 
-    const eligible = docs.filter((d) => isDocumentDeletable(d.doc_type, d.status));
-    if (eligible.length === 0) {
-      return apiValidationError("下書きステータスの帳票、または領収書のみ削除できます。");
-    }
-
     // RLS をバイパスしてサービスロールで DELETE（tenant_id で必ずスコープ限定）
     const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const eligibleIds = eligible.map((d) => d.id);
-    const { error } = await admin.from("documents").delete().in("id", eligibleIds).eq("tenant_id", caller.tenantId);
+
+    // 送付後の合算請求書の扱い（管理者のみ・オーダー締め除外・入金記録/按分ありは除外）は共通関数に集約。
+    // 詳細画面の削除ボタンも同じ関数で出し分ける。
+    const { eligible, error: eligErr } = await filterDeletableDocuments(
+      admin,
+      caller.tenantId,
+      docs,
+      requireMinRole(caller, "admin"),
+    );
+    if (eligErr) return apiInternalError(eligErr, "documents DELETE eligibility");
+    if (eligible.length === 0) {
+      return apiValidationError(
+        "削除できるのは下書きの帳票・領収書と、送付後の合算請求書（管理者のみ・入金記録や按分なし・オーダー締め以外）です。",
+      );
+    }
+
+    // 上の確認と DELETE の間に入金済へ変わった合算請求書を消さないよう、DELETE 自体にも
+    // 「入金済の合算請求書は除く」を条件で入れる（判定と削除を1文にする。Stripe・手動の入金済化は
+    // status を先に paid にしてから payment_entries を記帳する）。
+    // ponytail: 入金済にせず一部入金だけを記帳する経路が、確認と DELETE の間（数百 ms）に走ると
+    //   その入金記録は cascade で消える。厳密にするなら NOT EXISTS 付きで消す RPC にする。
+    const { data: deletedRows, error } = await admin
+      .from("documents")
+      .delete()
+      .in(
+        "id",
+        eligible.map((d) => d.id),
+      )
+      .eq("tenant_id", caller.tenantId)
+      .or("doc_type.neq.consolidated_invoice,status.neq.paid")
+      .select("id");
 
     if (error) {
       // 23503: 他の帳票の source_document_id からまだ参照されている（変換元として使われた帳票）
@@ -584,11 +612,22 @@ export const DELETE = withCaller(
       }
       return apiInternalError(error, "documents DELETE");
     }
+    const deletedIds = new Set((deletedRows ?? []).map((r) => r.id as string));
+    const deleted = eligible.filter((d) => deletedIds.has(d.id));
+    // 確認後に入金済へ変わった合算請求書は上の条件で残る。1件も消えなかったのに 200 を返すと、
+    // 画面は「削除できた」として一覧へ戻ってしまうので、競合として返す（一括削除で一部だけ残るのは skipped で伝える）。
+    if (deleted.length === 0) {
+      return apiError({
+        code: "conflict",
+        message: "帳票の状態が変わったため削除できませんでした。再読み込みしてください。",
+        status: 409,
+      });
+    }
 
-    // 削除の日時・作業者を監査ログに残す（第２ ２（３）/ G2）。下書き・領収書のみ削除可（上のフィルタ）。
+    // 削除の日時・作業者を監査ログに残す（第２ ２（３）/ G2）。実際に消えた行だけを記録する。
     // 一括削除でも直列にせず並行で記録する（本体の削除は既に完了・監査の失敗は非致命）。
     await Promise.all(
-      eligible.map((d) =>
+      deleted.map((d) =>
         logTenantAuditEvent(admin, {
           tenantId: caller.tenantId,
           userId: caller.userId,
@@ -601,7 +640,7 @@ export const DELETE = withCaller(
       ),
     );
 
-    return apiJson({ ok: true, deleted: eligibleIds.length, skipped: docs.length - eligibleIds.length });
+    return apiJson({ ok: true, deleted: deleted.length, skipped: docs.length - deleted.length });
   },
   { minRole: "staff", routeName: "documents DELETE" },
 );

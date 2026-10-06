@@ -2,6 +2,7 @@
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import Badge from "@/components/ui/Badge";
 import ShareDocumentModal from "@/components/documents/ShareDocumentModal";
@@ -16,6 +17,7 @@ import {
   nextStatusesFor,
   statusLabel,
   statusVariant,
+  showsConsolidatedBreakdown,
   type DocType,
   type DocumentItem,
   type DocumentRow,
@@ -65,6 +67,7 @@ export default function DocumentDetailClient({
   canSendLinePayment = false,
   customerHasLine = false,
   consolidatedSources = [],
+  canDelete = false,
 }: {
   document: DocumentRow;
   customerName: string | null;
@@ -79,7 +82,10 @@ export default function DocumentDetailClient({
   customerHasLine?: boolean;
   /** 合算請求書の元帳票（合算時の並び順）。合算請求書以外は空。 */
   consolidatedSources?: ConsolidatedSource[];
+  /** 削除ボタンを出すか（サーバ側で DELETE API と同じ判定をした結果） */
+  canDelete?: boolean;
 }) {
+  const router = useRouter();
   const [doc, setDoc] = useState(initial);
   const [updating, setUpdating] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -199,6 +205,27 @@ export default function DocumentDetailClient({
 
   const handlePrint = () => window.print();
 
+  const [deleting, setDeleting] = useState(false);
+  const handleDelete = async () => {
+    const warning = doc.status === "draft" ? "" : "\n送付済みの帳票です。お客様に届いた PDF は削除されません。";
+    if (!confirm(`この${docLabel}を削除しますか？${warning}`)) return;
+    setDeleting(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/admin/documents", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: doc.id }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      router.push("/admin/documents");
+    } catch (e: any) {
+      setMsg({ text: "削除に失敗しました: " + (e?.message ?? String(e)), ok: false });
+      setDeleting(false);
+    }
+  };
+
   const [downloading, setDownloading] = useState(false);
   const handlePdfDownload = async () => {
     setDownloading(true);
@@ -291,6 +318,12 @@ export default function DocumentDetailClient({
             <button type="button" className="btn-primary text-xs" onClick={() => setShareOpen(true)}>
               共有
             </button>
+            {/* canDelete はページ表示時のステータスで判定した値。画面上でステータスを変えたら判定が古いので出さない */}
+            {canDelete && doc.status === initial.status && (
+              <button type="button" className="btn-danger text-xs" disabled={deleting} onClick={handleDelete}>
+                {deleting ? "削除中…" : "削除"}
+              </button>
+            )}
             {isInvoice && doc.status !== "paid" && doc.status !== "cancelled" && (
               <button
                 type="button"
@@ -604,10 +637,19 @@ export default function DocumentDetailClient({
 
       {/* 合算内訳: 元帳票ごとの明細 */}
       {consolidatedSources.length > 0 && (
-        <section className="glass-card p-5 space-y-5 print:border-none print:shadow-none print:bg-white print:text-black">
+        <section
+          className={`glass-card p-5 space-y-5 print:border-none print:shadow-none print:bg-white print:text-black ${
+            showsConsolidatedBreakdown(doc.meta_json) ? "" : "print:hidden"
+          }`}
+        >
           <h2 className="text-sm font-semibold text-primary print:text-black">
             合算内訳（{consolidatedSources.length}件）
           </h2>
+          {!showsConsolidatedBreakdown(doc.meta_json) && (
+            <p className="text-xs text-muted print:hidden">
+              作成時に「合算内訳を表示しない」を選んだため、この内訳は PDF・送付には載りません（管理画面のみ表示）。
+            </p>
+          )}
           {consolidatedSources.map((src) => {
             const vi = (src.vehicle_info_json ?? {}) as { model?: string; plate?: string };
             const vehicle = [vi.model, vi.plate].filter(Boolean).join(" ");

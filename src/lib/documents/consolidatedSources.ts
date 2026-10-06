@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { DocumentRow } from "@/types/document";
+import { showsConsolidatedBreakdown, type DocumentRow } from "@/types/document";
 import { logger } from "@/lib/logger";
 
 /** 合算請求書の元帳票（内訳表示用）。詳細画面と PDF の「合算内訳」で使う。 */
@@ -22,6 +22,8 @@ export type ConsolidatedSource = Pick<
  * 合算請求書の明細は「元帳票1件=1行（合計額のみ）」なので、元帳票の明細を内訳として引く。
  * 一覧の合算作成時に meta_json.source_document_ids へ元帳票IDを保存している。
  * 合算請求書以外・ID未保存（オーダー締めの合算等）は空配列。並びは合算時の順。
+ * 作成時に「内訳を表示しない」を選んだ帳票でも返す（管理画面では常に見せる）。PDF 側は
+ * `consolidatedSourcesForPdf` を使う。
  */
 export async function loadConsolidatedSources(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -44,4 +46,14 @@ export async function loadConsolidatedSources(
   if (error) logger.warn("[consolidatedSources] fetch failed", { tenantId, err: error.message });
   const byId = new Map(((data ?? []) as ConsolidatedSource[]).map((d) => [d.id, d]));
   return ids.flatMap((id) => byId.get(id) ?? []);
+}
+
+/** PDF（ダウンロード・顧客共有）に載せる合算内訳。作成時に「内訳を表示しない」を選んだ帳票は空。 */
+export async function consolidatedSourcesForPdf(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: SupabaseClient<any, any, any>,
+  tenantId: string,
+  doc: { doc_type: string; meta_json?: unknown },
+): Promise<ConsolidatedSource[]> {
+  return showsConsolidatedBreakdown(doc.meta_json) ? loadConsolidatedSources(client, tenantId, doc) : [];
 }

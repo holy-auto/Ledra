@@ -6,7 +6,8 @@ import DocumentDetailClient from "./DocumentDetailClient";
 import { loadConsolidatedSources } from "@/lib/documents/consolidatedSources";
 import { DOC_TYPES, type DocType } from "@/types/document";
 import { createSignedAssetUrl } from "@/lib/signedUrl";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { requireMinRole, resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { filterDeletableDocuments } from "@/lib/documents/deleteEligibility";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +75,14 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
 
   const consolidatedSources = await loadConsolidatedSources(supabase, mem.tenant_id, doc);
 
+  // 削除ボタンは DELETE API と同じ判定で出す（API が必ず拒否する削除を出さない）。取得失敗時は出さない。
+  const { eligible: deletable } = await filterDeletableDocuments(
+    supabase,
+    mem.tenant_id,
+    [doc],
+    requireMinRole(caller, "admin"),
+  );
+
   const docLabel = DOC_TYPES[doc.doc_type as DocType]?.label ?? doc.doc_type;
 
   return (
@@ -98,6 +107,7 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
         canSendLinePayment={canSendLinePayment}
         customerHasLine={customerHasLine}
         consolidatedSources={consolidatedSources}
+        canDelete={deletable.length > 0}
       />
     </div>
   );
