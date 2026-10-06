@@ -462,10 +462,13 @@ export const PUT = withCaller(
       updates.total = total;
       updates.tax_rate = taxRate;
       updates.tax_breakdown = taxBreakdown;
-      // meta_json は他の更新と共存させるため、明示的に渡された meta_json があればマージ
-      // （封印キーはサーバ専用なのでクライアント入力からは剥がす）
+      // meta_json は既存値（合算元の source_document_ids 等）を残したうえで、明示的に渡された
+      // meta_json と税込フラグを重ねる。編集フォームは meta_json を送らないので、既存値を土台に
+      // しないと下書き編集で合算内訳が消え、送付 PDF に内訳が出なくなる。
+      // 封印は内容が変わると無効になるので、既存値・クライアント入力の双方から剥がす。
+      const existingMeta = stripClientIntegritySeal(existing?.meta_json as Record<string, unknown> | null);
       const baseMeta = stripClientIntegritySeal(body.meta_json as Record<string, unknown> | undefined);
-      updates.meta_json = { ...baseMeta, is_tax_inclusive: isTaxInclusive };
+      updates.meta_json = { ...existingMeta, ...baseMeta, is_tax_inclusive: isTaxInclusive };
     }
 
     const { data, error } = await admin
@@ -567,13 +570,31 @@ export const DELETE = withCaller(
 
     if (!docs || docs.length === 0) return apiNotFound("帳票が見つかりません。");
 
-    const eligible = docs.filter((d) => isDocumentDeletable(d.doc_type, d.status));
-    if (eligible.length === 0) {
-      return apiValidationError("下書きステータスの帳票、または領収書のみ削除できます。");
-    }
+    let eligible = docs.filter((d) => isDocumentDeletable(d.doc_type, d.status));
 
     // RLS をバイパスしてサービスロールで DELETE（tenant_id で必ずスコープ限定）
     const { admin } = createTenantScopedAdmin(caller.tenantId);
+
+    // 送付後の合算請求書は削除できるが、payment_entries は documents に on delete cascade なので
+    // 入金記録（一部入金を含む）がある合算請求書を消すと入金履歴ごと消える。それらは削除対象から外す。
+    const sentConsolidatedIds = eligible
+      .filter((d) => d.doc_type === "consolidated_invoice" && d.status !== "draft")
+      .map((d) => d.id);
+    if (sentConsolidatedIds.length > 0) {
+      const { data: paidRows, error: paidErr } = await admin
+        .from("payment_entries")
+        .select("document_id")
+        .in("document_id", sentConsolidatedIds)
+        .eq("tenant_id", caller.tenantId);
+      if (paidErr) return apiInternalError(paidErr, "documents DELETE payment check");
+      const withPayments = new Set((paidRows ?? []).map((r) => r.document_id as string));
+      eligible = eligible.filter((d) => !withPayments.has(d.id));
+    }
+
+    if (eligible.length === 0) {
+      return apiValidationError("下書きの帳票・領収書・入金記録のない合算請求書のみ削除できます。");
+    }
+
     const eligibleIds = eligible.map((d) => d.id);
     const { error } = await admin.from("documents").delete().in("id", eligibleIds).eq("tenant_id", caller.tenantId);
 

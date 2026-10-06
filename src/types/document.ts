@@ -136,10 +136,17 @@ export function isDocumentEditable(docType: string, status: string): boolean {
  * - 下書きはいつでも削除可能（証跡として確定していないため）
  * - 領収書（receipt）は POS 等で status='paid' 固定のまま発行され下書きを経由しないため、
  *   ステータスを問わず削除可能とする（誤発行の取り消し用途）
+ * - 合算請求書（consolidated_invoice）は元帳票をまとめ直しただけの帳票で、元帳票が証跡として残るため、
+ *   入金済以外は送付後でも削除できる（作り直し用途）。入金記録がある場合は API 側で削除を拒否する。
  * - それ以外の送付済み帳票（見積書・請求書等）は証跡保持のため下書きのみ削除可
  */
 export function isDocumentDeletable(docType: string, status: string): boolean {
-  return status === "draft" || docType === "receipt";
+  return status === "draft" || docType === "receipt" || (docType === "consolidated_invoice" && status !== "paid");
+}
+
+/** 合算請求書の PDF・送付・詳細画面に元帳票ごとの内訳を載せるか（未設定は表示）。 */
+export function showsConsolidatedBreakdown(metaJson: unknown): boolean {
+  return (metaJson as { show_consolidated_breakdown?: unknown } | null)?.show_consolidated_breakdown !== false;
 }
 
 /**

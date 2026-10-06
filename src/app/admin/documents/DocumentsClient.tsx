@@ -135,6 +135,8 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
 
   // 合算請求書の作成
   const [creatingConsolidated, setCreatingConsolidated] = useState(false);
+  // 合算請求書の PDF・送付に元帳票ごとの内訳を載せるか（作成時に選ぶ）
+  const [consolidatedShowBreakdown, setConsolidatedShowBreakdown] = useState(true);
 
   // 入金記録（請求書のみ）
   const [paymentTarget, setPaymentTarget] = useState<string | null>(null);
@@ -255,7 +257,8 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
 
   const handleCreateConsolidated = async () => {
     if (!canConsolidate) return;
-    if (!confirm(`選択した ${selectedDocs.length} 件を合算して請求書を作成しますか？`)) return;
+    const breakdownLabel = consolidatedShowBreakdown ? "内訳を表示する" : "内訳を表示しない";
+    if (!confirm(`選択した ${selectedDocs.length} 件を合算して請求書を作成しますか？（${breakdownLabel}）`)) return;
     setCreatingConsolidated(true);
     try {
       const customerId = selectedDocs[0].customer_id;
@@ -279,7 +282,10 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
           is_tax_inclusive: true,
           status: "draft",
           source_document_id: selectedDocs[0].id,
-          meta_json: { source_document_ids: selectedDocs.map((d) => d.id) },
+          meta_json: {
+            source_document_ids: selectedDocs.map((d) => d.id),
+            show_consolidated_breakdown: consolidatedShowBreakdown,
+          },
           note: `合算対象: ${selectedDocs.map((d) => d.doc_number).join("、")}`,
         }),
       });
@@ -580,6 +586,17 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   >
                     選択した帳票を送付
                   </button>
+                  <label
+                    className="inline-flex items-center gap-1 text-xs text-secondary"
+                    title="合算請求書の PDF・送付に、元帳票ごとの明細（合算内訳）を載せるか"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={consolidatedShowBreakdown}
+                      onChange={(e) => setConsolidatedShowBreakdown(e.target.checked)}
+                    />
+                    合算内訳を表示
+                  </label>
                   <button
                     type="button"
                     className="btn-secondary px-3 py-1 text-xs"

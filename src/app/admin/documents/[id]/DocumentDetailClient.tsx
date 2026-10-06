@@ -2,6 +2,7 @@
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import Badge from "@/components/ui/Badge";
 import ShareDocumentModal from "@/components/documents/ShareDocumentModal";
@@ -12,10 +13,12 @@ import { describeEmailError } from "@/lib/documents/emailError";
 import {
   CONVERSION_TARGETS,
   DOC_TYPES,
+  isDocumentDeletable,
   isDocumentEditable,
   nextStatusesFor,
   statusLabel,
   statusVariant,
+  showsConsolidatedBreakdown,
   type DocType,
   type DocumentItem,
   type DocumentRow,
@@ -80,6 +83,7 @@ export default function DocumentDetailClient({
   /** 合算請求書の元帳票（合算時の並び順）。合算請求書以外は空。 */
   consolidatedSources?: ConsolidatedSource[];
 }) {
+  const router = useRouter();
   const [doc, setDoc] = useState(initial);
   const [updating, setUpdating] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -199,6 +203,27 @@ export default function DocumentDetailClient({
 
   const handlePrint = () => window.print();
 
+  const [deleting, setDeleting] = useState(false);
+  const handleDelete = async () => {
+    const warning = doc.status === "draft" ? "" : "\n送付済みの帳票です。お客様に届いた PDF は削除されません。";
+    if (!confirm(`この${docLabel}を削除しますか？${warning}`)) return;
+    setDeleting(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/admin/documents", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: doc.id }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      router.push("/admin/documents");
+    } catch (e: any) {
+      setMsg({ text: "削除に失敗しました: " + (e?.message ?? String(e)), ok: false });
+      setDeleting(false);
+    }
+  };
+
   const [downloading, setDownloading] = useState(false);
   const handlePdfDownload = async () => {
     setDownloading(true);
@@ -291,6 +316,11 @@ export default function DocumentDetailClient({
             <button type="button" className="btn-primary text-xs" onClick={() => setShareOpen(true)}>
               共有
             </button>
+            {isDocumentDeletable(doc.doc_type, doc.status) && (
+              <button type="button" className="btn-danger text-xs" disabled={deleting} onClick={handleDelete}>
+                {deleting ? "削除中…" : "削除"}
+              </button>
+            )}
             {isInvoice && doc.status !== "paid" && doc.status !== "cancelled" && (
               <button
                 type="button"
@@ -706,6 +736,11 @@ export default function DocumentDetailClient({
           <a href={`/admin/documents/${doc.source_document_id}`} className="text-accent hover:text-accent underline">
             {doc.source_document_id}
           </a>
+          {doc.doc_type === "consolidated_invoice" && !showsConsolidatedBreakdown(doc.meta_json) && (
+            <p className="mt-1 text-xs text-muted">
+              作成時に「合算内訳を表示しない」を選んだため、PDF・送付に合算内訳は載りません。
+            </p>
+          )}
         </section>
       )}
 

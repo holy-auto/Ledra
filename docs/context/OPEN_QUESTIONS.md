@@ -3,6 +3,16 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 内訳の ID が既に消えた合算請求書をどうするか（2026-10-06）
+
+帳票更新 API が明細保存時に meta_json を上書きしていたため、下書きを編集した合算請求書は `meta_json.source_document_ids` を失っている
+（修正は DECISION_LOG 2026-10-06）。修正後も**既に消えたものは戻らない**。
+
+- 影響件数は【要確認】。次の SQL で数えられる（備考は作成時に「合算対象: 番号、…」を入れている）:
+  `select count(*) from documents where doc_type = 'consolidated_invoice' and note like '合算対象:%' and not (meta_json ? 'source_document_ids');`
+- 選択肢: (a) 気づいた分だけ削除して作り直す（今回から送付後でも削除可）。(b) 備考の番号から ID を引き直して meta_json に戻す移行を書く。
+  件数が少なければ (a) で足りる。
+
 ## staging（Ledra-staging）の残作業（2026-10-05）
 
 スキーマ投入と DB 層の確認までは済んだ（DECISION_LOG 2026-10-05）。残りは次のとおり。

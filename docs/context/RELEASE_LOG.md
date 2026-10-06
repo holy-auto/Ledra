@@ -4,6 +4,19 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-06 合算請求書: 送付時に内訳が消える不具合の修正・送付後の削除・内訳表示の選択
+
+- 内容: (1) 合算請求書の下書きを編集保存すると、合算元の ID（`meta_json.source_document_ids`）が消え、送付 PDF に合算内訳が載らなかった。
+  帳票更新 API（PUT）が明細保存時に meta_json を丸ごと置き換えていたのが原因。既存の meta_json を土台に重ねるよう修正。
+  (2) 合算請求書を入金済以外なら送付後でも削除できるようにした（入金記録がある合算請求書は入金履歴ごと消えるので API で拒否）。
+  帳票の詳細画面にも削除ボタンを追加。(3) 帳票一覧で合算するとき「合算内訳を表示」を選べる（既定 ON、OFF なら PDF・共有・詳細に内訳を出さない）。
+- 実装: `src/app/api/admin/documents/route.ts`（PUT の meta_json マージ・DELETE の入金記録ガード）、`src/types/document.ts`
+  （`isDocumentDeletable`・`showsConsolidatedBreakdown`）、`src/lib/documents/consolidatedSources.ts`（OFF なら空）、
+  `DocumentsClient.tsx`（チェックボックス）、`DocumentDetailClient.tsx`（削除ボタン・非表示の注記）。
+- 検証: ルートのテスト 3 件（編集で合算元 ID と表示設定が残る・送付済みで入金なしは削除・入金ありは削除しない）と
+  lib のテスト 3 件を追加し、修正前のコードに戻すと該当テストが落ちることを確認。帳票関連のテスト 21 ファイル 147 件、tsc、eslint（0 error）、prettier 緑。
+- 既知の制約: 既に編集で ID が消えた合算請求書は内訳が戻らない。削除して作り直す。
+
 ## 2026-10-06 顧客の名寄せを共通リゾルバに一本化し、1000 件を超える顧客も照合する
 
 - 内容: 証明書作成（管理画面/モバイル、`createCertificate`）は名寄せ/自動作成を共通リゾルバ（`createCustomerResolver`）とは

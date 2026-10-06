@@ -4,8 +4,10 @@
  * 以前はプレースホルダ (「LOGO」/「印」) しか描画せず、アップロード済みでも見積書等に
  * 反映されなかった (署名付きURLを props で受け取り <img> を描画する回帰防止)。
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+
 import DocumentDetailClient from "../DocumentDetailClient";
 import type { DocumentRow } from "@/types/document";
 
