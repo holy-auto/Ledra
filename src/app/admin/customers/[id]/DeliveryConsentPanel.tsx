@@ -15,6 +15,7 @@ type ConsentRow = {
   status: "granted" | "revoked";
   method: string | null;
   granted_at: string | null;
+  granted_by: string | null;
   revoked_at: string | null;
   revoked_via: string | null;
   note: string | null;
@@ -99,6 +100,13 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
         記録簿の写し（証明書）を電子的に交付する前の事前承諾です。撤回されると電子交付（受領サイン依頼）は
         行えません。見積書・請求書の送付には影響しません。
       </p>
+      {row?.status === "granted" && row.granted_at && (
+        <p className="mt-1 text-[11px] text-muted">
+          承諾: {new Date(row.granted_at).toLocaleString("ja-JP")}（
+          {/* 店舗の記録は必ず granted_by=操作者。本人のポータル承諾だけが granted_by=null */}
+          {row.granted_by ? "店舗が記録" : "お客様本人（顧客ポータル）"}）
+        </p>
+      )}
       {row?.revoked_at && (
         <p className="mt-1 text-[11px] text-danger-text">
           撤回: {new Date(row.revoked_at).toLocaleString("ja-JP")}（
