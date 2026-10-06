@@ -101,7 +101,9 @@ describe("createCustomerResolver", () => {
     const inserted: unknown[] = [];
     const admin = {
       from: () => ({
-        select: () => ({ eq: async () => ({ data: null, error: { message: "boom" } }) }),
+        select: () => ({
+          eq: () => ({ order: () => ({ range: async () => ({ data: null, error: { message: "boom" } }) }) }),
+        }),
         insert: (row: unknown) => (
           inserted.push(row),
           { select: () => ({ single: async () => ({ data: row, error: null }) }) }
@@ -116,5 +118,53 @@ describe("createCustomerResolver", () => {
       confidence: 0,
     });
     expect(inserted).toEqual([]);
+  });
+
+  /** customers を range でページ取得する偽 admin。cap はサーバ側の max_rows（1 回で返す最大件数）。 */
+  function pagedAdmin(rows: CustomerCandidate[], cap: number) {
+    const inserted: unknown[] = [];
+    const admin = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            order: () => ({
+              range: async (from: number, to: number) => ({
+                data: rows.slice(from, Math.min(to + 1, from + cap)),
+                error: null,
+              }),
+            }),
+          }),
+        }),
+        insert: (row: unknown) => (
+          inserted.push(row),
+          { select: () => ({ single: async () => ({ data: { id: "new", ...(row as object) }, error: null }) }) }
+        ),
+      }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    return { admin, inserted };
+  }
+  const filler = (n: number): CustomerCandidate[] =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `f${i}`,
+      name: `別人${i}号`,
+      name_kana: null,
+      phone: null,
+      email: null,
+    }));
+
+  it("1000 件を超える顧客でも、後ろのページの既存顧客に連携する（重複顧客を作らない）", async () => {
+    const target: CustomerCandidate = { id: "c-last", name: "山田太郎", name_kana: null, phone: null, email: null };
+    const { admin, inserted } = pagedAdmin([...filler(1500), target], 1000);
+    const r = await (await createCustomerResolver(admin, TENANT, { ai: false })).resolve({ name: "山田太郎" });
+    expect(r).toMatchObject({ customerId: "c-last", method: "linked" });
+    expect(inserted).toEqual([]);
+  });
+
+  it("サーバ側の上限が 1000 より小さくても取りこぼさない", async () => {
+    const target: CustomerCandidate = { id: "c-last", name: "山田太郎", name_kana: null, phone: null, email: null };
+    const { admin } = pagedAdmin([...filler(700), target], 300);
+    const r = await (await createCustomerResolver(admin, TENANT, { ai: false })).resolve({ name: "山田太郎" });
+    expect(r.customerId).toBe("c-last");
   });
 });

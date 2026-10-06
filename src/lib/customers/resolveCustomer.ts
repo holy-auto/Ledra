@@ -102,16 +102,30 @@ export async function createCustomerResolver(
   tenantId: string,
   opts?: { ai?: boolean },
 ): Promise<CustomerResolver> {
-  const { data, error } = await admin
-    .from("customers")
-    .select("id, name, name_kana, phone, email")
-    .eq("tenant_id", tenantId);
-
-  if (error) {
-    // 候補を読めないまま進むと、既存顧客を「未一致」と誤判定して重複顧客を作ってしまう。連携しない（skipped）。
-    logger.warn("[resolveCustomer] candidate load failed", { tenantId, err: error.message });
-    return { resolve: async () => ({ customerId: null, method: "skipped", confidence: 0 }) };
+  // PostgREST は 1 回の応答を max_rows（既定 1000）で打ち切るので、ページに分けて全件読む。打ち切られたまま照合すると、
+  // 上限より後ろの既存顧客を「未一致」と誤判定して重複顧客を作る（電子交付の承諾・履歴が 2 行に割れる）。
+  // 終端は「空のページ」で判定する（サーバ側の上限が PAGE より小さくても取りこぼさない）。
+  // ponytail: テナントの全顧客をメモリに載せて照合する（1 件の証明書作成ごとに O(顧客数)）。数万件規模で重くなったら
+  //   DB 側の類似検索（pg_trgm 等）で候補を絞ってから fuzzyMatchCustomer に渡す形へ移す。
+  const PAGE = 1000;
+  const candidates: CustomerCandidate[] = [];
+  for (let from = 0; ;) {
+    const { data, error } = await admin
+      .from("customers")
+      .select("id, name, name_kana, phone, email")
+      .eq("tenant_id", tenantId)
+      .order("id")
+      .range(from, from + PAGE - 1);
+    if (error) {
+      // 候補を読めないまま進むと、既存顧客を「未一致」と誤判定して重複顧客を作ってしまう。連携しない（skipped）。
+      logger.warn("[resolveCustomer] candidate load failed", { tenantId, err: error.message });
+      return { resolve: async () => ({ customerId: null, method: "skipped", confidence: 0 }) };
+    }
+    const rows = (data ?? []) as CustomerCandidate[];
+    if (rows.length === 0) break;
+    candidates.push(...rows);
+    from += rows.length;
   }
 
-  return createCustomerResolverFromCandidates(admin, tenantId, (data ?? []) as CustomerCandidate[], opts);
+  return createCustomerResolverFromCandidates(admin, tenantId, candidates, opts);
 }
