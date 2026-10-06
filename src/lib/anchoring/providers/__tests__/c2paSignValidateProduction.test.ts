@@ -28,6 +28,7 @@ const ALLOWED = [/^signingCredential\.untrusted$/];
 
 describe.runIf(hasProdCert)("C2PA production-cert signature is valid", () => {
   let signed: Buffer | null = null;
+  let signedHeic: Buffer | null = null;
   // Structural type — the package's `Reader` is not reachable via
   // `typeof import(...).Reader` under bundler resolution; describe what we call.
   type C2paReader = {
@@ -64,18 +65,39 @@ describe.runIf(hasProdCert)("C2PA production-cert signature is valid", () => {
       .toBuffer();
     const res = await signC2pa(buf, "image/jpeg");
     signed = res.signedBuffer ?? null;
+
+    // **本番モードでしか起きない 503 を見張るのはこのスイートだけ**なので、HEIC も
+    // ここで署名する。本番証明書を持つ環境でのみ走る（describe.runIf）ため、HEIC 固有の
+    // 失敗が本番署名器でだけ出る場合、ここを通さないと誰も気づけない。
+    // fixture の作り方と天井は c2paSignValidate.test.ts の TYPES のコメントと同じ。
+    const heic = await sharp({
+      create: { width: 240, height: 160, channels: 3, background: { r: 20, g: 90, b: 160 } },
+    })
+      .avif()
+      .toBuffer();
+    if (heic.subarray(4, 8).toString("ascii") !== "ftyp") {
+      throw new Error("avif の先頭に ftyp box が無い（sharp の出力形式が変わった）");
+    }
+    heic.write("heic", 8, 4, "ascii");
+    signedHeic = (await signC2pa(heic, "image/heic")).signedBuffer ?? null;
   }, 30_000);
 
-  it("has no claimSignature or content failures (untrusted CA is allowed)", async () => {
-    expect(signed, "production signing produced a buffer").toBeTruthy();
-    const reader = await Reader.fromAsset({ buffer: signed!, mimeType: "image/jpeg" });
-    const raw = reader?.json();
-    const json = typeof raw === "string" ? JSON.parse(raw) : raw;
-    const codes = collectFailureCodes(json);
-    const unexpected = [...codes].filter((c) => !ALLOWED.some((re) => re.test(c)));
-    expect(
-      unexpected,
-      `unexpected validation codes (want none but signingCredential.untrusted): ${[...codes].join(", ")}`,
-    ).toEqual([]);
-  });
+  for (const [label, get, mime] of [
+    ["image/jpeg", () => signed, "image/jpeg"],
+    ["image/heic", () => signedHeic, "image/heic"],
+  ] as Array<[string, () => Buffer | null, string]>) {
+    it(`has no claimSignature or content failures (untrusted CA is allowed) [${label}]`, async () => {
+      const buf = get();
+      expect(buf, `production signing produced a buffer for ${label}`).toBeTruthy();
+      const reader = await Reader.fromAsset({ buffer: buf!, mimeType: mime });
+      const raw = reader?.json();
+      const json = typeof raw === "string" ? JSON.parse(raw) : raw;
+      const codes = collectFailureCodes(json);
+      const unexpected = [...codes].filter((c) => !ALLOWED.some((re) => re.test(c)));
+      expect(
+        unexpected,
+        `unexpected validation codes for ${label} (want none but signingCredential.untrusted): ${[...codes].join(", ")}`,
+      ).toEqual([]);
+    });
+  }
 });
