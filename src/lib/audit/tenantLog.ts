@@ -21,7 +21,8 @@ import { getRequestMeta } from "./certificateLog";
 type ActorType = "tenant" | "system";
 
 export interface TenantAuditEvent {
-  tenantId: string;
+  /** テナントに属さない横断処理（cron 等）は null（audit_logs.tenant_id は NULL 可） */
+  tenantId: string | null;
   /** 操作した利用者。cron など人がいない経路では null */
   userId?: string | null;
   /** 例: "certificate_activated"。既存行に合わせて動詞の過去形で書く */
@@ -38,9 +39,9 @@ export interface TenantAuditEvent {
   req?: Request;
 }
 
-export async function logTenantAuditEvent(db: Pick<SupabaseClient, "from">, e: TenantAuditEvent): Promise<void> {
+function toRow(e: TenantAuditEvent) {
   const meta = e.req ? getRequestMeta(e.req) : { ip: null, userAgent: null };
-  const { error } = await db.from("audit_logs").insert({
+  return {
     tenant_id: e.tenantId,
     actor_type: e.actorType ?? "tenant",
     actor_user_id: e.userId ?? null,
@@ -49,8 +50,25 @@ export async function logTenantAuditEvent(db: Pick<SupabaseClient, "from">, e: T
     query_json: { table: e.table, record_id: e.recordId, ...(e.extra ?? {}) },
     ip: meta.ip,
     user_agent: meta.userAgent,
-  });
+  };
+}
+
+export async function logTenantAuditEvent(db: Pick<SupabaseClient, "from">, e: TenantAuditEvent): Promise<void> {
+  const { error } = await db.from("audit_logs").insert(toRow(e));
   // 監査ログの失敗で本体の操作は止めない（操作はすでに終わっている）。
   // ただし黙って捨てない —— 捨てていたせいで6箇所の不具合が見えていなかった
   if (error) console.error(`[audit] audit_logs insert failed (${e.action}):`, error.message);
+}
+
+/** 複数テナント分を 1 回の insert で記録する（cron の横断処理など）。失敗時の扱いは logTenantAuditEvent と同じ。 */
+export async function logTenantAuditEvents(
+  db: Pick<SupabaseClient, "from">,
+  events: TenantAuditEvent[],
+): Promise<void> {
+  if (events.length === 0) return;
+  const { error } = await db.from("audit_logs").insert(events.map(toRow));
+  if (!error) return;
+  // 一括 insert は 1 行の不正（消えたテナントの FK 等）で全行が落ちるので、1 行ずつ入れ直して他のテナントの記録を残す。
+  console.error(`[audit] audit_logs bulk insert failed (${events[0].action} x${events.length}):`, error.message);
+  for (const e of events) await logTenantAuditEvent(db, e);
 }
