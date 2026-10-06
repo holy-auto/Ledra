@@ -553,7 +553,7 @@ export const PUT = withCaller(
   { routeName: "documents PUT" },
 );
 
-// ─── DELETE: 帳票削除（下書きのみ） ───
+// ─── DELETE: 帳票削除（下書き・領収書・送付後の合算請求書） ───
 export const DELETE = withCaller(
   async (req, { caller, supabase }) => {
     const parsed = documentDeleteSchema.safeParse(await req.json().catch(() => ({})));
@@ -564,7 +564,7 @@ export const DELETE = withCaller(
 
     const { data: docs } = await supabase
       .from("documents")
-      .select("id, status, doc_type")
+      .select("id, status, doc_type, meta_json")
       .in("id", ids)
       .eq("tenant_id", caller.tenantId);
 
@@ -575,11 +575,22 @@ export const DELETE = withCaller(
     // RLS をバイパスしてサービスロールで DELETE（tenant_id で必ずスコープ限定）
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-    // 送付後の合算請求書は削除できるが、payment_entries は documents に on delete cascade なので
-    // 入金記録（一部入金を含む）がある合算請求書を消すと入金履歴ごと消える。それらは削除対象から外す。
-    const sentConsolidatedIds = eligible
-      .filter((d) => d.doc_type === "consolidated_invoice" && d.status !== "draft")
-      .map((d) => d.id);
+    // 送付後の合算請求書（＝発行済みの請求）の削除は、次のものを対象から外す。
+    // - 管理者ロール未満の操作（下書き・領収書の削除は従来どおり staff 可）
+    // - オーダー締めの合算（cycleInvoice）: job_orders.invoice_number に番号を刻んでおり、消すと
+    //   そのオーダーが「請求済み」のまま次の締めで拾われず、二度と請求されない
+    // - 入金記録（一部入金を含む）があるもの: payment_entries は on delete cascade で入金履歴ごと消える
+    // ponytail: 入金確認と DELETE は別クエリでロックしないので、その間に入金が記帳されると消える
+    //   （数百 ms の窓）。厳密にするなら「入金記録が無い行だけ消す」RPC にして1文で判定・削除する。
+    const isSentConsolidated = (d: { doc_type: string; status: string }) =>
+      d.doc_type === "consolidated_invoice" && d.status !== "draft";
+    const isAdmin = requireMinRole(caller, "admin");
+    eligible = eligible.filter(
+      (d) =>
+        !isSentConsolidated(d) ||
+        (isAdmin && (d.meta_json as { source?: unknown } | null)?.source !== "job_order_cycle"),
+    );
+    const sentConsolidatedIds = eligible.filter(isSentConsolidated).map((d) => d.id);
     if (sentConsolidatedIds.length > 0) {
       const { data: paidRows, error: paidErr } = await admin
         .from("payment_entries")
@@ -592,7 +603,9 @@ export const DELETE = withCaller(
     }
 
     if (eligible.length === 0) {
-      return apiValidationError("下書きの帳票・領収書・入金記録のない合算請求書のみ削除できます。");
+      return apiValidationError(
+        "削除できるのは下書きの帳票・領収書と、送付後の合算請求書（管理者のみ・入金記録なし・オーダー締め以外）です。",
+      );
     }
 
     const eligibleIds = eligible.map((d) => d.id);
@@ -606,7 +619,7 @@ export const DELETE = withCaller(
       return apiInternalError(error, "documents DELETE");
     }
 
-    // 削除の日時・作業者を監査ログに残す（第２ ２（３）/ G2）。下書き・領収書のみ削除可（上のフィルタ）。
+    // 削除の日時・作業者を監査ログに残す（第２ ２（３）/ G2）。対象は下書き・領収書・送付後の合算請求書（上のフィルタ）。
     // 一括削除でも直列にせず並行で記録する（本体の削除は既に完了・監査の失敗は非致命）。
     await Promise.all(
       eligible.map((d) =>

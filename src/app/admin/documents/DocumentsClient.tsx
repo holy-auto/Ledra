@@ -209,7 +209,12 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   const consolidateDisabledReason = consolidateEligibility.reason;
 
   const handleDelete = async (id: string) => {
-    if (!confirm("この帳票を削除しますか？")) return;
+    const target = docs.find((d) => d.id === id);
+    const sentWarning =
+      target && target.status !== "draft" && target.doc_type === "consolidated_invoice"
+        ? "\n送付済みの合算請求書です。お客様に届いた PDF は削除されません。"
+        : "";
+    if (!confirm(`この帳票を削除しますか？${sentWarning}`)) return;
     setDeletingId(id);
     try {
       const res = await fetch("/api/admin/documents", {
@@ -236,7 +241,11 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   const handleBulkDelete = async () => {
     const ids = docs.filter((d) => selectedIds.has(d.id) && isDeletable(d)).map((d) => d.id);
     if (ids.length === 0) return;
-    if (!confirm(`選択した ${ids.length} 件の帳票を削除しますか？`)) return;
+    const sentCount = docs.filter(
+      (d) => ids.includes(d.id) && d.status !== "draft" && d.doc_type === "consolidated_invoice",
+    ).length;
+    const sentWarning = sentCount > 0 ? `\nうち ${sentCount} 件は送付済みの合算請求書です。` : "";
+    if (!confirm(`選択した ${ids.length} 件の帳票を削除しますか？${sentWarning}`)) return;
     setBulkDeleting(true);
     try {
       const res = await fetch("/api/admin/documents", {
@@ -248,6 +257,12 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSelectedIds(new Set());
       mutate();
+      // 入金記録のある合算請求書・権限不足などはサーバ側で除外される（skipped）。黙って残さず伝える。
+      if (j?.skipped > 0) {
+        alert(
+          `${j.deleted} 件を削除しました。${j.skipped} 件は削除できないため残しました（入金記録のある合算請求書・オーダー締めの合算請求書・管理者以外による送付済み合算請求書の削除など）。`,
+        );
+      }
     } catch (e: any) {
       alert("一括削除に失敗しました: " + (e?.message ?? String(e)));
     } finally {

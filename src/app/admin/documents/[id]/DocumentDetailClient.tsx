@@ -634,10 +634,19 @@ export default function DocumentDetailClient({
 
       {/* 合算内訳: 元帳票ごとの明細 */}
       {consolidatedSources.length > 0 && (
-        <section className="glass-card p-5 space-y-5 print:border-none print:shadow-none print:bg-white print:text-black">
+        <section
+          className={`glass-card p-5 space-y-5 print:border-none print:shadow-none print:bg-white print:text-black ${
+            showsConsolidatedBreakdown(doc.meta_json) ? "" : "print:hidden"
+          }`}
+        >
           <h2 className="text-sm font-semibold text-primary print:text-black">
             合算内訳（{consolidatedSources.length}件）
           </h2>
+          {!showsConsolidatedBreakdown(doc.meta_json) && (
+            <p className="text-xs text-muted print:hidden">
+              作成時に「合算内訳を表示しない」を選んだため、この内訳は PDF・送付には載りません（管理画面のみ表示）。
+            </p>
+          )}
           {consolidatedSources.map((src) => {
             const vi = (src.vehicle_info_json ?? {}) as { model?: string; plate?: string };
             const vehicle = [vi.model, vi.plate].filter(Boolean).join(" ");
@@ -736,11 +745,6 @@ export default function DocumentDetailClient({
           <a href={`/admin/documents/${doc.source_document_id}`} className="text-accent hover:text-accent underline">
             {doc.source_document_id}
           </a>
-          {doc.doc_type === "consolidated_invoice" && !showsConsolidatedBreakdown(doc.meta_json) && (
-            <p className="mt-1 text-xs text-muted">
-              作成時に「合算内訳を表示しない」を選んだため、PDF・送付に合算内訳は載りません。
-            </p>
-          )}
         </section>
       )}
 

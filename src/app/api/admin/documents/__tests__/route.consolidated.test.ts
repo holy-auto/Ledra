@@ -1,18 +1,22 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // 合算請求書: 下書き編集で合算元ID（＝送付 PDF の合算内訳）が消えないこと、
-// 送付後の合算請求書は削除できるが入金記録があれば消さないことを確かめる。
+// 送付後の合算請求書は削除できるが、入金記録あり・オーダー締め・管理者未満は消さないことを確かめる。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   userClient: null as any,
   admin: null as any,
+  role: "admin",
 }));
 
 vi.mock("next/server", async (orig) => ({ ...(await orig<typeof import("next/server")>()), after: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn(async () => mocks.userClient) }));
 vi.mock("@/lib/auth/checkRole", () => ({
-  resolveCallerWithRole: vi.fn(async () => ({ userId: "u1", tenantId: "t1", role: "admin", planTier: "pro" })),
-  requireMinRole: () => true,
+  resolveCallerWithRole: vi.fn(async () => ({ userId: "u1", tenantId: "t1", role: mocks.role, planTier: "pro" })),
+  requireMinRole: (caller: { role: string }, min: string) => {
+    const rank: Record<string, number> = { owner: 4, admin: 3, staff: 2, viewer: 1 };
+    return (rank[caller.role] ?? 0) >= (rank[min] ?? 0);
+  },
   requirePermission: () => true,
 }));
 vi.mock("@/lib/supabase/admin", () => ({ createTenantScopedAdmin: () => ({ admin: mocks.admin }) }));
@@ -73,6 +77,7 @@ function req(method: string, body: unknown) {
 beforeEach(() => {
   mocks.userClient = null;
   mocks.admin = null;
+  mocks.role = "admin";
 });
 
 describe("PUT /api/admin/documents（合算請求書の下書き編集）", () => {
@@ -117,5 +122,32 @@ describe("DELETE /api/admin/documents（合算請求書）", () => {
 
     expect(res.status).toBe(400);
     expect(mocks.admin.calls.deleted).toBeUndefined();
+  });
+
+  it("オーダー締めの合算請求書は（job_orders が請求済みのまま残るので）送付後は削除しない", async () => {
+    mocks.userClient = client({
+      documents: [
+        { id: DOC_ID, status: "sent", doc_type: "consolidated_invoice", meta_json: { source: "job_order_cycle" } },
+      ],
+    });
+    mocks.admin = client({ payment_entries: [], documents: null });
+
+    const res = await DELETE(req("DELETE", { id: DOC_ID }));
+
+    expect(res.status).toBe(400);
+    expect(mocks.admin.calls.deleted).toBeUndefined();
+  });
+
+  it("送付済みの合算請求書は管理者未満（staff）には削除させない。下書きは従来どおり staff も削除できる", async () => {
+    mocks.role = "staff";
+    mocks.userClient = client({ documents: [{ id: DOC_ID, status: "sent", doc_type: "consolidated_invoice" }] });
+    mocks.admin = client({ payment_entries: [], documents: null });
+    expect((await DELETE(req("DELETE", { id: DOC_ID }))).status).toBe(400);
+    expect(mocks.admin.calls.deleted).toBeUndefined();
+
+    mocks.userClient = client({ documents: [{ id: DOC_ID, status: "draft", doc_type: "consolidated_invoice" }] });
+    mocks.admin = client({ documents: null });
+    expect((await DELETE(req("DELETE", { id: DOC_ID }))).status).toBe(200);
+    expect(mocks.admin.calls.deleted).toEqual([DOC_ID]);
   });
 });

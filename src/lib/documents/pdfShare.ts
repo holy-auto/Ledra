@@ -10,7 +10,7 @@
  */
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { renderDocumentPdf, type DocForPdf, type TenantForDocPdf } from "@/lib/pdfDocument";
-import { loadConsolidatedSources } from "@/lib/documents/consolidatedSources";
+import { consolidatedSourcesForPdf } from "@/lib/documents/consolidatedSources";
 import { layoutConfigSchema, type LayoutConfig } from "@/types/documentTemplate";
 import { LINE_MEDIA_BUCKET } from "@/lib/line/media";
 import { logger } from "@/lib/logger";
@@ -119,7 +119,7 @@ export async function renderAndStoreDocumentPdf(tenantId: string, documentId: st
       tenant as unknown as TenantForDocPdf,
       customerName,
       layoutOverride,
-      await loadConsolidatedSources(admin, tenantId, doc),
+      await consolidatedSourcesForPdf(admin, tenantId, doc),
     );
     const buf = new Uint8Array(pdf);
 
