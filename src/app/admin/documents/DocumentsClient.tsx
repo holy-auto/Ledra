@@ -85,7 +85,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
 
   // Build SWR key
   const swrKey = (() => {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams({ with_deletable: "1" });
     if (activeTypeFilter && activeTypeFilter !== "all") params.set("doc_type", activeTypeFilter);
     if (activeStatusFilter && activeStatusFilter !== "all") params.set("status", activeStatusFilter);
     const range = periodRange(periodFilter);
@@ -167,7 +167,8 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
     setActiveAmountMax("");
   };
 
-  const isDeletable = (doc: DocumentRow) => isDocumentDeletable(doc.doc_type, doc.status);
+  // 一覧 API が DELETE と同じ判定（権限・入金/按分・オーダー締め）で付けた deletable を優先する
+  const isDeletable = (doc: DocumentRow) => doc.deletable ?? isDocumentDeletable(doc.doc_type, doc.status);
   const isSendable = (doc: DocumentRow) => !!doc.customer_id && doc.status !== "cancelled" && doc.status !== "rejected";
   const selectableDocs = docs.filter((d) => isDeletable(d) || isSendable(d));
   const allSelected = selectableDocs.length > 0 && selectableDocs.every((d) => selectedIds.has(d.id));

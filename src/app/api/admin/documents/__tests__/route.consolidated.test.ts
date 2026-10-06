@@ -26,7 +26,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 
-import { PUT, DELETE } from "@/app/api/admin/documents/route";
+import { GET, PUT, DELETE } from "@/app/api/admin/documents/route";
 
 const DOC_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -55,6 +55,7 @@ function client(
           return b;
         },
         order: () => b,
+        range: () => b,
         limit: () => b,
         // キーセットの2ページ目以降は空（1ページで読み切れる量のテスト）
         gt: () => {
@@ -75,6 +76,9 @@ function client(
             calls.deleted = b._in;
             const gone = calls.deleteReturnsNothing ? [] : b._in.map((id: string) => ({ id }));
             return Promise.resolve({ data: gone, error: null }).then(res);
+          }
+          if ((rows as { __error?: string } | undefined)?.__error) {
+            return Promise.resolve({ data: null, error: { message: (rows as { __error: string }).__error } }).then(res);
           }
           return Promise.resolve({ data: b._nextPage ? [] : rows, error: null }).then(res);
         },
@@ -189,5 +193,52 @@ describe("DELETE /api/admin/documents（合算請求書）", () => {
     mocks.admin = client({ documents: null });
     expect((await DELETE(req("DELETE", { id: DOC_ID }))).status).toBe(200);
     expect(mocks.admin.calls.deleted).toEqual([DOC_ID]);
+  });
+});
+
+describe("GET /api/admin/documents（一覧の削除可否）", () => {
+  const SENT = { id: "doc-sent", doc_type: "consolidated_invoice", status: "sent", customer_id: null, total: 0 };
+  const PAID_LINKED = { ...SENT, id: "doc-with-payment" };
+  const CYCLE = { ...SENT, id: "doc-cycle", counterparty_tenant_id: "tenant-from" };
+  const DRAFT = { ...SENT, id: "doc-draft", status: "draft" };
+  const list = (opts: { query?: string; paymentsError?: boolean } = {}) => {
+    mocks.admin = client({
+      documents: [SENT, PAID_LINKED, CYCLE, DRAFT],
+      payment_entries: opts.paymentsError ? { __error: "timeout" } : [{ id: "p1", document_id: "doc-with-payment" }],
+      billing_splits: [],
+    });
+    return GET(new Request(`http://localhost/api/admin/documents${opts.query ?? "?with_deletable=1"}`) as any);
+  };
+  const deletableOf = async (res: Response) =>
+    Object.fromEntries(((await res.json()).documents as any[]).map((d) => [d.id, d.deletable]));
+
+  it("管理者には、DELETE API が通すものだけ deletable を立てる（入金あり・オーダー締めは false）", async () => {
+    expect(await deletableOf(await list())).toEqual({
+      "doc-sent": true,
+      "doc-with-payment": false,
+      "doc-cycle": false,
+      "doc-draft": true,
+    });
+  });
+
+  it("staff には送付済み合算請求書の削除を出さない（下書きは出す）", async () => {
+    mocks.role = "staff";
+    expect(await deletableOf(await list())).toMatchObject({ "doc-sent": false, "doc-draft": true });
+  });
+
+  it("判定の取得に失敗しても一覧は返し、送付済み合算請求書には削除を出さない", async () => {
+    const res = await list({ paymentsError: true });
+    expect(res.status).toBe(200);
+    expect(await deletableOf(res)).toEqual({
+      "doc-sent": false,
+      "doc-with-payment": false,
+      "doc-cycle": false,
+      "doc-draft": true,
+    });
+  });
+
+  it("with_deletable を付けない呼び出し元には判定せず、counterparty_tenant_id も返さない", async () => {
+    const docs = (await (await list({ query: "" })).json()).documents as any[];
+    expect(docs.every((d) => !("deletable" in d) && !("counterparty_tenant_id" in d))).toBe(true);
   });
 });
