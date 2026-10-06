@@ -4,6 +4,13 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-06 sharp を 0.35.5 に上げる（CVE-2026-96889 / GHSA-wq5f-xc86-pv6w）
+
+- 2026-10-06 に sharp（同梱の librsvg）へ high の脆弱性が公表され、CI の `npm audit --audit-level=high --omit=dev` が main で落ちるようになった
+  （#1252 のマージコミット 5e16119 で初めて検出。直前の 7700324 では未公表で通過）。
+- `package.json` の dependencies と overrides の `sharp` を `^0.35.3` → `^0.35.5`。lockfile の変更は sharp と `@img/*`（各プラットフォームのバイナリ）のみ。
+- 検証: `npm audit --audit-level=high --omit=dev` が 0 件、`scripts/ci-parallel-checks.sh` 全項目通過。
+
 ## 2026-10-06 お客様が顧客ポータルで電子交付を承諾できる（G3）
 
 - 内容: これまで顧客ポータルでは電子交付の承諾の**撤回**しかできず、承諾は店舗が顧客詳細で記録するしかなかった。
