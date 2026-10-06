@@ -31,7 +31,10 @@ import { PUT, DELETE } from "@/app/api/admin/documents/route";
 const DOC_ID = "11111111-1111-4111-8111-111111111111";
 
 /** 終端（maybeSingle / single / await）で rows を返す素朴なビルダ。呼ばれた update/delete を記録する。 */
-function client(tables: Record<string, unknown>, calls: { update?: any; deleted?: unknown[]; deleteOr?: string } = {}) {
+function client(
+  tables: Record<string, unknown>,
+  calls: { update?: any; deleted?: unknown[]; deleteOr?: string; deleteReturnsNothing?: boolean } = {},
+) {
   return {
     calls,
     from(table: string) {
@@ -51,6 +54,13 @@ function client(tables: Record<string, unknown>, calls: { update?: any; deleted?
           b._delete = true;
           return b;
         },
+        order: () => b,
+        limit: () => b,
+        // キーセットの2ページ目以降は空（1ページで読み切れる量のテスト）
+        gt: () => {
+          b._nextPage = true;
+          return b;
+        },
         or: (expr: string) => {
           if (b._delete) calls.deleteOr = expr;
           return b;
@@ -63,9 +73,10 @@ function client(tables: Record<string, unknown>, calls: { update?: any; deleted?
         then: (res: any) => {
           if (b._delete) {
             calls.deleted = b._in;
-            return Promise.resolve({ data: b._in.map((id: string) => ({ id })), error: null }).then(res);
+            const gone = calls.deleteReturnsNothing ? [] : b._in.map((id: string) => ({ id }));
+            return Promise.resolve({ data: gone, error: null }).then(res);
           }
-          return Promise.resolve({ data: rows, error: null }).then(res);
+          return Promise.resolve({ data: b._nextPage ? [] : rows, error: null }).then(res);
         },
       };
       return b;
@@ -124,9 +135,18 @@ describe("DELETE /api/admin/documents（合算請求書）", () => {
     expect(await res.json()).toMatchObject({ deleted: 1, skipped: 0 });
   });
 
+  it("確認後に入金済へ変わって1件も消えなかったら、成功ではなく 409 を返す", async () => {
+    mocks.userClient = client({ documents: [{ id: DOC_ID, status: "sent", doc_type: "consolidated_invoice" }] });
+    mocks.admin = client({ payment_entries: [], billing_splits: [], documents: null }, { deleteReturnsNothing: true });
+
+    const res = await DELETE(req("DELETE", { id: DOC_ID }));
+
+    expect(res.status).toBe(409);
+  });
+
   it("支払者按分（billing_splits）がある合算請求書は（按分ごと消えるので）削除しない", async () => {
     mocks.userClient = client({ documents: [{ id: DOC_ID, status: "sent", doc_type: "consolidated_invoice" }] });
-    mocks.admin = client({ payment_entries: [], billing_splits: [{ document_id: DOC_ID }], documents: null });
+    mocks.admin = client({ payment_entries: [], billing_splits: [{ id: "p1", document_id: DOC_ID }], documents: null });
 
     const res = await DELETE(req("DELETE", { id: DOC_ID }));
 
@@ -136,7 +156,7 @@ describe("DELETE /api/admin/documents（合算請求書）", () => {
 
   it("入金記録がある合算請求書は（入金履歴ごと消えるので）削除しない", async () => {
     mocks.userClient = client({ documents: [{ id: DOC_ID, status: "sent", doc_type: "consolidated_invoice" }] });
-    mocks.admin = client({ payment_entries: [{ document_id: DOC_ID }], documents: null });
+    mocks.admin = client({ payment_entries: [{ id: "p1", document_id: DOC_ID }], documents: null });
 
     const res = await DELETE(req("DELETE", { id: DOC_ID }));
 

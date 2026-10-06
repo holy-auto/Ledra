@@ -34,16 +34,45 @@ export async function filterDeletableDocuments<T extends DeletableCandidate>(
   const sentConsolidatedIds = eligible.filter(isSentConsolidated).map((d) => d.id);
   if (sentConsolidatedIds.length === 0) return { eligible };
 
-  const [payments, splits] = await Promise.all(
-    ["payment_entries", "billing_splits"].map((table) =>
-      client.from(table).select("document_id").in("document_id", sentConsolidatedIds).eq("tenant_id", tenantId),
-    ),
-  );
-  const error = payments.error ?? splits.error;
-  if (error) return { eligible: [], error };
-  const linked = new Set(
-    [...(payments.data ?? []), ...(splits.data ?? [])].map((r) => (r as { document_id: string }).document_id),
-  );
+  const linked = new Set<string>();
+  for (const table of ["payment_entries", "billing_splits"]) {
+    const error = await collectLinkedDocumentIds(client, table, tenantId, sentConsolidatedIds, linked);
+    if (error) return { eligible: [], error };
+  }
   eligible = eligible.filter((d) => !linked.has(d.id));
   return { eligible };
+}
+
+const PAGE = 1000;
+
+/**
+ * table の document_id を全件読んで linked に足す。PostgREST は1回の応答を max_rows（1000）で切るので、
+ * 1回の SELECT だと1000行を超えた分の帳票が「紐付きなし」に見え、削除で cascade されてしまう。
+ * キーセット方式（id 順・直前の id より後）で空ページまで読む（サーバ側の上限が小さくても取りこぼさない）。
+ */
+async function collectLinkedDocumentIds(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: SupabaseClient<any, any, any>,
+  table: string,
+  tenantId: string,
+  documentIds: string[],
+  linked: Set<string>,
+): Promise<{ message: string } | null> {
+  let after: string | null = null;
+  for (;;) {
+    let q = client
+      .from(table)
+      .select("id, document_id")
+      .in("document_id", documentIds)
+      .eq("tenant_id", tenantId)
+      .order("id")
+      .limit(PAGE);
+    if (after) q = q.gt("id", after);
+    const { data, error } = await q;
+    if (error) return error;
+    const rows = (data ?? []) as { id: string; document_id: string }[];
+    if (rows.length === 0) return null;
+    for (const r of rows) linked.add(r.document_id);
+    after = rows[rows.length - 1].id;
+  }
 }

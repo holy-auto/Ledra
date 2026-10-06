@@ -14,9 +14,10 @@
 - 実装: `src/app/api/admin/documents/route.ts`（PUT の meta_json マージ・DELETE の入金記録ガード）、`src/types/document.ts`
   （`isDocumentDeletable`・`showsConsolidatedBreakdown`）、`src/lib/documents/consolidatedSources.ts`（OFF なら空）、
   `DocumentsClient.tsx`（チェックボックス）、`DocumentDetailClient.tsx`（削除ボタン・非表示の注記）。
-- 検証: ルートのテスト 6 件（編集で合算元 ID と表示設定が残る・送付済みで入金なしは削除（DELETE に入金済除外の条件）・按分ありは削除しない・
-  入金ありは削除しない・オーダー締めは削除しない・staff は送付済みを削除できず下書きは削除できる）と lib のテスト 4 件を追加し、
-  ガードを外すと該当テストが落ちることを確認。帳票関連のテスト 21 ファイル 151 件、tsc、eslint（0 error）、prettier 緑。
+- 検証: ルートのテスト 7 件（編集で合算元 ID と表示設定が残る・送付済みで入金なしは削除（DELETE に入金済除外の条件）・何も消えなければ 409・
+  按分ありは削除しない・入金ありは削除しない・オーダー締めは削除しない・staff は送付済みを削除できず下書きは削除できる）、
+  削除判定のテスト 2 件（応答の行数上限を超えた入金記録も拾う・権限/オーダー締め）、内訳のテスト 4 件を追加し、
+  ガードを外すと該当テストが落ちることを確認。帳票関連のテスト 22 ファイル 154 件、tsc、eslint（0 error）、prettier 緑。
 - 既知の制約: 既に編集で ID が消えた合算請求書は内訳が戻らない。削除して作り直す。
 
 ## 2026-10-06 保持期限 cron の削除をテナントごとに監査ログへ残す（G2）

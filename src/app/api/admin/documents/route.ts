@@ -5,7 +5,7 @@ import { DOC_TYPES, isDocumentEditable, type DocType } from "@/types/document";
 import { filterDeletableDocuments } from "@/lib/documents/deleteEligibility";
 import { parsePagination } from "@/lib/api/pagination";
 import { parseAmountParam } from "@/lib/api/amountFilter";
-import { apiJson, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiError, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { withCaller } from "@/lib/api/withCaller";
 import { documentCreateSchema, documentUpdateSchema, documentDeleteSchema } from "@/lib/validations/document";
 import { resolveBaseUrl } from "@/lib/url";
@@ -614,6 +614,15 @@ export const DELETE = withCaller(
     }
     const deletedIds = new Set((deletedRows ?? []).map((r) => r.id as string));
     const deleted = eligible.filter((d) => deletedIds.has(d.id));
+    // 確認後に入金済へ変わった合算請求書は上の条件で残る。1件も消えなかったのに 200 を返すと、
+    // 画面は「削除できた」として一覧へ戻ってしまうので、競合として返す（一括削除で一部だけ残るのは skipped で伝える）。
+    if (deleted.length === 0) {
+      return apiError({
+        code: "conflict",
+        message: "帳票の状態が変わったため削除できませんでした。再読み込みしてください。",
+        status: 409,
+      });
+    }
 
     // 削除の日時・作業者を監査ログに残す（第２ ２（３）/ G2）。実際に消えた行だけを記録する。
     // 一括削除でも直列にせず並行で記録する（本体の削除は既に完了・監査の失敗は非致命）。

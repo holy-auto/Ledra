@@ -318,7 +318,8 @@ export default function DocumentDetailClient({
             <button type="button" className="btn-primary text-xs" onClick={() => setShareOpen(true)}>
               共有
             </button>
-            {canDelete && (
+            {/* canDelete はページ表示時のステータスで判定した値。画面上でステータスを変えたら判定が古いので出さない */}
+            {canDelete && doc.status === initial.status && (
               <button type="button" className="btn-danger text-xs" disabled={deleting} onClick={handleDelete}>
                 {deleting ? "削除中…" : "削除"}
               </button>
