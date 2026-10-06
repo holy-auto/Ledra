@@ -9,7 +9,12 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { CUSTOMER_COOKIE, getTenantIdBySlug, validateSession } from "@/lib/customerPortalServer";
-import { deliveryConsentStatus, type DeliveryConsentRow } from "@/lib/delivery/deliveryConsent";
+import {
+  deliveryConsentStatus,
+  deliveryConsentText,
+  DELIVERY_CONSENT_VERSION,
+  type DeliveryConsentRow,
+} from "@/lib/delivery/deliveryConsent";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -37,7 +42,12 @@ export async function GET(req: Request) {
       .maybeSingle();
     if (error) return apiInternalError(error, "customer/delivery-consent GET");
 
-    return apiOk({ status: deliveryConsentStatus((data as DeliveryConsentRow | null) ?? null) });
+    // 本人が承諾する画面で開示文言を示すため、現行の文言と版も返す（承諾時に版を送り返してもらう）。
+    return apiOk({
+      status: deliveryConsentStatus((data as DeliveryConsentRow | null) ?? null),
+      consent_text: deliveryConsentText(),
+      consent_version: DELIVERY_CONSENT_VERSION,
+    });
   } catch (e) {
     return apiInternalError(e, "customer/delivery-consent GET");
   }

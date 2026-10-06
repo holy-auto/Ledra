@@ -91,6 +91,7 @@ const TYPE_ICON: Record<string, { icon: string; color: string; bg: string }> = {
   ft_evidence_submitted: { icon: "camera-outline", color: colors.textSecondary, bg: colors.surfaceVariant },
   ft_inspection_completed: { icon: "magnify-scan", color: colors.success, bg: colors.successLight },
   ft_defect_reported: { icon: "alert-octagon-outline", color: colors.danger, bg: colors.dangerLight },
+  ft_agreement_accepted: { icon: "file-sign", color: colors.success, bg: colors.successLight },
 };
 
 const DEFAULT_ICON = { icon: "bell", color: colors.textSecondary, bg: colors.surfaceVariant };
