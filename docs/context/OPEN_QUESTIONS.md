@@ -124,9 +124,8 @@ TSA の URL（`https://ts-c2pa.ssl.com/ecc`）と、証明書・TSA とも ssl.c
 `inspection_records`（完成検査）・`documents` / `body_repair_jobs` の作成/更新/削除を `audit_logs` に記録
 （RELEASE_LOG 2026-10-02・2026-10-03）。保持期限後の消去経路も実装（RELEASE_LOG 2026-10-05）。残り。
 
-1. **保持期限 cron（`data-retention`）の横断監査**: cron は認証コード/セッション/通知ログ等の**非・記録簿**を
-   全テナント横断で削除する。`audit_logs.tenant_id` が NOT NULL なので単一行では残せない。テナント別に集計するか
-   cron 専用の削除サマリ表を設けるか未決（運用ログの充実・優先度中。記録簿の消去要件には無関係）。
+1. **保持期限 cron（`data-retention`）の横断監査** → ✅ テナント別に集計して 1 実行 1 テナント 1 行で `audit_logs` に残す形で実装
+   （2026-10-06、RELEASE_LOG）。`tenant_id` を持たない表（`stripe_processed_events`）はアプリログのみ。
 
 ## G1 法定資格ロール: 強制・番号/有効期限・実施者紐付けは実装、残る運用判断（2026-10-02）
 

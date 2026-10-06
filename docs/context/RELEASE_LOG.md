@@ -4,6 +4,17 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-06 保持期限 cron の削除をテナントごとに監査ログへ残す（G2）
+
+- 内容: 保持期限 cron（`/api/cron/data-retention`、認証コード・セッション・通知ログ等の非・記録簿を全テナント横断で削除）は
+  件数をアプリログに出すだけで、`audit_logs` には残っていなかった（`audit_logs.tenant_id` が NOT NULL で横断の 1 行は書けない）。
+  削除前に読む ID と一緒に `tenant_id` を取り、1 回の実行につき**テナントごとに 1 行**（`data_retention_pruned`、テーブル別件数・合計、
+  `record_id = data-retention:<日付>`）を残す。`tenant_id` を持たない表（`stripe_processed_events`）はアプリログのみ。
+- 実装: 集計は `src/lib/cron/retentionAudit.ts`（route は GET 等しか export できないため別ファイル）。`audit_logs` への書き込みは
+  `logTenantAuditEvents`（`tenantLog.ts` に追加、行の形は単発版と共通）で 1 回の insert にまとめる。
+- 検証: 集計の単体テスト 3 件（テナント別集計・テーブルをまたいだまとめ・削除なしなら書かない）、cron 関連 161 件、tsc・eslint（0 error）・
+  check:schema 緑。
+
 ## 2026-10-06 お客様が顧客ポータルで電子交付を承諾できる（G3）
 
 - 内容: これまで顧客ポータルでは電子交付の承諾の**撤回**しかできず、承諾は店舗が顧客詳細で記録するしかなかった。
