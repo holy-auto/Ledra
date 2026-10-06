@@ -47,14 +47,17 @@ export async function filterDeletableDocuments<T extends DeletableCandidate>(
   if (sentConsolidatedIds.length === 0) return { eligible };
 
   const linked = new Set<string>();
-  // 一覧（全件）から呼ぶと ID が数百件になりうるので、`.in()` の URL が長くなりすぎないよう分けて引く
+  // 一覧（全件）から呼ぶと ID が数百件になりうるので、`.in()` の URL が長くなりすぎないよう分けて引く。
+  // 塊・テーブルごとの問い合わせは互いに依存しないので並行に投げる。
+  const jobs: Promise<{ message: string } | null>[] = [];
   for (let i = 0; i < sentConsolidatedIds.length; i += ID_CHUNK) {
     const chunk = sentConsolidatedIds.slice(i, i + ID_CHUNK);
     for (const table of ["payment_entries", "billing_splits"]) {
-      const error = await collectLinkedDocumentIds(client, table, tenantId, chunk, linked);
-      if (error) return { eligible: [], error };
+      jobs.push(collectLinkedDocumentIds(client, table, tenantId, chunk, linked));
     }
   }
+  const error = (await Promise.all(jobs)).find((e) => e);
+  if (error) return { eligible: [], error };
   eligible = eligible.filter((d) => !linked.has(d.id));
   return { eligible };
 }

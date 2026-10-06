@@ -1,7 +1,7 @@
 import { after } from "next/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { requireMinRole } from "@/lib/auth/checkRole";
-import { DOC_TYPES, isDocumentEditable, type DocType } from "@/types/document";
+import { DOC_TYPES, isDocumentDeletable, isDocumentEditable, type DocType } from "@/types/document";
 import { filterDeletableDocuments } from "@/lib/documents/deleteEligibility";
 import { logger } from "@/lib/logger";
 import { parsePagination } from "@/lib/api/pagination";
@@ -28,6 +28,8 @@ export const GET = withCaller(
     const docType = url.searchParams.get("doc_type") ?? "";
     const status = url.searchParams.get("status") ?? "";
     const customerId = url.searchParams.get("customer_id") ?? "";
+    // 削除可否（deletable）は帳票一覧画面だけが使うので、頼まれたときだけ判定する（他の呼び出し元に問い合わせを増やさない）
+    const withDeletable = url.searchParams.get("with_deletable") === "1";
     // 発行日 (issued_at) による期間絞り込み。YYYY-MM-DD 形式のみ受け付ける。
     const dateFromRaw = url.searchParams.get("date_from") ?? "";
     const dateToRaw = url.searchParams.get("date_to") ?? "";
@@ -123,21 +125,38 @@ export const GET = withCaller(
 
     // 削除ボタンを DELETE API と同じ判定で出す（送付済み合算請求書は管理者のみ・入金/按分なし・オーダー締め以外）。
     // 一覧は重い meta_json を引かないので、オーダー締めは counterparty_tenant_id で見分ける（cycleInvoice が必ず入れる）。
-    // 判定の取得に失敗したら deletable を付けない（画面は従来の種別・ステータス判定に戻り、削除自体は API が止める）。
-    const { eligible: deletableDocs, error: deletableErr } = await filterDeletableDocuments(
-      admin,
-      caller.tenantId,
-      docs,
-      requireMinRole(caller, "admin"),
-    );
-    if (deletableErr) logger.warn("[documents GET] deletable check failed", { err: deletableErr.message });
-    const deletableIds = deletableErr ? null : new Set(deletableDocs.map((d) => d.id));
+    let deletableIds: Set<string> | null = null;
+    if (withDeletable) {
+      const { eligible, error: deletableErr } = await filterDeletableDocuments(
+        admin,
+        caller.tenantId,
+        docs,
+        requireMinRole(caller, "admin"),
+      );
+      if (deletableErr) logger.warn("[documents GET] deletable check failed", { err: deletableErr.message });
+      // 判定が取れなければ、送付済みの合算請求書には削除を出さない（下書き・領収書は従来どおり）
+      deletableIds = new Set(
+        (deletableErr
+          ? docs.filter(
+              (d) =>
+                isDocumentDeletable(d.doc_type, d.status) &&
+                !(d.doc_type === "consolidated_invoice" && d.status !== "draft"),
+            )
+          : eligible
+        ).map((d) => d.id),
+      );
+    }
 
-    const enriched = (docs ?? []).map((d) => ({
-      ...d,
-      customer_name: d.customer_id ? (customerNames[d.customer_id] ?? null) : null,
-      ...(deletableIds ? { deletable: deletableIds.has(d.id) } : {}),
-    }));
+    const enriched = (docs ?? []).map((d) => {
+      const row = {
+        ...d,
+        customer_name: d.customer_id ? (customerNames[d.customer_id] ?? null) : null,
+        ...(deletableIds ? { deletable: deletableIds.has(d.id) } : {}),
+      };
+      // counterparty_tenant_id は削除判定にだけ使う（他テナントの ID をレスポンスに増やさない）
+      delete (row as { counterparty_tenant_id?: unknown }).counterparty_tenant_id;
+      return row;
+    });
 
     // 統計
     const total = enriched.length;

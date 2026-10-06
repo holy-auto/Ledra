@@ -9,11 +9,13 @@
 - 内容: #1256 で送付済みの合算請求書を削除できるようにした際、詳細画面の削除ボタンは API と同じ判定に揃えたが、一覧の「削除」と
   「選択した帳票を削除 (N)」は種別・ステータスだけで判定したままだった。staff には送付済み合算請求書すべてに、管理者にも入金・按分あり
   やオーダー締めの合算に削除ボタンが出て、押すと API に拒否される／一括削除の件数が実際に消える件数より多く出ていた（マージ後の Codex 指摘）。
-- 実装: 一覧 API（GET `/api/admin/documents`）が各行に `deletable` を付ける（`filterDeletableDocuments` を呼ぶ。一覧は meta_json を
-  引かないのでオーダー締めは `counterparty_tenant_id` で見分ける）。一覧画面は `deletable` を優先し、無いとき（判定の取得失敗）は従来判定。
-  一覧は全件を読むため、紐付き確認の `.in()` を 100 件ずつに分けた（URL が長くなりすぎないように）。
-- 検証: 一覧 API のテスト 2 件（管理者: 入金あり・オーダー締めは false／staff: 送付済みは false・下書きは true）と、ID を分けても後ろの塊の
-  入金記録を拾うテストを追加し、判定を外すと落ちることを確認。帳票関連のテスト 22 ファイル 157 件、tsc、eslint（0 error）、prettier、check:schema 緑。
+- 実装: 一覧 API（GET `/api/admin/documents`）が `with_deletable=1` のときだけ各行に `deletable` を付ける（一覧画面だけが頼む。
+  `filterDeletableDocuments` を呼ぶ。一覧は meta_json を引かないのでオーダー締めは `counterparty_tenant_id` で見分け、その列は
+  レスポンスから外す）。判定が取れないときは送付済み合算請求書に削除を出さない。一覧は全件を読むため、紐付き確認の `.in()` を
+  100 件ずつに分け、塊・テーブルごとに並行で引く。
+- 検証: 一覧 API のテスト 4 件（管理者: 入金あり・オーダー締めは false／staff: 送付済みは false・下書きは true／判定の取得失敗でも 200 で
+  送付済みは false／with_deletable なしでは判定せず counterparty_tenant_id も返さない）と、ID を分けても後ろの塊の入金記録を拾うテストを追加し、
+  判定を外すと落ちることを確認。帳票関連のテスト 22 ファイル 159 件、tsc、eslint（0 error）、prettier、check:schema 緑。
 
 ## 2026-10-06 合算請求書: 送付時に内訳が消える不具合の修正・送付後の削除・内訳表示の選択
 

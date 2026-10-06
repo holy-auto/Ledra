@@ -85,7 +85,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
 
   // Build SWR key
   const swrKey = (() => {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams({ with_deletable: "1" });
     if (activeTypeFilter && activeTypeFilter !== "all") params.set("doc_type", activeTypeFilter);
     if (activeStatusFilter && activeStatusFilter !== "all") params.set("status", activeStatusFilter);
     const range = periodRange(periodFilter);
