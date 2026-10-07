@@ -4,6 +4,17 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-07 本番デプロイの失敗を Slack に通知する
+
+- 内容: Vercel の本番デプロイが失敗したら Slack に通知する。これまでは人が commit status を見に行くまで気づけなかった
+  （2026-10-01 `5f54e29`、2026-10-06 `9df2d3c` の OOM。ビルド機を Elastic のまま使う判断は DECISION_LOG 2026-10-07）。
+- 実装: `.github/workflows/vercel-deploy-failure-notify.yml`（`deployment_status` で起動。state が failure / error、かつ環境が
+  `Production` のときだけ）。通知先は既存の `SLACK_WEBHOOK_URL`（db-migrate.yml・vercel-deploy.yml と同じ）。未設定なら warning と
+  サマリで残し、配信に失敗したらジョブを赤くする。プレビューと成功は送らない。
+- 検証: YAML の構文、通知ステップを手元で実行して Slack の payload（コミット・Vercel のデプロイへのリンク・OOM の見分け方）と
+  未設定時の warning を確認。`9df2d3c` の GitHub deployment が `environment = Production`・`state = failure`（作成者 vercel[bot]）で
+  記録されていることを API で確認（このイベントで起動する前提）。実際の配信は次の本番失敗まで未確認【要確認】。
+
 ## 2026-10-07 合算請求書の1枚目に、元帳票の明細を車両ごとに載せる
 
 - 内容: 合算請求書の明細を「請求書 INV-… 1行」から、元帳票ごとの「見出し（件名 車種 ナンバー。件名には取引先の管理番号を入れる運用）→ 明細行 → 小計」に変えた。
