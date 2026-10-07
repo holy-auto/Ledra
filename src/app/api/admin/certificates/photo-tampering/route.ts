@@ -4,7 +4,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { aggregateCertificateImageIntegrity, type CertImageIntegrityInput } from "@/lib/ai/certificatePhotoIntegrity";
 
 import { withCaller } from "@/lib/api/withCaller";
-import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2pa";
+import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2paMode";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 

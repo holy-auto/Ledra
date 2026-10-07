@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
+import { walkSource, stripComments } from "@/lib/__tests__/sourceScan";
+import { parse, walk } from "@/lib/__tests__/astScan";
+import ts from "typescript";
 
 /**
- * `C2PA_MODE` の正規化を `getMode()`（`providers/c2pa.ts`）1箇所に閉じる。
+ * `C2PA_MODE` の正規化を `getMode()`（`providers/c2paMode.ts`）1箇所に閉じる。
  *
  * ## なぜ要るか
  *
@@ -21,58 +24,138 @@ import path from "node:path";
  * ## これは構造テストである（型 G に注意）
  *
  * 守りたい主張がそもそも構造（「読む場所が1つ」）なので、ソースを走査して数える。
- * **値が正しく正規化されるかは別のテストが見る**（`providers.test.ts` の `getMode()`
- * 6ケース）。この2本は役割が違うので、どちらも要る。
+ * **値が正しく正規化されるかは別のテストが見る**（`providers.test.ts` の `getMode()` 6ケース）。
+ *
+ * ## 走査の作り
+ *
+ * 初版は生ソースに `includes("process.env.C2PA_MODE")` を当てていた。`/code-review` が
+ * 2つの穴を実測で示した: (1) `process.env["C2PA_MODE"]` や分割代入は**素通り**、
+ * (2) その語を書いた**コメントだけで CI が赤**になる。どちらもリポジトリが既に持っている
+ * 道具で塞げる —— `stripComments()`（ヘッダに「構造テストは必ずこれを通してから照合すること」）と
+ * AST 走査。walk も `walkSource()` に寄せ、除外リストの複製を作らない。
  */
 describe("C2PA_MODE は getMode() が唯一の正規化源", () => {
-  const SRC = path.resolve(__dirname, "../../../..");
+  const ROOT = path.resolve(__dirname, "../../../../..");
   /** 正規化の実装そのもの。ここだけは生の env を読んでよい。 */
-  const OWNER = path.join(SRC, "lib", "anchoring", "providers", "c2pa.ts");
+  const OWNER = path.join(ROOT, "src", "lib", "anchoring", "providers", "c2paMode.ts");
+  /**
+   * ビルド前の検査スクリプト。`next build` の前段で走り、TS を import できない素の
+   * `.mjs` なので `getMode()` を呼べず、`=== "production"` を自前で書いている。
+   * **正規化規則を変えるときはここも直す**（例: 空白の trim、別名の受理）。
+   */
+  const ALLOWED = new Set([OWNER, path.join(ROOT, "scripts", "check-c2pa-binary.mjs")]);
 
-  function walk(dir: string, out: string[] = []): string[] {
-    for (const name of readdirSync(dir)) {
-      const full = path.join(dir, name);
-      if (statSync(full).isDirectory()) {
-        // テストは env を直接いじってよい（正規化の挙動を試すため）。
-        if (name === "__tests__" || name === "node_modules") continue;
-        walk(full, out);
-      } else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) {
-        out.push(full);
-      }
-    }
-    return out;
+  /** 走査対象: `src/` と `scripts/`。`.ts`/`.tsx` に加えて `.mjs`/`.cjs`/`.js` も見る。 */
+  const SCANNED_EXT = /\.(?:tsx?|mts|cts|mjs|cjs|js)$/;
+  const isTarget = (name: string) => SCANNED_EXT.test(name) && !/\.test\.[a-z]+$/.test(name);
+
+  let cachedTargets: string[] | null = null;
+  function targets(): string[] {
+    cachedTargets ??= [
+      ...walkSource(path.join(ROOT, "src"), isTarget),
+      ...walkSource(path.join(ROOT, "scripts"), isTarget),
+    ];
+    return cachedTargets;
   }
 
-  it("本番コードで process.env.C2PA_MODE を読むのは c2pa.ts の getMode() だけ", () => {
-    const files = walk(SRC);
-    expect(files.length, "走査対象が0件なら、このテスト自体が何も見ていない").toBeGreaterThan(100);
+  /**
+   * AST は重い（2500 ファイルを素で解析すると 8 秒かかる）。そこで**文字列で候補を絞る**。
+   * この絞りは AST 判定の**上位集合**なので取りこぼさない —— `C2PA_MODE` という語を
+   * 一度も書いていないファイルに、`process.env` からそれを取り出す式は書けない。
+   * コメントだけの言及はここで拾われるが、AST 側が落とす。
+   */
+  function candidates(): string[] {
+    return targets().filter((f) => readFileSync(f, "utf8").includes("C2PA_MODE"));
+  }
 
+  /**
+   * `process.env` から `C2PA_MODE` を取り出している箇所を AST で拾う。
+   * `process.env.C2PA_MODE` / `process.env["C2PA_MODE"]` / `const { C2PA_MODE } = process.env`
+   * のどれでも当たる。
+   */
+  function envReads(src: string, fileName: string): number[] {
+    const sf = parse(stripComments(src, fileName), fileName);
+    const hits: number[] = [];
+    const isProcessEnv = (e: ts.Node): boolean =>
+      ts.isPropertyAccessExpression(e) &&
+      e.name.text === "env" &&
+      ts.isIdentifier(e.expression) &&
+      e.expression.text === "process";
+
+    walk(sf, (n) => {
+      // process.env.C2PA_MODE
+      if (ts.isPropertyAccessExpression(n) && n.name.text === "C2PA_MODE" && isProcessEnv(n.expression)) {
+        hits.push(sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1);
+        return;
+      }
+      // process.env["C2PA_MODE"]
+      if (
+        ts.isElementAccessExpression(n) &&
+        isProcessEnv(n.expression) &&
+        ts.isStringLiteralLike(n.argumentExpression) &&
+        n.argumentExpression.text === "C2PA_MODE"
+      ) {
+        hits.push(sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1);
+        return;
+      }
+      // const { C2PA_MODE } = process.env
+      if (
+        ts.isVariableDeclaration(n) &&
+        n.initializer &&
+        isProcessEnv(n.initializer) &&
+        ts.isObjectBindingPattern(n.name) &&
+        n.name.elements.some((el) => {
+          const key = el.propertyName ?? el.name;
+          return ts.isIdentifier(key) && key.text === "C2PA_MODE";
+        })
+      ) {
+        hits.push(sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1);
+      }
+    });
+    return hits;
+  }
+
+  it("走査が実際に src/ と scripts/ の両方に届いている（陰性対照）", () => {
+    const files = targets();
+    // 走査が壊れて一部しか回らなくても「違反0件」で緑に見えてしまう。
+    // **既知の1件で当たりを取る**（CLAUDE.md「自作の走査スクリプト…既知の1件で当たりを取る」）。
+    expect(files, "正規化の実装そのものに届いていない＝走査が壊れている").toContain(OWNER);
+    expect(files, "scripts/ の検査スクリプトに届いていない＝走査が src/ だけになっている").toContain(
+      path.join(ROOT, "scripts", "check-c2pa-binary.mjs"),
+    );
+    // 実数は 2500 件規模。桁を間違えた走査（`src/lib` だけ等）を弾くための下限。
+    expect(files.length, "走査件数が実数から桁で外れている").toBeGreaterThan(1500);
+    // 文字列の絞りが許可ファイルを落としていないこと（絞りが壊れると違反も拾えない）。
+    const cands = candidates();
+    for (const f of ALLOWED) {
+      expect(cands, `${path.relative(ROOT, f)} が候補から落ちている＝絞りが壊れている`).toContain(f);
+    }
+    // 許可した2ファイルは、実際に読んでいる行を持っているはず（検出器が死んでいない証拠）。
+    for (const f of ALLOWED) {
+      expect(
+        envReads(readFileSync(f, "utf8"), f).length,
+        `${path.relative(ROOT, f)} の読みを検出できていない`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it("許可した2ファイル以外は C2PA_MODE を直接読まない", () => {
     const offenders: string[] = [];
-    for (const file of files) {
-      if (file === OWNER) continue;
-      const src = readFileSync(file, "utf8");
-      src.split("\n").forEach((line, i) => {
-        if (line.includes("process.env.C2PA_MODE")) {
-          offenders.push(`${path.relative(SRC, file)}:${i + 1}: ${line.trim()}`);
-        }
-      });
+    for (const file of candidates()) {
+      if (ALLOWED.has(file)) continue;
+      for (const line of envReads(readFileSync(file, "utf8"), file)) {
+        offenders.push(`${path.relative(ROOT, file)}:${line}`);
+      }
     }
 
     expect(
       offenders,
       [
         "C2PA_MODE を直接読んでいる箇所がある。`getMode()` を使うこと",
-        '（`import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2pa"`）。',
+        '（`import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2paMode"`）。',
         "生の読みは未知の値をそのまま下流に渡すので、綴り違いが黙って通る:",
         ...offenders,
       ].join("\n"),
     ).toEqual([]);
-  });
-
-  it("c2pa.ts 側には実際に読んでいる行がある（走査の当たりを取る）", () => {
-    // 上のテストが「0件」で緑になるのは、走査が壊れていても同じに見える。
-    // 唯一の正当な読み手を**見つけられる**ことを確かめて、陰性対照にする。
-    const src = readFileSync(OWNER, "utf8");
-    expect(src, "getMode() の実装が生の env を読んでいるはず").toContain("process.env.C2PA_MODE");
   });
 });

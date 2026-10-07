@@ -36,15 +36,29 @@
  *
  * ## 天井（ponytail）
  *
- * `C2PA_MODE` が**ビルド時に見えること**が前提。Vercel で実行時専用の env として
- * 設定されている場合、この検査は発火しない。その場合でも実行時の先行検査（#1209）が
- * 503 で止めるので「黙って未署名」には戻らないが、気づくのはデプロイ後になる。
- * 確実にしたいなら Vercel の env を Build にも露出させる。
+ 1. `C2PA_MODE` が**ビルド時に見えること**が前提。`.env` 系は上で読むが、Vercel で
+ *    実行時専用の env として設定されている場合は発火しない。その場合でも実行時の
+ *    先行検査（#1209）が 503 で止めるので「黙って未署名」には戻らないが、気づくのは
+ *    デプロイ後になる。確実にしたいなら Vercel の env を Build にも露出させる。
+ 2. **見ているのは「ビルド機でロードできるか」であって、「本番の関数にバイナリが入るか」
+ *    ではない。** `next.config.ts` の `serverExternalPackages` に入れてあるので、48MB の
+ *    `dist/index.node` は output file tracing 経由でしか関数バンドルに入らない。
+ *    DL は成功（この検査は緑）なのに tracing が拾わなかった場合、実行時は
+ *    `signer_unavailable` になり #1209 のゲートが全件 503 にする —— **この検査では防げない。**
+ *    塞ぐならビルド後に `.next/` 配下の実在を見るか、デプロイ後のスモークが要る。
  */
 
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+// `@next/env` は CJS なので named import できない（default 経由）。
+import nextEnv from "@next/env";
+
+// **`.env` 系も読む。** 運用手順書（`docs/c2pa-production-deployment.md` §3）は
+// 「`.env` に `C2PA_MODE=production` を設定」と書いている。`next build` は env ファイルを
+// 読むが素の `node` は読まないので、process.env だけ見ていると**手順書どおりに設定した人の
+// ところで検査が黙ってスキップする**（/code-review 指摘）。next と同じ読み方に揃える。
+nextEnv.loadEnvConfig(process.cwd(), /* dev */ false, { info: () => {}, error: console.error });
 
 const mode = process.env.C2PA_MODE;
 
@@ -97,18 +111,29 @@ try {
   );
 }
 
-// `dist/binary.js` と同じ1行。`C2PA_LIBRARY_PATH` の上書きも同じように尊重する。
+// `dist/binary.js` と同じ読み込み。`C2PA_LIBRARY_PATH` の上書きも尊重する。
+// **相対パスは `dist/` 基準で解く。** あちらの `require` は `dist/binary.js` から呼ばれるので
+// 相対の基準が `dist/` になる。ここで `scripts/` 基準のまま解くと、パッケージは読めるのに
+// この検査だけが落ちて**ビルドが通らなくなる**（/code-review 指摘。`C2PA_LIBRARY_PATH=./index.node`
+// で実際に再現した）。絶対パスはそのまま使う。
 const override = process.env.C2PA_LIBRARY_PATH;
-const target = override ?? path.join(distDir, "index.node");
+const target = override ? path.resolve(distDir, override) : path.join(distDir, "index.node");
 
 try {
   const neon = require(target);
-  const fns = Object.keys(neon ?? {}).filter((k) => typeof neon[k] === "function");
-  if (fns.length === 0) {
-    fail(`${target} をロードできたが、関数が1つも出ていない（壊れたバイナリの疑い）`);
+  // **ロードが例外を投げなかったこと自体が、欲しい信号のほぼ全部である。**
+  // 関数の本数は参考情報として出すだけで、0 本でも落とさない —— napi/neon の
+  // モジュールは `module.exports` が関数のこともあり、メンバが非列挙の getter の
+  // こともある。数を条件にすると**正常なバイナリでビルドを殺す**（/code-review 指摘）。
+  const shape =
+    typeof neon === "function"
+      ? "関数 export"
+      : `ネイティブ関数 ${Object.keys(neon ?? {}).filter((k) => typeof neon[k] === "function").length} 個`;
+  if (neon === null || neon === undefined) {
+    fail(`${target} をロードできたが export が空（壊れたバイナリの疑い）`);
   }
   console.log(
-    `[check:c2pa-binary] OK — ${path.relative(process.cwd(), target) || target} をロードし、ネイティブ関数 ${fns.length} 個を確認した`,
+    `[check:c2pa-binary] OK — ${path.relative(process.cwd(), target) || target} をロードした（${shape}）`,
   );
 } catch (err) {
   fail(

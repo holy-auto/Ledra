@@ -1444,6 +1444,17 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
     （`C2PA_MODE=production` のときだけネイティブのロードを要求し、駄目ならビルドを落とす）。
     **区分の変更は、やってもやらなくてもこの問題には効かない**ので、代表判断待ちの項目から外してよい
     （やる理由が残るとすれば「意図を型で示す」だけ）。
+  - 【未決】**`MISTAKE_LEDGER.md` の型表の重複を機械で見る検査が無い。** `check:ledger-ids` は
+    見出しの ID を見るので、**型表の行が2本になっても通る**（2026-10-07 に実際にそうなった:
+    マージ解消で F 行が複製され、2本の ID 一覧が食い違った。
+    `M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing`）。
+    `grep -oE '^\| \*\*[A-I]\.' | sort | uniq -c` で9型が1本かを見るだけなので検査は安いが、
+    「表の行 vs エントリ」をどこまで形式化するか決めていない。
+  - 【要確認】**output file tracing が `index.node` を本番の関数バンドルに入れているか。**
+    `next.config.ts` の `serverExternalPackages` に入れてあるので、48MB のバイナリは tracing 経由でしか
+    入らない。`scripts/check-c2pa-binary.mjs` が見るのは**ビルド機でロードできるか**までで、
+    DL 成功（検査は緑）でも tracing が拾わなければ実行時は `signer_unavailable` → #1209 のゲートで
+    全件 503 になる。塞ぐならビルド後に `.next/` 配下の実在を見るか、デプロイ後のスモークが要る。
   - 【要確認】**本番（Vercel）で `@contentauth/c2pa-node` が実際にビルドできているか。**
     できていなければ、`C2PA_MODE=production` にした瞬間に全アップロードが
     `signer_unavailable` で断られる。**オンにする前に本番環境での読み込み可否を確かめること。**
