@@ -5,7 +5,12 @@ import Link from "next/link";
 import { getPassportData, getServiceTypeLabel } from "@/lib/passport/getPassportData";
 import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import { formatDate } from "@/lib/format";
-import { findValidReportAccess, getVehicleReportSettings, reportCookieName } from "@/lib/vehicleReport/access";
+import {
+  certInReportScope,
+  findValidReportAccess,
+  getVehicleReportSettings,
+  reportCookieName,
+} from "@/lib/vehicleReport/access";
 import { getReportTiers, type ReportScope } from "@/lib/vehicleReport/tiers";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -76,19 +81,11 @@ export default async function VehiclePassportPage({ params, searchParams }: Page
   // proration uses — so what the buyer sees and what merchants earn from stay
   // identical for the whole access window.
   const scope: ReportScope = access?.scope ?? { type: "full" };
-  const scopeFromMs = access?.scopeFromIso ? new Date(access.scopeFromIso).getTime() : null;
   // Immutable upper bound = the purchase moment, so records added during the
   // access window don't leak in (they were never in the booked shares either).
-  const purchasedAtMs = access?.purchasedAtIso ? new Date(access.purchasedAtIso).getTime() : null;
   const visibleCerts = isMemberFree
     ? data.certificates
-    : data.certificates.filter((c) => {
-        if (c.created_at === null) return false;
-        const t = new Date(c.created_at).getTime();
-        if (scopeFromMs !== null && t < scopeFromMs) return false;
-        if (purchasedAtMs !== null && t > purchasedAtMs) return false;
-        return true;
-      });
+    : data.certificates.filter((c) => access !== null && certInReportScope(access, c.created_at));
   const isPartialPaid = isPaid && !isMemberFree && scope.type === "recent_months";
 
   const sp = (await searchParams) ?? {};

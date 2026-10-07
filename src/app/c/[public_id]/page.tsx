@@ -109,6 +109,7 @@ type PublicStatusResponse = {
   vehicle_service_history_count?: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   vehicle_certificates?: any[];
+  detail_visible?: boolean;
 };
 
 function asText(v: unknown) {
@@ -200,13 +201,16 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
   const model = pickVehicleField(data.vehicle, info, ["model", "car_model", "vehicle_model"]);
   const year = pickVehicleField(data.vehicle, info, ["year", "model_year"]);
   const freeText = asText(data.certificate.content_free_text);
-  const images = !isVoidCertificate ? (data.images ?? []).filter((img) => !!img?.url) : [];
+  // 写真を見せない閲覧者（detail_visible=false）にも件数と認証グレードは出すので、URL の有無で絞る前の一覧で数える。
+  const allImages = !isVoidCertificate ? (data.images ?? []) : [];
+  const images = allImages.filter((img) => !!img?.url);
   const media = !isVoidCertificate ? (data.media ?? []) : [];
+  const detailHidden = data.detail_visible === false && !isVoidCertificate;
   const heroGrade: AuthenticityGrade = highestGrade(
-    images.map((img) => img.authenticity_grade as AuthenticityGrade | null | undefined),
+    allImages.map((img) => img.authenticity_grade as AuthenticityGrade | null | undefined),
   );
   // Pick the tx hash from the first image whose grade matches the best grade.
-  const heroAnchorImage = images.find((img) => img.authenticity_grade === heroGrade && !!img.polygon_tx_hash);
+  const heroAnchorImage = allImages.find((img) => img.authenticity_grade === heroGrade && !!img.polygon_tx_hash);
   const heroPolygonTxHash = heroAnchorImage?.polygon_tx_hash ?? null;
   const heroPolygonNetwork =
     heroAnchorImage?.polygon_network === "amoy" || heroAnchorImage?.polygon_network === "polygon"
@@ -237,7 +241,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
         <HeroCard
           maker={maker || null}
           model={model || null}
-          recordCount={images.length}
+          recordCount={allImages.length}
           grade={heroGrade}
           polygonTxHash={heroPolygonTxHash}
           polygonNetwork={heroPolygonNetwork}
@@ -676,6 +680,15 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
               );
             })()
           : null}
+
+        {detailHidden ? (
+          <section className="glass-card p-4 text-sm leading-6 text-secondary">
+            <div className="mb-1 font-bold text-primary">写真・担当者名・作業メモについて</div>
+            個人情報保護のため、施工写真{allImages.length > 0 ? `（${allImages.length}枚）` : ""}
+            ・担当者名・作業メモは、車両の所有者（マイページにログイン中）、施工した店舗、
+            この車両の履歴レポートをご購入の方にだけ表示しています。
+          </section>
+        ) : null}
 
         <MediaGallery
           images={images.map((img) => ({

@@ -6,6 +6,12 @@ import {
   type ResolvedCertificateMedia,
 } from "@/lib/certificateMedia";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants";
+import {
+  canViewCertificateDetails,
+  DETAIL_ACCESS_COLUMNS,
+  redactCertificateDetails,
+  type DetailAccessCert,
+} from "@/lib/certificates/detailAccess";
 
 /**
  * scheduled_date (YYYY-MM-DD) と start_time (HH:MM[:SS]) を ISO 8601 文字列に
@@ -70,7 +76,10 @@ type CertRow = {
   manufacturer_id: string | null;
   manufacturer_template_id: string | null;
   craftsman_name: string | null;
-};
+} & DetailAccessCert;
+
+/** 閲覧者の判定にだけ使う列。公開の応答には載せない。 */
+type DetailAccessOnly = "customer_id" | "customer_phone_last4_hash" | "hidden_from_owner_portal_at";
 
 type ManufacturerPublicRow = {
   id: string;
@@ -160,7 +169,7 @@ type VehicleCertRow = {
 
 export type PublicCertificateData = {
   ok: true;
-  certificate: Omit<CertRow, "tenant_id" | "content_free_text" | "customer_name"> & {
+  certificate: Omit<CertRow, "tenant_id" | "content_free_text" | "customer_name" | DetailAccessOnly> & {
     tenant_id?: undefined;
     content_free_text?: undefined;
     // 所有者名は公開(外部)表示では返さない (個人情報保護)。
@@ -199,6 +208,11 @@ export type PublicCertificateData = {
   manufacturer: ManufacturerPublicRow | null;
   /** Normalized VIN for the vehicle passport link. Non-null only when a passport record exists. */
   passport_vin: string | null;
+  /**
+   * 写真・個人情報（担当者名・作業メモ・予約名）を出しているか。作業店舗・所有者・履歴レポート購入者のときだけ true
+   * （detailAccess.ts）。false のとき images は URL 無し（件数と認証グレードだけ）、media は空。
+   */
+  detail_visible: boolean;
 };
 
 /**
@@ -216,7 +230,8 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
         "vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value, " +
         "logo_asset_path, footer_variant, current_version, service_type, ppf_coverage_json, " +
         "coating_products_json, warranty_period_end, warranty_exclusions, " +
-        "maintenance_json, body_repair_json, accessory_json, manufacturer_id, manufacturer_template_id, craftsman_name",
+        "maintenance_json, body_repair_json, accessory_json, manufacturer_id, manufacturer_template_id, craftsman_name, " +
+        DETAIL_ACCESS_COLUMNS,
     )
     .eq("public_id", pid)
     .limit(1)
@@ -225,6 +240,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
   if (certRes.error) throw certRes.error;
   const cert = certRes.data;
   if (!cert?.tenant_id) return null;
+  const detailVisible = await canViewCertificateDetails(cert);
 
   const [tenantRes, vehicleRes, nfcRes, histRes, imgRes, vcRes, mediaRes, reservationsRes] = await Promise.all([
     supabase
@@ -349,6 +365,8 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
   const images: (ImageRow & { url: string | null; rendered_url: string | null })[] = (
     !imgRes.error && imgRes.data ? imgRes.data : []
   ).map((img) => {
+    // 写真を見せない閲覧者には URL・注釈・ファイル名を渡さない（件数と認証グレードだけ残す）。
+    if (!detailVisible) return { ...img, file_name: null, annotations: null, url: null, rendered_url: null };
     let url: string | null = null;
     if (img.storage_path) {
       const { data: signedData } = supabase.storage.from(CERTIFICATE_IMAGE_BUCKET).getPublicUrl(img.storage_path);
@@ -367,7 +385,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
   // certificate_media: void 状態のときは images と同じく公開しない
   const certStatusLower = String(cert.status ?? "").toLowerCase();
   const isVoid = certStatusLower === "void";
-  const mediaRows = !mediaRes.error && mediaRes.data && !isVoid ? mediaRes.data : [];
+  const mediaRows = !mediaRes.error && mediaRes.data && !isVoid && detailVisible ? mediaRes.data : [];
   const media: ResolvedCertificateMedia[] = await Promise.all(
     mediaRows.map((row) => resolveCertificateMedia(supabase, row)),
   );
@@ -378,10 +396,15 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
     !reservationsRes.error && reservationsRes.data && !isVoid ? reservationsRes.data : []
   ).map((r) => ({
     id: r.id,
-    title: r.title,
+    // 予約名は顧客名が入りがち（「山田様 コーティング」等）
+    title: detailVisible ? r.title : null,
     status: r.status,
     scheduled_at: combineScheduledAt(r.scheduled_date, r.start_time, r.created_at),
   }));
+
+  // 判定用の列（顧客 ID・電話ハッシュ）は応答に載せない
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { customer_id, customer_phone_last4_hash, hidden_from_owner_portal_at, ...certFields } = cert;
 
   const vehicleServiceHistoryCount = vehicle_certificates.length;
   const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/c/${cert.public_id}`;
@@ -399,7 +422,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
   return {
     ok: true,
     certificate: {
-      ...cert,
+      ...(detailVisible ? certFields : redactCertificateDetails(certFields)),
       vehicle_info_json: omitPlate(cert.vehicle_info_json),
       tenant_id: undefined as undefined,
       content_free_text: undefined as undefined,
@@ -438,5 +461,6 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
       : null,
     manufacturer,
     passport_vin: passportVin,
+    detail_visible: detailVisible,
   };
 }
