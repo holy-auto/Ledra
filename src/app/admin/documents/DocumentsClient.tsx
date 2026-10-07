@@ -317,11 +317,11 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
         const sourceTotal = selectedDocs.reduce((s, d) => s + (d.total ?? 0), 0);
         if (!hasInlineConsolidatedItems(j.document.meta_json)) {
           alert(
-            "元帳票で税込/税抜（または税率）が混在しているため、明細を1枚にまとめられませんでした。元帳票1件=1行で作成し、内訳は PDF の2ページ目に載せます。",
+            "元帳票の明細を1枚にまとめられなかったため（税込/税抜・税率の混在、明細と金額が合わない古い帳票など）、元帳票1件=1行で作成しました。内訳は PDF の2ページ目に載ります。",
           );
         } else if (j.document.total !== sourceTotal) {
           alert(
-            `消費税は合算後の明細でまとめて計算し直すため、合計 ¥${Number(j.document.total).toLocaleString("ja-JP")} が元帳票の合計 ¥${sourceTotal.toLocaleString("ja-JP")} と端数でずれています。内容を確認してください。`,
+            `消費税を合算後の明細でまとめて計算し直したため、合計 ¥${Number(j.document.total).toLocaleString("ja-JP")} が元帳票の合計 ¥${sourceTotal.toLocaleString("ja-JP")} と ¥${Math.abs(Number(j.document.total) - sourceTotal).toLocaleString("ja-JP")} ずれています。内容を確認してください。`,
           );
         }
       }

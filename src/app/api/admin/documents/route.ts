@@ -8,7 +8,8 @@ import {
   isDocumentEditable,
   type DocType,
 } from "@/types/document";
-import { loadConsolidatedSources } from "@/lib/documents/consolidatedSources";
+import { consolidatedSourceIds, loadConsolidatedSources } from "@/lib/documents/consolidatedSources";
+import { isConsolidatableDoc } from "@/lib/documents/consolidateEligibility";
 import { buildConsolidatedItems } from "@/lib/documents/consolidatedItems";
 import { filterDeletableDocuments } from "@/lib/documents/deleteEligibility";
 import { logger } from "@/lib/logger";
@@ -269,13 +270,27 @@ export const POST = withCaller(
       staffMemberName = staffRow.name;
     }
 
+    // 合算請求書の元帳票は、明細・PDF の内訳としてサービスロールで読んで顧客向けに載せるので、
+    // 一覧画面と同じ合算条件（同じ顧客の納品書・請求書・取消/却下以外）をサーバでも確かめる。
+    // 確かめないと、細工したリクエストで別顧客の帳票や外注請求書の明細を読み出せてしまう。
+    const sourceIds = docType === "consolidated_invoice" ? consolidatedSourceIds(metaJson) : [];
+    const sources =
+      sourceIds.length > 0
+        ? await loadConsolidatedSources(admin, caller.tenantId, { doc_type: docType, meta_json: metaJson })
+        : [];
+    if (
+      sourceIds.length > 0 &&
+      (sources.length !== new Set(sourceIds).size ||
+        !sources.every((s) => isConsolidatableDoc(s) && s.customer_id === customerId))
+    ) {
+      return apiValidationError("合算できるのは、同じ顧客の納品書・請求書（キャンセル・却下済みを除く）のみです。");
+    }
+
     // 合算請求書で内訳を1枚目に入れる指定なら、明細を元帳票の明細（車両ごとの見出し＋明細行＋小計）で組み直す。
     // 元帳票をサーバで読み直すので、クライアントが送った要約行（1帳票=1行）は使わない。まとめられない
-    // （税込/税抜の混在など・元帳票が読めない）ときは要約行のまま作り、別紙の内訳ページに回す。
+    // （税込/税抜の混在・明細と保存額の不一致など）ときは要約行のまま作り、別紙の内訳ページに回す。
     if (docType === "consolidated_invoice" && hasInlineConsolidatedItems(metaJson)) {
-      const ids = (metaJson.source_document_ids as unknown[] | undefined) ?? [];
-      const sources = await loadConsolidatedSources(admin, caller.tenantId, { doc_type: docType, meta_json: metaJson });
-      const built = sources.length > 0 && sources.length === ids.length ? buildConsolidatedItems(sources) : null;
+      const built = buildConsolidatedItems(sources);
       if (built) {
         items = built.items;
         taxRate = built.taxRate;

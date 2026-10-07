@@ -15,6 +15,10 @@ const item = (description: string, unit_price: number, extra: Partial<DocumentIt
 });
 
 function src(over: Partial<ConsolidatedSource> & { id: string }): ConsolidatedSource {
+  // 保存額は明細から（実データと同じく、明細を計算し直すと保存額が再現できる状態）
+  const sum = (over.items_json ?? [])
+    .filter((it) => (it.item_type ?? "item") === "item")
+    .reduce((n, it) => n + it.amount, 0);
   return {
     doc_type: "invoice",
     doc_number: `INV-${over.id}`,
@@ -22,9 +26,9 @@ function src(over: Partial<ConsolidatedSource> & { id: string }): ConsolidatedSo
     subject: null,
     vehicle_info_json: {},
     items_json: [],
-    subtotal: 0,
+    subtotal: sum,
     tax: 0,
-    total: 0,
+    total: sum,
     tax_rate: 10,
     meta_json: { is_tax_inclusive: false },
     ...over,
@@ -74,6 +78,36 @@ describe("buildConsolidatedItems", () => {
         { rate: 8, subtotal: 1000, tax: 80 },
       ]),
     );
+  });
+
+  it("元帳票の中の小計行は落とし、車両ごとの小計がその元帳票の全明細を数える", () => {
+    const built = buildConsolidatedItems([
+      src({
+        id: "a",
+        items_json: [
+          item("A", 50000),
+          item("B", 20000),
+          { item_type: "subtotal", description: "小計", quantity: 0, unit_price: 0, amount: 0 },
+          item("C", 5000),
+        ],
+      }),
+    ]);
+    const { itemsJson } = calcItems(built!.items, built!.taxRate, built!.isTaxInclusive);
+    expect(itemsJson.filter((r) => r.item_type === "subtotal").map((r) => r.amount)).toEqual([75000]);
+  });
+
+  it("明細から計算し直した金額が元帳票の保存額と合わない（旧データ等）ときは、請求額を変えないよう null", () => {
+    expect(
+      buildConsolidatedItems([{ ...src({ id: "a", items_json: [item("工賃", 1000)] }), subtotal: 5000 }]),
+    ).toBeNull();
+    expect(buildConsolidatedItems([{ ...src({ id: "a" }), subtotal: 5000 }])).toBeNull();
+  });
+
+  it("tax_category の無い古い軽減税率の行（is_reduced_rate のみ）は 8% で集計する", () => {
+    const legacy = { ...item("飲料", 1000), is_reduced_rate: true } as DocumentItem;
+    const built = buildConsolidatedItems([src({ id: "a", items_json: [legacy] })]);
+    const { taxBreakdown } = calcItems(built!.items, built!.taxRate, built!.isTaxInclusive);
+    expect(taxBreakdown).toEqual([{ rate: 8, subtotal: 1000, tax: 80 }]);
   });
 
   it("税込と税抜が混在する・税込で税率が混在するときは、まとめられないので null", () => {

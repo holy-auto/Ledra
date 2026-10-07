@@ -17,7 +17,15 @@ export type ConsolidatedSource = Pick<
   | "total"
   | "tax_rate"
   | "meta_json"
+  | "customer_id"
+  | "status"
 >;
+
+/** meta_json.source_document_ids（一覧の合算作成時に保存する元帳票ID）を、文字列だけの配列で返す。 */
+export function consolidatedSourceIds(metaJson: unknown): string[] {
+  const raw = (metaJson as { source_document_ids?: unknown } | null)?.source_document_ids;
+  return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
+}
 
 /**
  * 合算請求書の明細は「元帳票1件=1行（合計額のみ）」なので、元帳票の明細を内訳として引く。
@@ -33,13 +41,12 @@ export async function loadConsolidatedSources(
   doc: { doc_type: string; meta_json?: unknown },
 ): Promise<ConsolidatedSource[]> {
   if (doc.doc_type !== "consolidated_invoice") return [];
-  const raw = (doc.meta_json as { source_document_ids?: unknown } | null)?.source_document_ids;
-  const ids = Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
+  const ids = consolidatedSourceIds(doc.meta_json);
   if (ids.length === 0) return [];
   const { data, error } = await client
     .from("documents")
     .select(
-      "id, doc_type, doc_number, issued_at, subject, vehicle_info_json, items_json, subtotal, tax, total, tax_rate, meta_json",
+      "id, doc_type, doc_number, issued_at, subject, vehicle_info_json, items_json, subtotal, tax, total, tax_rate, meta_json, customer_id, status",
     )
     .in("id", ids)
     .eq("tenant_id", tenantId);

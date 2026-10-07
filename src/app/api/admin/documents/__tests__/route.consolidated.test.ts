@@ -274,8 +274,12 @@ describe("POST /api/admin/documents（合算請求書の明細を元帳票の明
       doc_number: "INV-202610-002",
       vehicle_info_json: { plate: "U632", model: "95プラド" },
       items_json: [item("内装張替え工賃", 50000), item("内装生地（L-6217）", 20592)],
+      subtotal: 70592,
+      total: 77651,
       tax_rate: 10,
       meta_json: { is_tax_inclusive: false },
+      customer_id: "22222222-2222-4222-8222-222222222222",
+      status: "sent",
     },
     {
       id: "b",
@@ -283,13 +287,18 @@ describe("POST /api/admin/documents（合算請求書の明細を元帳票の明
       doc_number: "INV-202610-003",
       vehicle_info_json: {},
       items_json: [item("ボディコーティング", 30000)],
+      subtotal: 30000,
+      total: 33000,
       tax_rate: 10,
       meta_json: { is_tax_inclusive: false },
+      customer_id: "22222222-2222-4222-8222-222222222222",
+      status: "sent",
     },
   ];
   // 一覧画面が送るのと同じ「1帳票=1行（税込合計）」の要約行
   const body = {
     doc_type: "consolidated_invoice",
+    customer_id: "22222222-2222-4222-8222-222222222222",
     items: [
       { item_type: "item", description: "請求書 INV-202610-002", quantity: 1, unit_price: 77651 },
       { item_type: "item", description: "請求書 INV-202610-003", quantity: 1, unit_price: 33000 },
@@ -321,7 +330,7 @@ describe("POST /api/admin/documents（合算請求書の明細を元帳票の明
   });
 
   it("税込/税抜が混在してまとめられないときは要約行のまま作り、inline の印を外す（別紙の内訳に回す）", async () => {
-    const mixed = [SOURCES[0], { ...SOURCES[1], meta_json: { is_tax_inclusive: true } }];
+    const mixed = [SOURCES[0], { ...SOURCES[1], total: 30000, meta_json: { is_tax_inclusive: true } }];
     mocks.admin = client({ tenants: { registration_number: null }, documents: mixed });
 
     await POST(req("POST", body));
@@ -330,5 +339,21 @@ describe("POST /api/admin/documents（合算請求書の明細を元帳票の明
     expect(row.items_json.map((r: any) => r.description)).toEqual(["請求書 INV-202610-002", "請求書 INV-202610-003"]);
     expect(row.meta_json.consolidated_items).toBeUndefined();
     expect(row.meta_json.is_tax_inclusive).toBe(true);
+  });
+
+  it("別顧客の帳票・外注請求書など合算できない元帳票が混じっていたら、作成を拒否する（サーバでも確かめる）", async () => {
+    for (const bad of [
+      { ...SOURCES[1], customer_id: "33333333-3333-4333-8333-333333333333" },
+      { ...SOURCES[1], doc_type: "staff_invoice" },
+      { ...SOURCES[1], status: "cancelled" },
+    ]) {
+      mocks.admin = client({ tenants: { registration_number: null }, documents: [SOURCES[0], bad] });
+      const res = await POST(req("POST", body));
+      expect(res.status).toBe(400);
+      expect(mocks.admin.calls.insert).toBeUndefined();
+    }
+    // 見つからない元帳票（他テナント・削除済み）が混じっていても拒否する
+    mocks.admin = client({ tenants: { registration_number: null }, documents: [SOURCES[0]] });
+    expect((await POST(req("POST", body))).status).toBe(400);
   });
 });
