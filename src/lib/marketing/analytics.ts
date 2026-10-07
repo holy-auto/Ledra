@@ -7,6 +7,7 @@
  */
 
 import type { LeadSource } from "./leads";
+import { isMarketingPath } from "./routes";
 
 /** Dispatched on `window` when the visitor grants analytics consent. */
 export const ANALYTICS_CONSENT_EVENT = "ledra:analytics-consent";
@@ -51,49 +52,9 @@ export function track<E extends MarketingEvent>(event: E): void {
   if (typeof window !== "undefined") window.gtag?.("event", event.name, event.props);
 }
 
-/**
- * Top-level route segments of `src/app/(marketing)` — the pages GA4 should
- * count. `__tests__/analytics.test.ts` fails when this drifts from the folders.
- */
-export const MARKETING_SEGMENTS: ReadonlySet<string> = new Set([
-  "blog",
-  "cases",
-  "contact",
-  "data-disclosure",
-  "demo",
-  "events",
-  "faq",
-  "features",
-  "financial-transparency",
-  "for-agents",
-  "for-btob",
-  "for-insurers",
-  "for-shops",
-  "glossary",
-  "guide",
-  "honest-comparison",
-  "law",
-  "network",
-  "news",
-  "poc",
-  "poc-program",
-  "pricing",
-  "privacy",
-  "resources",
-  "roi",
-  "security",
-  "security-policy",
-  "story",
-  "support",
-  "terms",
-  "tokusho",
-  "verify",
-  "vision",
-]);
-
-export function isMarketingPath(pathname: string): boolean {
-  const segment = pathname.split("/")[1] ?? "";
-  return segment === "" || MARKETING_SEGMENTS.has(segment);
+/** Pages GA4 counts: the HP plus /signup, the trial step an HP CTA leads to. */
+export function isGaTrackedPath(pathname: string): boolean {
+  return isMarketingPath(pathname) || pathname === "/signup";
 }
 
 export function grantAnalyticsConsent(): void {

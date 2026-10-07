@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { ANALYTICS_CONSENT_EVENT, isMarketingPath } from "@/lib/marketing/analytics";
+import { ANALYTICS_CONSENT_EVENT, isGaTrackedPath } from "@/lib/marketing/analytics";
 
 /**
  * Loads Google Analytics 4 (gtag.js) on the marketing site.
@@ -35,9 +35,14 @@ export function GoogleAnalytics(): null {
       // ponytail: relies on gtag.js reading `ga-disable-<id>` per hit (not
       // verifiable here — googletagmanager.com is blocked); if app paths still
       // show in GA4 realtime, switch to manual page_views instead.
+      // The setter keeps the documented `window["ga-disable-<id>"] = true` opt-out working.
+      let optedOut = false;
       Object.defineProperty(window, `ga-disable-${measurementId}`, {
         configurable: true,
-        get: () => !isMarketingPath(window.location.pathname),
+        get: () => optedOut || !isGaTrackedPath(window.location.pathname),
+        set: (value: unknown) => {
+          optedOut = Boolean(value);
+        },
       });
 
       const dataLayer = (window.dataLayer = window.dataLayer ?? []);
