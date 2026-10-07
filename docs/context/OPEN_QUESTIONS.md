@@ -157,7 +157,7 @@ opt-in `tenants.require_inspector_qualification`・既定 false）。残って�
 - 起票日: 2026-10-02
 - 判断者: 開発（Claude）。上流への報告をするかは代表
 
-## Enhanced Builds（16GB）に切り替わった後のビルドが、実際に 16GB 機で走っているか（2026-10-02）
+## Enhanced Builds（16GB）に切り替わった後のビルドが、実際に 16GB 機で走っているか（2026-10-02、10-07 に 8GB で走った実例）
 
 - #1184 のマージ後の本番デプロイ（`5f54e29`、13:08 UTC 開始）は、ビルドログで**メモリ不足（OOM）**と確定した
   （`Build machine configuration: 4 cores, 8 GB`、ビルドキャッシュ破棄、`exited with SIGKILL`、OOM 検出）。
@@ -166,6 +166,17 @@ opt-in `tenants.require_inspector_qualification`・既定 false）。残って�
 - ただし設定画面は「実際のデプロイがその設定で走ったか」の証拠にならない（「切り替えた」後に 8GB で走った前例がある）。
 - 確認したいこと: 次にフルビルド（キャッシュ破棄）になったデプロイのログで、`Build machine configuration` 行が 16 GB に
   なっているか【要確認】。16 GB ならこの項を閉じる。8 GB なら、設定が効いていない（プラン・チーム設定を見直す）。
+- **2026-10-07: 8 GB で走ったことを確認（設定が効いていない、または効かない回がある）。** #1256 のマージ後の本番デプロイ
+  （`9df2d3c`、2026-10-06 15:54 UTC 開始＝ログ表示 00:54 は JST と見られる、15:56 UTC 失敗、`dpl_9KhL8Vbqq33fHqhhCtiRd9TVoFyZ`）のログを代表が共有。
+  `Build machine configuration: 4 cores, 8 GB`、`Previous build cache ... was too large, starting from a clean state`、
+  `npm run build exited with SIGKILL`、OOM 検出。2026-09-29・10-01 と同じ形で、コードの不具合ではない。
+  前後の #1255（`90d59fc`）・#1259（`1200421`）・#1260（`4fe8e08`）の本番デプロイは成功している。
+  これらがどの機械で走ったかは見ていない【要確認】。キャッシュが残った回は 8 GB でも収まり、
+  キャッシュが破棄された回だけ落ちる、という見立て（未検証）。
+- 設定画面の「Elastic」が、ビルドごとに機械の大きさを選ぶ方式で、8 GB が選ばれる回があるのではないか、という仮説がある
+  （Vercel の仕様は未確認【要確認】）。
+- 次の確認（代表）: (a) Build Machine を Elastic ではなく 16 GB に固定できるか、(b) チームのプランで Enhanced Builds が
+  有効か、(c) 成功したデプロイ（例 `4fe8e08`）のログの `Build machine configuration` 行。
 - 起票日: 2026-10-02
 - 判断者: 代表（ビルドログの確認）
 
