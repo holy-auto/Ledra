@@ -15,6 +15,7 @@ import {
   STATUS_OPTIONS,
   statusLabel,
   statusVariant,
+  hasInlineConsolidatedItems,
   isDocumentDeletable,
   type DocType,
   type DocumentRow,
@@ -135,7 +136,8 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
 
   // 合算請求書の作成
   const [creatingConsolidated, setCreatingConsolidated] = useState(false);
-  // 合算請求書の PDF・送付に元帳票ごとの内訳を載せるか（作成時に選ぶ）
+  // 合算請求書の明細を元帳票の明細（車両ごとの見出し＋明細行）で組むか（作成時に選ぶ）。
+  // オフなら「1帳票=1行（合計額）」の明細だけを載せる。
   const [consolidatedShowBreakdown, setConsolidatedShowBreakdown] = useState(true);
 
   // 入金記録（請求書のみ）
@@ -301,6 +303,8 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
           meta_json: {
             source_document_ids: selectedDocs.map((d) => d.id),
             show_consolidated_breakdown: consolidatedShowBreakdown,
+            // 明細の組み直しはサーバが元帳票を読み直して行う（items は組めなかったときの要約行）
+            ...(consolidatedShowBreakdown ? { consolidated_items: "inline" } : {}),
           },
           note: `合算対象: ${selectedDocs.map((d) => d.doc_number).join("、")}`,
         }),
@@ -309,6 +313,18 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSelectedIds(new Set());
       mutate();
+      if (consolidatedShowBreakdown) {
+        const sourceTotal = selectedDocs.reduce((s, d) => s + (d.total ?? 0), 0);
+        if (!hasInlineConsolidatedItems(j.document.meta_json)) {
+          alert(
+            "元帳票で税込/税抜（または税率）が混在しているため、明細を1枚にまとめられませんでした。元帳票1件=1行で作成し、内訳は PDF の2ページ目に載せます。",
+          );
+        } else if (j.document.total !== sourceTotal) {
+          alert(
+            `消費税は合算後の明細でまとめて計算し直すため、合計 ¥${Number(j.document.total).toLocaleString("ja-JP")} が元帳票の合計 ¥${sourceTotal.toLocaleString("ja-JP")} と端数でずれています。内容を確認してください。`,
+          );
+        }
+      }
       router.push(`/admin/documents/${j.document.id}`);
     } catch (e: any) {
       alert("合算請求書の作成に失敗しました: " + (e?.message ?? String(e)));
@@ -604,7 +620,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   </button>
                   <label
                     className="inline-flex items-center gap-1 text-xs text-secondary"
-                    title="合算請求書の PDF・送付に、元帳票ごとの明細（合算内訳）を載せるか"
+                    title="オン: 元帳票の明細を車両ごとに並べて1枚に載せる／オフ: 元帳票1件=1行（合計額）だけ載せる"
                   >
                     <input
                       type="checkbox"

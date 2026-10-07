@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { showsConsolidatedBreakdown, type DocumentRow } from "@/types/document";
+import { hasInlineConsolidatedItems, showsConsolidatedBreakdown, type DocumentRow } from "@/types/document";
 import { logger } from "@/lib/logger";
 
 /** 合算請求書の元帳票（内訳表示用）。詳細画面と PDF の「合算内訳」で使う。 */
@@ -16,6 +16,7 @@ export type ConsolidatedSource = Pick<
   | "tax"
   | "total"
   | "tax_rate"
+  | "meta_json"
 >;
 
 /**
@@ -38,7 +39,7 @@ export async function loadConsolidatedSources(
   const { data, error } = await client
     .from("documents")
     .select(
-      "id, doc_type, doc_number, issued_at, subject, vehicle_info_json, items_json, subtotal, tax, total, tax_rate",
+      "id, doc_type, doc_number, issued_at, subject, vehicle_info_json, items_json, subtotal, tax, total, tax_rate, meta_json",
     )
     .in("id", ids)
     .eq("tenant_id", tenantId);
@@ -48,12 +49,17 @@ export async function loadConsolidatedSources(
   return ids.flatMap((id) => byId.get(id) ?? []);
 }
 
-/** PDF（ダウンロード・顧客共有）に載せる合算内訳。作成時に「内訳を表示しない」を選んだ帳票は空。 */
+/**
+ * PDF（ダウンロード・顧客共有）の別紙に載せる合算内訳。作成時に「内訳を表示しない」を選んだ帳票と、
+ * 内訳を1枚目の明細に組み込んだ帳票（別紙は重複になる）は空。
+ */
 export async function consolidatedSourcesForPdf(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   client: SupabaseClient<any, any, any>,
   tenantId: string,
   doc: { doc_type: string; meta_json?: unknown },
 ): Promise<ConsolidatedSource[]> {
-  return showsConsolidatedBreakdown(doc.meta_json) ? loadConsolidatedSources(client, tenantId, doc) : [];
+  return showsConsolidatedBreakdown(doc.meta_json) && !hasInlineConsolidatedItems(doc.meta_json)
+    ? loadConsolidatedSources(client, tenantId, doc)
+    : [];
 }

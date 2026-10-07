@@ -25,15 +25,26 @@ vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({}) },
 }));
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+// 採番は DB を見るので、固定番号で insert を1回だけ呼ぶ
+vi.mock("@/lib/invoice/invoiceNumber", () => ({
+  insertDocWithRetry: (_a: unknown, _t: unknown, _d: unknown, _p: unknown, insert: (n: string) => unknown) =>
+    insert("CINV-TEST"),
+}));
 
-import { GET, PUT, DELETE } from "@/app/api/admin/documents/route";
+import { GET, POST, PUT, DELETE } from "@/app/api/admin/documents/route";
 
 const DOC_ID = "11111111-1111-4111-8111-111111111111";
 
 /** 終端（maybeSingle / single / await）で rows を返す素朴なビルダ。呼ばれた update/delete を記録する。 */
 function client(
   tables: Record<string, unknown>,
-  calls: { update?: any; deleted?: unknown[]; deleteOr?: string; deleteReturnsNothing?: boolean } = {},
+  calls: {
+    update?: any;
+    insert?: any;
+    deleted?: unknown[];
+    deleteOr?: string;
+    deleteReturnsNothing?: boolean;
+  } = {},
 ) {
   return {
     calls,
@@ -48,6 +59,10 @@ function client(
         },
         update: (patch: unknown) => {
           calls.update = patch;
+          return b;
+        },
+        insert: (row: unknown) => {
+          calls.insert = row;
           return b;
         },
         delete: () => {
@@ -68,7 +83,7 @@ function client(
         },
         maybeSingle: async () => ({ data: rows, error: null }),
         single: async () => ({
-          data: { id: DOC_ID, doc_type: "consolidated_invoice", ...(calls.update ?? {}) },
+          data: calls.insert ?? { id: DOC_ID, doc_type: "consolidated_invoice", ...(calls.update ?? {}) },
           error: null,
         }),
         then: (res: any) => {
@@ -240,5 +255,80 @@ describe("GET /api/admin/documents（一覧の削除可否）", () => {
   it("with_deletable を付けない呼び出し元には判定せず、counterparty_tenant_id も返さない", async () => {
     const docs = (await (await list({ query: "" })).json()).documents as any[];
     expect(docs.every((d) => !("deletable" in d) && !("counterparty_tenant_id" in d))).toBe(true);
+  });
+});
+
+describe("POST /api/admin/documents（合算請求書の明細を元帳票の明細で組む）", () => {
+  const item = (description: string, unit_price: number) => ({
+    item_type: "item",
+    description,
+    quantity: 1,
+    unit: "式",
+    unit_price,
+    amount: unit_price,
+  });
+  const SOURCES = [
+    {
+      id: "a",
+      doc_type: "invoice",
+      doc_number: "INV-202610-002",
+      vehicle_info_json: { plate: "U632", model: "95プラド" },
+      items_json: [item("内装張替え工賃", 50000), item("内装生地（L-6217）", 20592)],
+      tax_rate: 10,
+      meta_json: { is_tax_inclusive: false },
+    },
+    {
+      id: "b",
+      doc_type: "invoice",
+      doc_number: "INV-202610-003",
+      vehicle_info_json: {},
+      items_json: [item("ボディコーティング", 30000)],
+      tax_rate: 10,
+      meta_json: { is_tax_inclusive: false },
+    },
+  ];
+  // 一覧画面が送るのと同じ「1帳票=1行（税込合計）」の要約行
+  const body = {
+    doc_type: "consolidated_invoice",
+    items: [
+      { item_type: "item", description: "請求書 INV-202610-002", quantity: 1, unit_price: 77651 },
+      { item_type: "item", description: "請求書 INV-202610-003", quantity: 1, unit_price: 33000 },
+    ],
+    tax_rate: 10,
+    is_tax_inclusive: true,
+    status: "draft",
+    meta_json: { source_document_ids: ["a", "b"], show_consolidated_breakdown: true, consolidated_items: "inline" },
+  };
+
+  it("内訳を1枚目に入れる指定なら、元帳票を読み直して『見出し → 明細 → 小計』で組み、税は合算後に計算する", async () => {
+    mocks.admin = client({ tenants: { registration_number: null }, documents: SOURCES });
+
+    const res = await POST(req("POST", body));
+
+    expect(res.status).toBe(200);
+    const row = mocks.admin.calls.insert;
+    expect(row.items_json.map((r: any) => [r.item_type, r.description, r.amount])).toEqual([
+      ["heading", "U632 95プラド", 0],
+      ["item", "内装張替え工賃", 50000],
+      ["item", "内装生地（L-6217）", 20592],
+      ["subtotal", "小計", 70592],
+      ["heading", "請求書 INV-202610-003", 0],
+      ["item", "ボディコーティング", 30000],
+      ["subtotal", "小計", 30000],
+    ]);
+    expect([row.subtotal, row.tax, row.total]).toEqual([100592, 10059, 110651]);
+    expect(row.meta_json).toMatchObject({ consolidated_items: "inline", is_tax_inclusive: false });
+  });
+
+  it("税込/税抜が混在してまとめられないときは要約行のまま作り、inline の印を外す（別紙の内訳に回す）", async () => {
+    const mixed = [SOURCES[0], { ...SOURCES[1], meta_json: { is_tax_inclusive: true } }];
+    mocks.admin = client({ tenants: { registration_number: null }, documents: mixed });
+
+    await POST(req("POST", body));
+
+    const row = mocks.admin.calls.insert;
+    expect(row.items_json.map((r: any) => r.description)).toEqual(["請求書 INV-202610-002", "請求書 INV-202610-003"]);
+    expect(row.meta_json.consolidated_items).toBeUndefined();
+    expect(row.meta_json.is_tax_inclusive).toBe(true);
   });
 });

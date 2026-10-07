@@ -1,7 +1,15 @@
 import { after } from "next/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { requireMinRole } from "@/lib/auth/checkRole";
-import { DOC_TYPES, isDocumentDeletable, isDocumentEditable, type DocType } from "@/types/document";
+import {
+  DOC_TYPES,
+  hasInlineConsolidatedItems,
+  isDocumentDeletable,
+  isDocumentEditable,
+  type DocType,
+} from "@/types/document";
+import { loadConsolidatedSources } from "@/lib/documents/consolidatedSources";
+import { buildConsolidatedItems } from "@/lib/documents/consolidatedItems";
 import { filterDeletableDocuments } from "@/lib/documents/deleteEligibility";
 import { logger } from "@/lib/logger";
 import { parsePagination } from "@/lib/api/pagination";
@@ -206,8 +214,8 @@ export const POST = withCaller(
     const issuedAt = input.issued_at || new Date().toISOString().slice(0, 10);
     const dueDate = input.due_date || null;
     const note = input.note;
-    const items = input.items ?? [];
-    const taxRate = input.tax_rate ?? 10;
+    let items = input.items ?? [];
+    let taxRate = input.tax_rate ?? 10;
     const status = input.status;
     const sourceDocumentId = input.source_document_id || null;
     const showSeal = !!input.show_seal;
@@ -227,8 +235,8 @@ export const POST = withCaller(
     const paymentDate = input.payment_date || null;
     const vehicleId = input.vehicle_id || null;
     const vehicleInfo = input.vehicle_info ?? {};
-    const isTaxInclusive = !!input.is_tax_inclusive;
-    const metaJson = {
+    let isTaxInclusive = !!input.is_tax_inclusive;
+    const metaJson: Record<string, unknown> = {
       // 封印キーはサーバのみが書く。クライアント入力からは剥がして偽装封印を防ぐ。
       ...stripClientIntegritySeal(input.meta_json as Record<string, unknown> | undefined),
       is_tax_inclusive: isTaxInclusive,
@@ -259,6 +267,23 @@ export const POST = withCaller(
         .maybeSingle();
       if (!staffRow) return apiValidationError("無効な外注職人が指定されました。");
       staffMemberName = staffRow.name;
+    }
+
+    // 合算請求書で内訳を1枚目に入れる指定なら、明細を元帳票の明細（車両ごとの見出し＋明細行＋小計）で組み直す。
+    // 元帳票をサーバで読み直すので、クライアントが送った要約行（1帳票=1行）は使わない。まとめられない
+    // （税込/税抜の混在など・元帳票が読めない）ときは要約行のまま作り、別紙の内訳ページに回す。
+    if (docType === "consolidated_invoice" && hasInlineConsolidatedItems(metaJson)) {
+      const ids = (metaJson.source_document_ids as unknown[] | undefined) ?? [];
+      const sources = await loadConsolidatedSources(admin, caller.tenantId, { doc_type: docType, meta_json: metaJson });
+      const built = sources.length > 0 && sources.length === ids.length ? buildConsolidatedItems(sources) : null;
+      if (built) {
+        items = built.items;
+        taxRate = built.taxRate;
+        isTaxInclusive = built.isTaxInclusive;
+        metaJson.is_tax_inclusive = isTaxInclusive;
+      } else {
+        delete metaJson.consolidated_items;
+      }
     }
 
     const { itemsJson, subtotal, tax, total, taxBreakdown } = calcItems(items, taxRate, isTaxInclusive);
