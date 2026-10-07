@@ -144,6 +144,14 @@ export function isDocumentDeletable(docType: string, status: string): boolean {
   return status === "draft" || docType === "receipt" || (docType === "consolidated_invoice" && status !== "paid");
 }
 
+/**
+ * 合算請求書の明細そのものが元帳票の明細（車両ごとの見出し＋明細行＋小計）で組まれているか。
+ * このとき内訳は1枚目に載っているので、PDF の別紙（合算内訳ページ）は出さない。
+ */
+export function hasInlineConsolidatedItems(metaJson: unknown): boolean {
+  return (metaJson as { consolidated_items?: unknown } | null)?.consolidated_items === "inline";
+}
+
 /** 合算請求書の PDF・送付・詳細画面に元帳票ごとの内訳を載せるか（未設定は表示）。 */
 export function showsConsolidatedBreakdown(metaJson: unknown): boolean {
   return (metaJson as { show_consolidated_breakdown?: unknown } | null)?.show_consolidated_breakdown !== false;
