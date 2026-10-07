@@ -23,7 +23,7 @@ import { createClient } from "@supabase/supabase-js";
 import { generateDemoPlaceholderJpeg } from "./demoPlaceholderImage";
 // 書き込み先バケットは公開ページの読み取り (publicData.ts の getPublicUrl) と
 // 同じ定数を使い、writer/reader がドリフトしないようにする。
-import { CERTIFICATE_IMAGE_BUCKET } from "../src/lib/certificateImages";
+import { CERTIFICATE_IMAGE_BUCKET } from "../src/lib/certificateImages/constants";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -89,6 +89,7 @@ const CUSTOMERS: Customer[] = [
   { idn: 6, name: "渡辺 美咲",  name_kana: "ワタナベ ミサキ", email: "watanabe@example.com", phone: "090-1000-0006", postal_code: "102-0093", address: "東京都千代田区平河町 6-6-6" },
   { idn: 7, name: "伊藤 裕介",  name_kana: "イトウ ユウスケ", email: "ito@example.com",     phone: "090-1000-0007", postal_code: "141-0022", address: "東京都品川区東五反田 7-7-7" },
   { idn: 8, name: "小林 あかね", name_kana: "コバヤシ アカネ", email: "kobayashi@example.com", phone: "090-1000-0008", postal_code: "158-0094", address: "東京都世田谷区玉川 8-8-8" },
+  { idn: 9, name: "中村 翔太", name_kana: "ナカムラ ショウタ", email: "nakamura@example.com", phone: "090-1000-0009", postal_code: "145-0071", address: "東京都大田区田園調布 9-9-9", note: "新車から全記録を当店で管理（撮影用ヒーロー車両）" },
 ];
 
 type Vehicle = {
@@ -98,6 +99,7 @@ type Vehicle = {
   model: string;
   year: number;
   plate_display: string;
+  vin_code?: string;
   notes?: string;
 };
 
@@ -112,6 +114,9 @@ const VEHICLES: Vehicle[] = [
   { idn: 8,  customerIdn: 6, maker: "TOYOTA",  model: "プリウス 2.0 Z",        year: 2023, plate_display: "品川 500 さ 66-77" },
   { idn: 9,  customerIdn: 7, maker: "MERCEDES", model: "GLA 200d",            year: 2022, plate_display: "港 300 さ 99-00" },
   { idn: 10, customerIdn: 8, maker: "LEXUS",   model: "NX 350h Version L",     year: 2024, plate_display: "品川 500 さ 88-99", notes: "セラミックコーティングご希望" },
+  // 撮影用ヒーロー車両: 新車から3年半の施工・整備を1台に集約する (下の CERTS 17〜27)。
+  // 車体番号は実在しない型式 "LDM80" にして、他テナントの実車と突合しないようにする。
+  { idn: 11, customerIdn: 9, maker: "TOYOTA", model: "ハリアー ハイブリッド Z Leather Package", year: 2023, plate_display: "品川 300 な 20-23", vin_code: "LDM80-0012345", notes: "新車から全記録を当店で管理" },
 ];
 
 type Cert = {
@@ -121,9 +126,14 @@ type Cert = {
   service_type: string;
   preset_title: string;
   preset_products?: string[];
-  certificate_no: string;
+  /** 省略時は施工日の年から `YYYY-LDM-<idn>` を作る */
+  certificate_no?: string;
   status?: "active" | "void";
   daysAgo: number;
+  /** 省略時は「〜を施工しました」の定型文 */
+  free_text?: string;
+  maintenance_json?: Record<string, unknown>;
+  body_repair_json?: Record<string, unknown>;
 };
 
 const CERTS: Cert[] = [
@@ -143,7 +153,37 @@ const CERTS: Cert[] = [
   { idn: 14, vehicleIdn: 3,  public_id: "LEDRA-DEMO-0014", service_type: "interior-care",    preset_title: "ファブリックシートクリーニング", preset_products: ["Fabric Guard Pro"],                              certificate_no: "2026-LDM-0014", daysAgo: 6 },
   { idn: 15, vehicleIdn: 10, public_id: "LEDRA-DEMO-0015", service_type: "ceramic-coating",  preset_title: "ホイールセラミックコーティング", preset_products: ["Wheel Ceramic Pro"],                             certificate_no: "2026-LDM-0015", daysAgo: 2 },
   { idn: 16, vehicleIdn: 8,  public_id: "LEDRA-DEMO-0016", service_type: "glass-coating",    preset_title: "新車同時施工 ガラスコート",      preset_products: ["9H Premium", "Maintenance Kit"],                 certificate_no: "2026-LDM-0016", daysAgo: 1 },
+
+  // ─── 撮影用ヒーロー車両 (vehicle 11) の履歴: 施工と整備を時系列で交互に ───
+  { idn: 17, vehicleIdn: 11, public_id: "LEDRA-DEMO-0017", service_type: "coating",     preset_title: "新車ガラスコーティング",           preset_products: ["9H Premium", "ホイールガラスコート"], daysAgo: 1280 },
+  { idn: 18, vehicleIdn: 11, public_id: "LEDRA-DEMO-0018", service_type: "ppf",         preset_title: "フロントプロテクションフィルム（PPF）", preset_products: ["XPEL Ultimate Plus"],                daysAgo: 1279 },
+  { idn: 19, vehicleIdn: 11, public_id: "LEDRA-DEMO-0019", service_type: "maintenance", preset_title: "6ヶ月点検",                       preset_products: [], daysAgo: 1100,
+    free_text: "6ヶ月点検を実施しました。異常なし。",
+    maintenance_json: { work_types: ["periodic_inspection"], mileage: 4800, findings: "全項目異常なし。" } },
+  { idn: 20, vehicleIdn: 11, public_id: "LEDRA-DEMO-0020", service_type: "maintenance", preset_title: "12ヶ月法定点検・オイル交換",       preset_products: ["エンジンオイル", "オイルフィルター"], daysAgo: 915,
+    free_text: "12ヶ月法定点検とオイル交換を実施しました。",
+    maintenance_json: { work_types: ["periodic_inspection", "oil_change"], mileage: 10900, parts_replaced: "エンジンオイル 0W-16 4.2L\nオイルフィルター", findings: "ブレーキパッド残量 フロント8mm / リア8mm。" } },
+  { idn: 21, vehicleIdn: 11, public_id: "LEDRA-DEMO-0021", service_type: "coating",     preset_title: "ガラスコーティング 1年メンテナンス", preset_products: ["9H Maintenance"], daysAgo: 914 },
+  { idn: 22, vehicleIdn: 11, public_id: "LEDRA-DEMO-0022", service_type: "body_repair", preset_title: "リアバンパー鈑金塗装",             preset_products: [], daysAgo: 700,
+    free_text: "駐車場での接触によるリアバンパーの擦り傷を修理しました。",
+    body_repair_json: { repair_type: "bankin_paint", affected_panels: ["rear_bumper"], repair_methods: ["filler_repair", "blend_paint"], paint_color_code: "218（アティチュードブラックマイカ）", paint_type: "pearl", before_notes: "右後方に約15cmの擦り傷と軽微な凹み。", after_notes: "パテ修正後ボカシ塗装。色差なし。" } },
+  { idn: 23, vehicleIdn: 11, public_id: "LEDRA-DEMO-0023", service_type: "maintenance", preset_title: "24ヶ月法定点検",                   preset_products: ["ブレーキフルード", "ワイパーブレード"], daysAgo: 550,
+    free_text: "24ヶ月法定点検を実施しました。",
+    maintenance_json: { work_types: ["periodic_inspection", "wiper_replacement"], mileage: 21300, parts_replaced: "ブレーキフルード\nワイパーブレード（前）", findings: "ブレーキパッド残量 フロント6mm。次回車検時に交換を推奨。" } },
+  { idn: 24, vehicleIdn: 11, public_id: "LEDRA-DEMO-0024", service_type: "coating",     preset_title: "ホイールセラミックコーティング",   preset_products: ["Wheel Ceramic Pro"], daysAgo: 400 },
+  { idn: 25, vehicleIdn: 11, public_id: "LEDRA-DEMO-0025", service_type: "maintenance", preset_title: "初回車検（新車3年）",              preset_products: ["エンジンオイル", "ブレーキパッド", "補機バッテリー"], daysAgo: 185,
+    free_text: "初回車検整備を実施しました。前回点検で推奨したブレーキパッドを交換。",
+    maintenance_json: { work_types: ["vehicle_inspection", "oil_change", "brake_service", "battery_replacement"], mileage: 31800, parts_replaced: "エンジンオイル 0W-16 4.2L\nオイルフィルター\nブレーキパッド（フロント）\n補機バッテリー", findings: "ブレーキパッド フロント3mm → 新品交換。その他異常なし。" } },
+  { idn: 26, vehicleIdn: 11, public_id: "LEDRA-DEMO-0026", service_type: "coating",     preset_title: "ガラスコーティング 3年目再施工",   preset_products: ["9H Premium"], daysAgo: 30 },
+  { idn: 27, vehicleIdn: 11, public_id: "LEDRA-DEMO-0027", service_type: "maintenance", preset_title: "オイル交換・タイヤローテーション", preset_products: ["エンジンオイル"], daysAgo: 2,
+    free_text: "オイル交換とタイヤローテーションを実施しました。",
+    maintenance_json: { work_types: ["oil_change", "tire_change"], mileage: 34200, parts_replaced: "エンジンオイル 0W-16 4.2L", findings: "タイヤ残溝 5.5mm。偏摩耗なし。" } },
 ];
+
+// ヒーロー車両の NFC タグ。最新の記録 (CERTS 27) に貼付済みとして紐づけ、
+// /c/LEDRA-DEMO-0027 の「NFC情報」と管理画面タイムラインの「NFC書込」に出す。
+// 実タグには https://app.ledra.co.jp/c/LEDRA-DEMO-0027 を書き込む。
+const HERO_NFC = { idn: 1, vehicleIdn: 11, certIdn: 27, tag_code: "LDM-NFC-0001", uid: "04DE0000000001", daysAgo: 2 };
 
 // ─── Reservations (予約 → 請求 導線デモ用) ───────────────────
 // プレゼンで「予約 → 受付 → 作業 → 完了 → 請求」を一通り見せられるよう、各
@@ -354,6 +394,7 @@ async function main(): Promise<void> {
       model: v.model,
       year: v.year,
       plate_display: v.plate_display,
+      vin_code: v.vin_code ?? null,
       customer_name: customer.name,
       customer_email: customer.email,
       customer_phone_masked: customer.phone.slice(-4),
@@ -379,7 +420,8 @@ async function main(): Promise<void> {
       customer_id: uuid("c001", vehicle.customerIdn),
       status: ct.status ?? "active",
       customer_name: customer.name,
-      certificate_no: ct.certificate_no,
+      certificate_no:
+        ct.certificate_no ?? `${dateDaysAgo(ct.daysAgo).slice(0, 4)}-LDM-${String(ct.idn).padStart(4, "0")}`,
       service_type: ct.service_type,
       vehicle_info_json: {
         maker: vehicle.maker,
@@ -391,7 +433,11 @@ async function main(): Promise<void> {
         title: ct.preset_title,
         products: ct.preset_products ?? [],
       },
-      content_free_text: `${vehicle.maker} ${vehicle.model} に ${ct.preset_title} を施工しました。詳細は別紙作業報告書をご確認ください。`,
+      content_free_text:
+        ct.free_text ??
+        `${vehicle.maker} ${vehicle.model} に ${ct.preset_title} を施工しました。詳細は別紙作業報告書をご確認ください。`,
+      maintenance_json: ct.maintenance_json ?? {},
+      body_repair_json: ct.body_repair_json ?? {},
       current_version: 1,
       created_at: dateDaysAgo(ct.daysAgo),
       updated_at: dateDaysAgo(ct.daysAgo),
@@ -479,7 +525,7 @@ async function main(): Promise<void> {
       vehicle_id: uuid("v001", cert.vehicleIdn),
       certificate_id: uuid("ce01", cert.idn),
       type: "certificate_issued",
-      title: `${cert.preset_title} 施工`,
+      title: cert.service_type === "maintenance" ? cert.preset_title : `${cert.preset_title} 施工`,
       description: (cert.preset_products ?? []).join(" / ") || "施工完了",
       performed_at: dateDaysAgo(cert.daysAgo),
     });
@@ -503,6 +549,27 @@ async function main(): Promise<void> {
   }
   await upsert("vehicle_histories", historyRows, "id", { typeColumn: "type" });
   console.log(`  ✓ 投入完了（不許可の type は自動スキップ済み）`);
+
+  // 6b) NFC tag (撮影用ヒーロー車両)
+  console.log("─ NFC tags");
+  await upsert(
+    "nfc_tags",
+    [
+      {
+        id: uuid("nf01", HERO_NFC.idn),
+        tenant_id: TENANT_ID,
+        tag_code: HERO_NFC.tag_code,
+        uid: HERO_NFC.uid,
+        vehicle_id: uuid("v001", HERO_NFC.vehicleIdn),
+        certificate_id: uuid("ce01", HERO_NFC.certIdn),
+        status: "attached",
+        written_at: dateDaysAgo(HERO_NFC.daysAgo),
+        attached_at: dateDaysAgo(HERO_NFC.daysAgo),
+      },
+    ],
+    "id",
+  );
+  console.log(`  ✓ ${HERO_NFC.tag_code} → LEDRA-DEMO-${String(HERO_NFC.certIdn).padStart(4, "0")}`);
 
   // 7) Reservations (予約 → 請求 導線)
   console.log("─ Reservations");
@@ -599,6 +666,8 @@ async function main(): Promise<void> {
   console.log("  Histories :", historyRows.length);
   console.log("  Reservations:", reservationRows.length);
   console.log("  Invoices  :", invoiceRows.length);
+  console.log("\n  撮影用ヒーロー車両 (NFC タグに書き込む URL):");
+  console.log(`    https://app.ledra.co.jp/c/LEDRA-DEMO-${String(HERO_NFC.certIdn).padStart(4, "0")}`);
   console.log("\n  公開証明書の例:");
   CERTS.slice(0, 3).forEach((c) => {
     console.log(`    https://app.ledra.co.jp/c/${c.public_id}`);

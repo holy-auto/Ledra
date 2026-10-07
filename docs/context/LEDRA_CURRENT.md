@@ -6,6 +6,10 @@
 
 最終更新: 2026-10-05
 
+> 2026-10-07 追記（**本番の Polygon アンカーは未稼働**）: 本番 DB で `certificate_images.polygon_tx_hash`・`certificate_anchors`・
+> `certificate_anchor_batches` はいずれも 0 件（2026-10-07 に service role で件数確認）。ブロックチェーン証明は本番ではまだ1件も作られていない。
+> デモテナントには撮影用ヒーロー車両（LEDRA-DEMO-0017〜0027、NFC タグ付き）を追加した（RELEASE_LOG 2026-10-07）。
+
 > 2026-10-05 追記（**staging を作った**）: Supabase に独立プロジェクト `Ledra-staging` を作り、`main` から `staging` ブランチを
 > 作った。スキーマは本番と同じ構成（520 本時点。テーブル 279・関数 145・RLS ポリシー 665）で、写真の保存先 `assets` バケットも
 > 本番と同じ設定で作った。証明書写真の流れは **DB 層まで確認済み**（10 項目すべて期待どおり）。**アプリ経由の E2E はまだ**で、
