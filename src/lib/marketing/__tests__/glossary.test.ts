@@ -55,3 +55,16 @@ describe("glossary データ整合性", () => {
     expect(total).toBe(GLOSSARY.length);
   });
 });
+
+describe("glossary details", () => {
+  it("見出しは用語内で一意で、見出し・本文とも空でない", () => {
+    for (const t of GLOSSARY) {
+      const headings = (t.details ?? []).map((d) => d.heading);
+      expect(new Set(headings).size, t.slug).toBe(headings.length);
+      for (const d of t.details ?? []) {
+        expect(d.heading.trim(), t.slug).not.toBe("");
+        expect(d.text.trim(), t.slug).not.toBe("");
+      }
+    }
+  });
+});

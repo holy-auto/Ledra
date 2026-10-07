@@ -64,7 +64,6 @@ function revalidatePublicPaths(type: SiteContentType, site: SiteContentSite = "l
   if (type === "blog") revalidatePath("/blog");
   if (type === "news") {
     revalidatePath("/news");
-    revalidatePath("/"); // トップの NewsTeaser も更新する
   }
   if (type === "event" || type === "webinar") revalidatePath("/events");
 }

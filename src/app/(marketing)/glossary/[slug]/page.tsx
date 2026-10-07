@@ -63,6 +63,13 @@ export default async function GlossaryTermPage({ params }: Props) {
           <p className="text-xs font-medium text-white/50">{t.reading}</p>
           <p className="mt-5 text-base leading-relaxed text-white/90 md:text-lg">{t.definition}</p>
 
+          {t.details?.map((d) => (
+            <section key={d.heading} className="mt-10">
+              <h2 className="text-lg font-bold text-white">{d.heading}</h2>
+              <p className="mt-3 text-base leading-relaxed text-white/90">{d.text}</p>
+            </section>
+          ))}
+
           {t.seeAlso && (
             <div className="mt-8 rounded-xl border border-white/[0.08] bg-white/[0.03] p-5">
               <span className="text-xs font-medium uppercase tracking-widest text-blue-300">関連機能</span>
