@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/check-c2pa-binary.mjs && next build",
+    "build": "next build",
     "check:c2pa-binary": "node scripts/check-c2pa-binary.mjs",
     "start": "next start",
     "lint": "eslint",
