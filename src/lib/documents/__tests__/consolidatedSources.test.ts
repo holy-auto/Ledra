@@ -28,6 +28,16 @@ describe("loadConsolidatedSources", () => {
     expect(adminOut.map((s) => s.id)).toEqual(["b", "a"]);
   });
 
+  it("内訳を1枚目の明細に組み込んだ帳票は、PDF の別紙を出さない（重複になる）", async () => {
+    const client = fakeClient([{ id: "a" }, { id: "b" }]);
+    const out = await consolidatedSourcesForPdf(client as never, "t1", {
+      doc_type: "consolidated_invoice",
+      meta_json: { ...meta, consolidated_items: "inline" },
+    });
+    expect(out).toEqual([]);
+    expect(client.from).not.toHaveBeenCalled();
+  });
+
   it("the PDF keeps the breakdown when the flag is unset (existing invoices)", async () => {
     const out = await consolidatedSourcesForPdf(fakeClient([{ id: "a" }, { id: "b" }]) as never, "t1", {
       doc_type: "consolidated_invoice",

@@ -18,6 +18,7 @@ import {
   statusLabel,
   statusVariant,
   showsConsolidatedBreakdown,
+  hasInlineConsolidatedItems,
   type DocType,
   type DocumentItem,
   type DocumentRow,
@@ -635,8 +636,23 @@ export default function DocumentDetailClient({
         </div>
       )}
 
+      {/* 明細に内訳を組み込んだ合算請求書は、下の内訳と重複するので元帳票へのリンクだけ出す */}
+      {consolidatedSources.length > 0 && hasInlineConsolidatedItems(doc.meta_json) && (
+        <section className="glass-card p-5 text-sm print:hidden">
+          <span className="text-muted">合算元（{consolidatedSources.length}件）: </span>
+          {consolidatedSources.map((src, i) => (
+            <span key={src.id}>
+              {i > 0 && "、"}
+              <a href={`/admin/documents/${src.id}`} className="text-accent underline">
+                {DOC_TYPES[src.doc_type as DocType]?.label ?? src.doc_type} {src.doc_number}
+              </a>
+            </span>
+          ))}
+        </section>
+      )}
+
       {/* 合算内訳: 元帳票ごとの明細 */}
-      {consolidatedSources.length > 0 && (
+      {consolidatedSources.length > 0 && !hasInlineConsolidatedItems(doc.meta_json) && (
         <section
           className={`glass-card p-5 space-y-5 print:border-none print:shadow-none print:bg-white print:text-black ${
             showsConsolidatedBreakdown(doc.meta_json) ? "" : "print:hidden"
