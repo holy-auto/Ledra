@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { ANALYTICS_CONSENT_EVENT } from "@/lib/marketing/analytics";
+import { ANALYTICS_CONSENT_EVENT, isGaTrackedPath } from "@/lib/marketing/analytics";
 
 /**
  * Loads Google Analytics 4 (gtag.js) on the marketing site.
@@ -28,6 +28,22 @@ export function GoogleAnalytics(): null {
       if (readConsent() !== "granted") return;
       if (window.__ga4Initialized) return;
       window.__ga4Initialized = true;
+
+      // gtag.js survives client-side navigation into the app (/login → /admin),
+      // and its history-change page_views were counting app screens as HP
+      // traffic. The opt-out flag is a getter so it follows the current path.
+      // ponytail: relies on gtag.js reading `ga-disable-<id>` per hit (not
+      // verifiable here — googletagmanager.com is blocked); if app paths still
+      // show in GA4 realtime, switch to manual page_views instead.
+      // The setter keeps the documented `window["ga-disable-<id>"] = true` opt-out working.
+      let optedOut = false;
+      Object.defineProperty(window, `ga-disable-${measurementId}`, {
+        configurable: true,
+        get: () => optedOut || !isGaTrackedPath(window.location.pathname),
+        set: (value: unknown) => {
+          optedOut = Boolean(value);
+        },
+      });
 
       const dataLayer = (window.dataLayer = window.dataLayer ?? []);
       // gtag.js consumes the native `arguments` object verbatim — replicate

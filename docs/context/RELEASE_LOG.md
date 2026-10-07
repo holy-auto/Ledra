@@ -4,6 +4,17 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-07 GA4 からアプリ画面を外し、HP の計測イベントを GA4 にも送る（#1265）
+
+- 内容: GA4 で数えるページを HP（`src/app/(marketing)` 配下）と `/signup` に限る。HP からログインして管理画面に移っても、
+  gtag.js がアプリ画面の page_view を送らないようにする（直近28日のページビューの58%がアプリ画面だった）。
+  `lead_submitted` / `cta_clicked` などのイベントを PostHog に加えて GA4 にも送り、`lead_submitted` を GA4 のキーイベントにできるようにした。
+- 実装: `GoogleAnalytics.tsx` で `window["ga-disable-<ID>"]` を現在のパスで決まる getter にした（代入による opt-out も効くよう setter 付き）。
+  HP のパス判定は `src/proxy.ts` にあったものを `src/lib/marketing/routes.ts` に移して共用（proxy は再エクスポート）。
+  `track()` は gtag にも送る。
+- 検証: `isGaTrackedPath` のテスト、既存の `proxyMarketingPaths` のドリフト検出、marketing 配下のテスト、tsc、eslint。
+  gtag.js がフラグをヒットごとに読むかは環境から googletagmanager.com に届かず未検証（OPEN_QUESTIONS）。
+
 ## 2026-10-07 顧客に紐付いていない過去の証明書を、本番で一括紐付け
 
 - 内容: 本番の証明書 59 件のうち、顧客（`customer_id`）に紐付いていない過去データが 2 件あった（2026-04 発行。共通リゾルバで自動紐付けする前の発行分）。
