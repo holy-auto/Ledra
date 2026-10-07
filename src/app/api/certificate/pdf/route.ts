@@ -122,9 +122,8 @@ export async function GET(req: Request) {
     | "body_repair_json"
     | "accessory_json"
   > &
-    Omit<DetailAccessCert, "tenant_id"> & {
+    DetailAccessCert & {
       id: string;
-      tenant_id: string | null;
       manufacturer_template_id: string | null;
     };
 
@@ -179,7 +178,7 @@ export async function GET(req: Request) {
 
   // 写真・個人情報（担当者名・作業メモ）は作業店舗・所有者・履歴レポート購入者にだけ載せる（detailAccess.ts）。
   // スタッフ署名（st）での出力は店舗が書面交付用に出すものなので載せる。
-  const detailVisible = byStaff || (await canViewCertificateDetails({ ...fullCert, tenant_id: fullCert.tenant_id }));
+  const detailVisible = byStaff || (await canViewCertificateDetails(fullCert));
 
   const fallbackOrigin = await getFallbackOrigin();
   const origin = buildOriginFromCert(cert, fallbackOrigin);

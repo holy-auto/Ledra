@@ -201,16 +201,17 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
   const model = pickVehicleField(data.vehicle, info, ["model", "car_model", "vehicle_model"]);
   const year = pickVehicleField(data.vehicle, info, ["year", "model_year"]);
   const freeText = asText(data.certificate.content_free_text);
-  // 写真を見せない閲覧者（detail_visible=false）にも件数と認証グレードは出すので、URL の有無で絞る前の一覧で数える。
   const allImages = !isVoidCertificate ? (data.images ?? []) : [];
   const images = allImages.filter((img) => !!img?.url);
   const media = !isVoidCertificate ? (data.media ?? []) : [];
   const detailHidden = data.detail_visible === false && !isVoidCertificate;
+  // 写真を見せない閲覧者（URL 無し）にも件数と認証グレードは出す。見せる閲覧者は従来どおり表示できる写真で数える。
+  const heroImages = detailHidden ? allImages : images;
   const heroGrade: AuthenticityGrade = highestGrade(
-    allImages.map((img) => img.authenticity_grade as AuthenticityGrade | null | undefined),
+    heroImages.map((img) => img.authenticity_grade as AuthenticityGrade | null | undefined),
   );
   // Pick the tx hash from the first image whose grade matches the best grade.
-  const heroAnchorImage = allImages.find((img) => img.authenticity_grade === heroGrade && !!img.polygon_tx_hash);
+  const heroAnchorImage = heroImages.find((img) => img.authenticity_grade === heroGrade && !!img.polygon_tx_hash);
   const heroPolygonTxHash = heroAnchorImage?.polygon_tx_hash ?? null;
   const heroPolygonNetwork =
     heroAnchorImage?.polygon_network === "amoy" || heroAnchorImage?.polygon_network === "polygon"
@@ -241,7 +242,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
         <HeroCard
           maker={maker || null}
           model={model || null}
-          recordCount={allImages.length}
+          recordCount={heroImages.length}
           grade={heroGrade}
           polygonTxHash={heroPolygonTxHash}
           polygonNetwork={heroPolygonNetwork}

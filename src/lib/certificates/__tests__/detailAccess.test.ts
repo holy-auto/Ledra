@@ -6,6 +6,7 @@ const h = vi.hoisted(() => ({
   userId: null as string | null,
   member: false,
   vin: null as string | null,
+  optOut: false,
   access: null as { scopeFromIso: string | null; purchasedAtIso: string } | null,
   throwOn: null as string | null,
 }));
@@ -37,11 +38,16 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/supabase/admin", () => ({
   createServiceRoleAdmin: () => ({
     from: () => {
-      const q = { select: () => q, eq: () => q, maybeSingle: async () => ({ data: { vin_code_normalized: h.vin } }) };
+      const q = {
+        select: () => q,
+        eq: () => q,
+        maybeSingle: async () => ({ data: { vin_code_normalized: h.vin, passport_opt_out: h.optOut } }),
+      };
       return q;
     },
   }),
 }));
+vi.mock("@/lib/passport/featureGate", () => ({ isPassportPublicEnabled: () => true }));
 vi.mock("@/lib/vehicleReport/access", async (orig) => ({
   ...(await orig<typeof import("@/lib/vehicleReport/access")>()),
   findValidReportAccess: async (_vin: string, token: string | undefined) => (token ? h.access : null),
@@ -60,7 +66,16 @@ const cert = {
 };
 
 beforeEach(() => {
-  Object.assign(h, { cookies: {}, session: null, userId: null, member: false, vin: null, access: null, throwOn: null });
+  Object.assign(h, {
+    cookies: {},
+    session: null,
+    userId: null,
+    member: false,
+    vin: null,
+    optOut: false,
+    access: null,
+    throwOn: null,
+  });
 });
 
 describe("isOwnerSession [公開証明書の所有者判定]", () => {
@@ -106,6 +121,18 @@ describe("canViewCertificateDetails [写真・個人情報を見せる閲覧者]
     expect(await canViewCertificateDetails(cert)).toBe(true);
     h.access = { scopeFromIso: "2026-06-15T00:00:00Z", purchasedAtIso: "2026-07-01T00:00:00Z" };
     expect(await canViewCertificateDetails(cert)).toBe(false);
+  });
+  it("パスポートを opt-out した車両の証明書は、同じ VIN のレポートを買っても見せない（レポートに載らない）", async () => {
+    h.vin = "VIN1";
+    h.optOut = true;
+    h.cookies = { [reportCookieName("VIN1")]: "paid" };
+    h.access = { scopeFromIso: null, purchasedAtIso: "2026-07-01T00:00:00Z" };
+    expect(await canViewCertificateDetails(cert)).toBe(false);
+  });
+  it("テナントが分からない証明書は見せない", async () => {
+    h.member = true;
+    h.userId = "u1";
+    expect(await canViewCertificateDetails({ ...cert, tenant_id: null })).toBe(false);
   });
   it("判定に失敗したら見せない（fail-closed）", async () => {
     h.throwOn = "cookies";
