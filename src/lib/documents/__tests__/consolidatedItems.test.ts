@@ -40,7 +40,8 @@ describe("buildConsolidatedItems", () => {
     const built = buildConsolidatedItems([
       src({
         id: "a",
-        vehicle_info_json: { plate: "U632", model: "95プラド" },
+        subject: "U632",
+        vehicle_info_json: { model: "95プラド" },
         items_json: [item("内装張替え工賃", 50000), item("内装生地（L-6217）", 20592)],
       }),
       src({ id: "b", vehicle_info_json: { model: "ハイエース" }, items_json: [item("ボディコーティング", 30000)] }),
@@ -61,8 +62,13 @@ describe("buildConsolidatedItems", () => {
     expect([subtotal, tax, total]).toEqual([100592, 10059, 110651]);
   });
 
-  it("車両が無ければ件名、件名も無ければ帳票番号を見出しにする", () => {
-    expect(consolidatedHeading(src({ id: "x", subject: "内装リペア" }))).toBe("内装リペア");
+  it("見出しは『件名 車種 ナンバー』のうち入っているものを並べ、どれも無ければ帳票番号", () => {
+    const vehicle = { model: "95プラド", plate: "品川300あ1234" };
+    expect(consolidatedHeading(src({ id: "w", subject: "U632", vehicle_info_json: vehicle }))).toBe(
+      "U632 95プラド 品川300あ1234",
+    );
+    expect(consolidatedHeading(src({ id: "x", vehicle_info_json: vehicle }))).toBe("95プラド 品川300あ1234");
+    expect(consolidatedHeading(src({ id: "x2", subject: "U632" }))).toBe("U632");
     expect(consolidatedHeading(src({ id: "y" }))).toBe("請求書 INV-y");
   });
 

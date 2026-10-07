@@ -1,16 +1,17 @@
 import { DOC_TYPES, type DocType, type DocumentItem } from "@/types/document";
 import type { ConsolidatedSource } from "@/lib/documents/consolidatedSources";
 
-/** 見出し行の文言。車両（ナンバー・車種）→ 件名 → 帳票番号の順に、あるものを使う。 */
+/**
+ * 見出し行の文言。「件名 車種 ナンバー」のうち入っているものを並べる（例: 件名に取引先の管理番号「U632」、
+ * 車種「95プラド」→「U632 95プラド」）。どれも無ければ帳票番号。
+ */
 export function consolidatedHeading(src: ConsolidatedSource): string {
   const vi = (src.vehicle_info_json ?? {}) as { model?: string; plate?: string };
-  const vehicle = [vi.plate, vi.model]
+  const label = [src.subject, vi.model, vi.plate]
     .map((v) => v?.trim())
     .filter(Boolean)
     .join(" ");
-  return (
-    vehicle || src.subject?.trim() || `${DOC_TYPES[src.doc_type as DocType]?.label ?? src.doc_type} ${src.doc_number}`
-  );
+  return label || `${DOC_TYPES[src.doc_type as DocType]?.label ?? src.doc_type} ${src.doc_number}`;
 }
 
 /**
