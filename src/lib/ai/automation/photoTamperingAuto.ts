@@ -33,6 +33,7 @@ import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
 import { shouldAutoTamperingCheck } from "./orchestrator";
+import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2pa";
 
 const VISION_ENDPOINT = "/api/certificates/images/upload#auto-tampering-vision";
 
@@ -120,7 +121,7 @@ export async function maybeAutoTamperingCheckForCertificate(params: MaybeAutoTam
     // stale 判定は各写真の uploadedAt (certificate_images.created_at) を基準に
     // 集約関数側で行うため、ここでは追加の基準時刻は渡さない。
     // C2PA本番署名を期待する運用のときだけ c2pa_missing を有効化する。
-    const c2paExpected = (process.env.C2PA_MODE ?? "disabled") === "production";
+    const c2paExpected = getC2paMode() === "production";
     const firstPass = aggregateCertificateImageIntegrity(imageRows, new Date(), { c2paExpected });
 
     // 既存の判定を尊重して無駄な上書きを避ける。

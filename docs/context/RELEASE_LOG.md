@@ -4,6 +4,34 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-07 C2PA ネイティブバイナリの不在をビルドで落とす＋`C2PA_MODE` の読み口を1つに戻した
+
+- 内容: `scripts/check-c2pa-binary.mjs` を追加し `build` の前段に置いた（`npm run check:c2pa-binary` 単体でも走る）。
+  **`C2PA_MODE=production` のときだけ**ネイティブバイナリのロードを要求し、できなければビルドを落とす。
+- 根: `postinstall` は プリビルド DL → Rust ビルドの順に試し、**両方駄目でも exit 0 で終わる**（実測）。
+  Vercel に Rust は無いので、DL が失敗すると**バイナリ無しでデプロイが成功**し、#1209 の先行検査により
+  **全アップロードが 503** になる。`optionalDependencies` → `dependencies` に移しても、
+  npm が区分で変えるのは「失敗したインストール」なので**この沈黙は直らない**。
+- **最初に書いた検査は無効だった。** `await import("@contentauth/c2pa-node")` して `Builder`/`Reader` が
+  関数かを見る形にしたが、**バイナリを消しても通った** —— `dist/binary.js` の `getNeonBinary()` は
+  初回アクセス時の遅延ロードで、import と型確認ではネイティブを一度も踏まない。
+  パッケージと同じ `require(C2PA_LIBRARY_PATH ?? "./index.node")` を自分で実行する形に書き直した。
+- 4条件で実測: (1) `C2PA_MODE` 未設定 → skip・exit 0、(2) production ＋ バイナリあり → OK
+  （ネイティブ関数 55 個）、(3) **production ＋ バイナリ無し → exit 1**（原因の候補と対処を出す）、
+  (4) バイナリ無し ＋ 未設定 → exit 0（**今日の本番は `C2PA_MODE` 未設定なのでデプロイを壊さない**）。
+- あわせて `C2PA_MODE` の読み口を `getMode()` 1つに戻した。#1209 で「`getMode()` が唯一の正規化源」と
+  書いたのに、**本番コードの3箇所が生の env を読んでいた**（`photo-tampering/route.ts` /
+  `polygon-backfill/route.ts` / `photoTamperingAuto.ts`。うち1つは
+  `as "disabled" | "dev-signed" | "production"` の素のキャスト）。3箇所を `getMode()` に通し、
+  未使用になった `C2paKind` の import を削除。
+  - **等級への実害は無かった。** 綴り違いで差が出るか検算したところ、`authenticityGrade.ts:52` が見るのは
+    `c2paKind !== "dev-signed"` の一点で、`"dev-signed"` を返す条件は両経路で完全に一致する。
+    **バグだと思って調べ、違うと分かった**ので、そう書いておく。直したのは型の嘘と重複。
+- `c2paModeSingleSource.test.ts` を追加（構造テスト。走査が壊れていても緑に見えないよう、
+  **唯一の正当な読み手を見つけられること**を陰性対照にしてある）。変異で当たりを取った:
+  直接読みを1つ戻すとファイル名と行番号を出して赤。
+- **本番への影響は今日はゼロ**（`C2PA_MODE` 未設定）。
+
 ## 2026-10-07 公開証明書の写真と個人情報は、作業店舗・所有者・履歴レポート購入者にだけ出す
 
 - 内容: 公開証明書ページ（`/c/[public_id]`）は URL を知っていれば誰でも施工写真・動画・担当者名・作業メモを見られた。

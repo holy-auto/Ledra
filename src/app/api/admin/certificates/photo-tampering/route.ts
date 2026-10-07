@@ -1,11 +1,10 @@
-
-
 import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { aggregateCertificateImageIntegrity, type CertImageIntegrityInput } from "@/lib/ai/certificatePhotoIntegrity";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2pa";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
@@ -84,7 +83,7 @@ export const POST = withCaller(
       }
 
       // C2PA本番署名を期待する運用のときだけ c2pa_missing を有効化する。
-      const c2paExpected = (process.env.C2PA_MODE ?? "disabled") === "production";
+      const c2paExpected = getC2paMode() === "production";
       const summary = aggregateCertificateImageIntegrity(images, new Date(), { c2paExpected });
 
       // per-image をパネル表示用に整形（撮影メタは DB 列由来。GPS/ソフトは除去済みのため無し）。

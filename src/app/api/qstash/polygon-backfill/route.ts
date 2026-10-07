@@ -4,14 +4,10 @@ import { apiJson } from "@/lib/api/response";
 import { withQstashSignature } from "@/lib/qstash/verifySignature";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { anchorToPolygon, verifyAnchor, findAnchorTx } from "@/lib/anchoring/providers";
-import {
-  computeAuthenticityGrade,
-  highestGrade,
-  type AuthenticityGrade,
-  type C2paKind,
-} from "@/lib/anchoring/authenticityGrade";
+import { computeAuthenticityGrade, highestGrade, type AuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
 import { upsertVehiclePassport } from "@/lib/passport/upsertVehiclePassport";
 import { enqueuePolygonBackfillNextBatch } from "@/lib/qstash/publish";
+import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2pa";
 
 const polygonBackfillSchema = z.object({
   job_id: z.string().uuid(),
@@ -38,7 +34,11 @@ async function handler(req: NextRequest) {
     .eq("id", job_id);
 
   try {
-    const c2paMode = (process.env.C2PA_MODE ?? "disabled") as "disabled" | "dev-signed" | "production";
+    // **生の env を読まない。** `getMode()` が唯一の正規化源（`c2pa.ts`）。素のキャストだと
+    // `C2PA_MODE=Production` のような綴り違いが `C2paKind` を名乗って等級計算に入る。
+    // 現時点では等級は変わらない（`authenticityGrade.ts:52` が見るのは "dev-signed" との
+    // 一致だけで、その条件は両経路で同じ）が、**型を偽ったまま残す理由が無い。**
+    const c2paMode = getC2paMode();
 
     // バッチサイズ分だけ未アンカー画像を取得（nonce 競合防止のため逐次処理を維持）
     const { data: candidates, error: fetchErr } = await admin
@@ -73,7 +73,7 @@ async function handler(req: NextRequest) {
       const gradeAfter = computeAuthenticityGrade({
         hasSha256: true,
         hasC2pa: Boolean((img as { c2pa_verified?: boolean }).c2pa_verified),
-        c2paKind: (c2paMode === "disabled" ? "none" : c2paMode) as C2paKind,
+        c2paKind: c2paMode === "disabled" ? "none" : c2paMode,
         hasTsa: false,
         deviceOk: Boolean((img as { device_attestation_verified?: boolean }).device_attestation_verified),
         nonceOk: false,
