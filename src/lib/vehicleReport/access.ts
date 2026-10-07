@@ -67,6 +67,20 @@ export type ValidReportAccess = {
 };
 
 /**
+ * 購入の開示範囲（scope_from 〜 購入時点）にこの記録が入っているか。/v/[vin] の一覧と
+ * 公開証明書ページ（写真・個人情報の表示）で同じ境界を使う。作成日時が不明な記録は入れない。
+ */
+export function certInReportScope(
+  access: Pick<ValidReportAccess, "scopeFromIso" | "purchasedAtIso">,
+  createdAt: string | null,
+): boolean {
+  if (createdAt === null) return false;
+  const t = new Date(createdAt).getTime();
+  if (access.scopeFromIso !== null && t < new Date(access.scopeFromIso).getTime()) return false;
+  return t <= new Date(access.purchasedAtIso).getTime();
+}
+
+/**
  * True iff `token` is a paid, non-expired report order for `vinNormalized`.
  * Used by the gated `/v/[vin]` page; anonymous callers, service role only.
  * Returns the purchase's disclosure scope so the page shows only the records

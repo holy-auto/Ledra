@@ -6,6 +6,12 @@ import {
   type ResolvedCertificateMedia,
 } from "@/lib/certificateMedia";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants";
+import {
+  canViewCertificateDetails,
+  DETAIL_ACCESS_COLUMNS,
+  redactCertificateDetails,
+  type DetailAccessCert,
+} from "@/lib/certificates/detailAccess";
 
 /**
  * scheduled_date (YYYY-MM-DD) と start_time (HH:MM[:SS]) を ISO 8601 文字列に
@@ -70,7 +76,10 @@ type CertRow = {
   manufacturer_id: string | null;
   manufacturer_template_id: string | null;
   craftsman_name: string | null;
-};
+} & DetailAccessCert;
+
+/** 閲覧者の判定にだけ使う列。公開の応答には載せない。 */
+type DetailAccessOnly = "customer_id" | "customer_phone_last4_hash" | "hidden_from_owner_portal_at";
 
 type ManufacturerPublicRow = {
   id: string;
@@ -160,7 +169,7 @@ type VehicleCertRow = {
 
 export type PublicCertificateData = {
   ok: true;
-  certificate: Omit<CertRow, "tenant_id" | "content_free_text" | "customer_name"> & {
+  certificate: Omit<CertRow, "tenant_id" | "content_free_text" | "customer_name" | DetailAccessOnly> & {
     tenant_id?: undefined;
     content_free_text?: undefined;
     // 所有者名は公開(外部)表示では返さない (個人情報保護)。
@@ -199,6 +208,11 @@ export type PublicCertificateData = {
   manufacturer: ManufacturerPublicRow | null;
   /** Normalized VIN for the vehicle passport link. Non-null only when a passport record exists. */
   passport_vin: string | null;
+  /**
+   * 写真・個人情報（担当者名・作業メモ・予約名）を出しているか。作業店舗・所有者・履歴レポート購入者のときだけ true
+   * （detailAccess.ts）。false のとき images は URL・保存パス無し（件数と認証グレードだけ）、media は空。
+   */
+  detail_visible: boolean;
 };
 
 /**
@@ -212,11 +226,13 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
   const certRes = await supabase
     .from("certificates")
     .select(
-      "id, tenant_id, public_id, vehicle_id, status, customer_name, created_at, updated_at, " +
+      // tenant_id / vehicle_id / created_at は DETAIL_ACCESS_COLUMNS に含まれる
+      "id, public_id, status, customer_name, updated_at, " +
         "vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value, " +
         "logo_asset_path, footer_variant, current_version, service_type, ppf_coverage_json, " +
         "coating_products_json, warranty_period_end, warranty_exclusions, " +
-        "maintenance_json, body_repair_json, accessory_json, manufacturer_id, manufacturer_template_id, craftsman_name",
+        "maintenance_json, body_repair_json, accessory_json, manufacturer_id, manufacturer_template_id, craftsman_name, " +
+        DETAIL_ACCESS_COLUMNS,
     )
     .eq("public_id", pid)
     .limit(1)
@@ -226,92 +242,94 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
   const cert = certRes.data;
   if (!cert?.tenant_id) return null;
 
-  const [tenantRes, vehicleRes, nfcRes, histRes, imgRes, vcRes, mediaRes, reservationsRes] = await Promise.all([
-    supabase
-      .from("tenants")
-      .select("name, slug, custom_domain")
-      .eq("id", cert.tenant_id)
-      .limit(1)
-      .maybeSingle<TenantRow>(),
+  const [detailVisible, tenantRes, vehicleRes, nfcRes, histRes, imgRes, vcRes, mediaRes, reservationsRes] =
+    await Promise.all([
+      canViewCertificateDetails(cert),
+      supabase
+        .from("tenants")
+        .select("name, slug, custom_domain")
+        .eq("id", cert.tenant_id)
+        .limit(1)
+        .maybeSingle<TenantRow>(),
 
-    cert.vehicle_id
-      ? supabase
-          .from("vehicles")
-          // plate_display は PII（VEHICLE_TABLE_PII_COLUMNS）。匿名ページには取得もしない。
-          .select("id, maker, model, year, notes, vin_code_normalized")
-          .eq("id", cert.vehicle_id)
-          .limit(1)
-          .maybeSingle<VehicleRow>()
-      : Promise.resolve({ data: null as VehicleRow | null, error: null }),
+      cert.vehicle_id
+        ? supabase
+            .from("vehicles")
+            // plate_display は PII（VEHICLE_TABLE_PII_COLUMNS）。匿名ページには取得もしない。
+            .select("id, maker, model, year, notes, vin_code_normalized")
+            .eq("id", cert.vehicle_id)
+            .limit(1)
+            .maybeSingle<VehicleRow>()
+        : Promise.resolve({ data: null as VehicleRow | null, error: null }),
 
-    supabase
-      .from("nfc_tags")
-      .select("id, tag_code, status, written_at, attached_at")
-      .eq("certificate_id", cert.id)
-      .limit(1)
-      .maybeSingle<NfcRow>(),
+      supabase
+        .from("nfc_tags")
+        .select("id, tag_code, status, written_at, attached_at")
+        .eq("certificate_id", cert.id)
+        .limit(1)
+        .maybeSingle<NfcRow>(),
 
-    cert.vehicle_id
-      ? supabase
-          .from("vehicle_histories")
-          .select("id, type, title, description, performed_at, created_at")
-          .eq("vehicle_id", cert.vehicle_id)
-          // **見せてよい種別だけを通す（許可リスト）。**
-          // `vehicle_histories` は車両の履歴と監査ログが同居していて、閲覧監査の
-          // 本文には訪問者の IP と社内 uid が、`member_added` や `note` には
-          // メールアドレスが入る。下の UnifiedTimeline は description をそのまま
-          // 描画するので、**知らない種別は出さない**のが唯一安全な既定。
-          // 分類は `audit/certificateLog.ts` の OUTWARD_VISIBLE に1箇所で持つ。
-          .in("type", OUTWARD_VISIBLE_TYPES)
-          .order("performed_at", { ascending: false })
-          .limit(50)
-          .returns<HistoryRow[]>()
-      : Promise.resolve({ data: [] as HistoryRow[], error: null }),
+      cert.vehicle_id
+        ? supabase
+            .from("vehicle_histories")
+            .select("id, type, title, description, performed_at, created_at")
+            .eq("vehicle_id", cert.vehicle_id)
+            // **見せてよい種別だけを通す（許可リスト）。**
+            // `vehicle_histories` は車両の履歴と監査ログが同居していて、閲覧監査の
+            // 本文には訪問者の IP と社内 uid が、`member_added` や `note` には
+            // メールアドレスが入る。下の UnifiedTimeline は description をそのまま
+            // 描画するので、**知らない種別は出さない**のが唯一安全な既定。
+            // 分類は `audit/certificateLog.ts` の OUTWARD_VISIBLE に1箇所で持つ。
+            .in("type", OUTWARD_VISIBLE_TYPES)
+            .order("performed_at", { ascending: false })
+            .limit(50)
+            .returns<HistoryRow[]>()
+        : Promise.resolve({ data: [] as HistoryRow[], error: null }),
 
-    supabase
-      .from("certificate_images")
-      .select(
-        "id, file_name, content_type, file_size, sort_order, created_at, storage_path, authenticity_grade, sha256, polygon_tx_hash, polygon_network, annotations, rendered_storage_path",
-      )
-      .eq("certificate_id", cert.id)
-      .order("sort_order", { ascending: true })
-      .limit(20)
-      .returns<ImageRow[]>(),
+      supabase
+        .from("certificate_images")
+        .select(
+          "id, file_name, content_type, file_size, sort_order, created_at, storage_path, authenticity_grade, sha256, polygon_tx_hash, polygon_network, annotations, rendered_storage_path",
+        )
+        .eq("certificate_id", cert.id)
+        .order("sort_order", { ascending: true })
+        .limit(20)
+        .returns<ImageRow[]>(),
 
-    cert.vehicle_id
-      ? supabase
-          .from("certificates")
-          .select(
-            "id, public_id, status, customer_name, created_at, vehicle_info_json, content_free_text, expiry_value",
-          )
-          .eq("vehicle_id", cert.vehicle_id)
-          .neq("public_id", pid)
-          .order("created_at", { ascending: false })
-          .limit(20)
-          .returns<VehicleCertRow[]>()
-      : Promise.resolve({ data: [] as VehicleCertRow[], error: null }),
+      cert.vehicle_id
+        ? supabase
+            .from("certificates")
+            .select(
+              "id, public_id, status, customer_name, created_at, vehicle_info_json, content_free_text, expiry_value",
+            )
+            .eq("vehicle_id", cert.vehicle_id)
+            .neq("public_id", pid)
+            .order("created_at", { ascending: false })
+            .limit(20)
+            .returns<VehicleCertRow[]>()
+        : Promise.resolve({ data: [] as VehicleCertRow[], error: null }),
 
-    supabase
-      .from("certificate_media")
-      .select(
-        "id, media_type, storage_path, before_path, poster_path, duration_ms, width, height, caption, sort_order, content_type, file_size, created_at",
-      )
-      .eq("certificate_id", cert.id)
-      .order("sort_order", { ascending: true })
-      .limit(50)
-      .returns<CertificateMediaRow[]>(),
+      supabase
+        .from("certificate_media")
+        .select(
+          "id, media_type, storage_path, before_path, poster_path, duration_ms, width, height, caption, sort_order, content_type, file_size, created_at",
+        )
+        .eq("certificate_id", cert.id)
+        .order("sort_order", { ascending: true })
+        .limit(50)
+        .returns<CertificateMediaRow[]>(),
 
-    cert.vehicle_id
-      ? supabase
-          .from("reservations")
-          .select("id, title, status, scheduled_date, start_time, created_at")
-          .eq("vehicle_id", cert.vehicle_id)
-          .in("status", ["arrived", "in_progress", "completed"])
-          .order("scheduled_date", { ascending: false })
-          .limit(20)
-          .returns<ReservationRow[]>()
-      : Promise.resolve({ data: [] as ReservationRow[], error: null }),
-  ]);
+      cert.vehicle_id
+        ? supabase
+            .from("reservations")
+            .select("id, title, status, scheduled_date, start_time, created_at")
+            .eq("vehicle_id", cert.vehicle_id)
+            .in("status", ["arrived", "in_progress", "completed"])
+            .order("scheduled_date", { ascending: false })
+            .limit(20)
+            .returns<ReservationRow[]>()
+        : Promise.resolve({ data: [] as ReservationRow[], error: null }),
+    ]);
 
   const tenant = tenantRes.data ?? null;
   const vehicle = vehicleRes.data ?? null;
@@ -349,6 +367,18 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
   const images: (ImageRow & { url: string | null; rendered_url: string | null })[] = (
     !imgRes.error && imgRes.data ? imgRes.data : []
   ).map((img) => {
+    // 写真を見せない閲覧者には URL・注釈・ファイル名を渡さない（件数と認証グレードだけ残す）。
+    // assets バケットは公開なので、パスだけでも写真に届く。パスも落とす。
+    if (!detailVisible)
+      return {
+        ...img,
+        storage_path: null,
+        rendered_storage_path: null,
+        file_name: null,
+        annotations: null,
+        url: null,
+        rendered_url: null,
+      };
     let url: string | null = null;
     if (img.storage_path) {
       const { data: signedData } = supabase.storage.from(CERTIFICATE_IMAGE_BUCKET).getPublicUrl(img.storage_path);
@@ -367,7 +397,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
   // certificate_media: void 状態のときは images と同じく公開しない
   const certStatusLower = String(cert.status ?? "").toLowerCase();
   const isVoid = certStatusLower === "void";
-  const mediaRows = !mediaRes.error && mediaRes.data && !isVoid ? mediaRes.data : [];
+  const mediaRows = !mediaRes.error && mediaRes.data && !isVoid && detailVisible ? mediaRes.data : [];
   const media: ResolvedCertificateMedia[] = await Promise.all(
     mediaRows.map((row) => resolveCertificateMedia(supabase, row)),
   );
@@ -378,10 +408,15 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
     !reservationsRes.error && reservationsRes.data && !isVoid ? reservationsRes.data : []
   ).map((r) => ({
     id: r.id,
-    title: r.title,
+    // 予約名は顧客名が入りがち（「山田様 コーティング」等）
+    title: detailVisible ? r.title : null,
     status: r.status,
     scheduled_at: combineScheduledAt(r.scheduled_date, r.start_time, r.created_at),
   }));
+
+  // 判定用の列（顧客 ID・電話ハッシュ）は応答に載せない
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { customer_id, customer_phone_last4_hash, hidden_from_owner_portal_at, ...certFields } = cert;
 
   const vehicleServiceHistoryCount = vehicle_certificates.length;
   const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/c/${cert.public_id}`;
@@ -399,7 +434,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
   return {
     ok: true,
     certificate: {
-      ...cert,
+      ...(detailVisible ? certFields : redactCertificateDetails(certFields)),
       vehicle_info_json: omitPlate(cert.vehicle_info_json),
       tenant_id: undefined as undefined,
       content_free_text: undefined as undefined,
@@ -438,5 +473,6 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
       : null,
     manufacturer,
     passport_vin: passportVin,
+    detail_visible: detailVisible,
   };
 }
