@@ -1444,6 +1444,18 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
     （`C2PA_MODE=production` のときだけネイティブのロードを要求し、駄目ならビルドを落とす）。
     **区分の変更は、やってもやらなくてもこの問題には効かない**ので、代表判断待ちの項目から外してよい
     （やる理由が残るとすれば「意図を型で示す」だけ）。
+  - 【要確認・代表の手が必要】**PR #1272 の Vercel プレビューが赤で、原因が特定できていない。**
+    GitHub Actions は全緑（赤0件）で、赤いのは Vercel のコミットステータスだけ。実測した範囲:
+    `main` は成功、同ブランチの `f9616a58` も成功、`ac72bc93` と `f09301f9` は失敗。
+    手元で `next build`（Supabase env をダミーで補完）は**成功**する。
+    外れた仮説4つ —— (a) `@next/env` への直接 import、(b) `import.meta.resolve`、
+    (c) `.env` 系に `C2PA_MODE=production` がある（`.env.example` しか commit されていない）、
+    (d) CI のビルドが非ゼロ（Vercel 緑のコミットにも同じ警告が1件出ており判別不能）。
+    (a)(b) はそれ自体が危ない形なので除去を維持した。
+    **必要なもの: Vercel のビルドログ。** この環境に Vercel のトークンが無く
+    `npx vercel inspect dpl_Ba83HhqVjHLLmuJsVoUYBSJAg78b --logs` が打てない。
+    `gh` は Actions のログ取得もリダイレクト拒否で返せない（`check-runs/<id>/annotations` は使える）。
+    代替として「葉モジュールの切り出しだけを戻したコミットで Vercel を回す」切り分けを PR で提案済み。
   - 【未決】**`MISTAKE_LEDGER.md` の型表の重複を機械で見る検査が無い。** `check:ledger-ids` は
     見出しの ID を見るので、**型表の行が2本になっても通る**（2026-10-07 に実際にそうなった:
     マージ解消で F 行が複製され、2本の ID 一覧が食い違った。
