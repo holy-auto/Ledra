@@ -1,8 +1,8 @@
 /**
  * Typed analytics event emitters for the marketing site.
  *
- * Events are sent to PostHog when the client library is loaded and the
- * user has given consent. Calling these functions before the provider is
+ * Events are sent to PostHog and GA4 (gtag.js) when each is loaded and the
+ * user has given consent. Calling these functions before the providers are
  * ready (or before consent) is safe — they no-op silently.
  */
 
@@ -45,9 +45,55 @@ export type MarketingEvent =
   | { name: "experiment_exposed"; props: { experiment: string; variant: string } };
 
 export function track<E extends MarketingEvent>(event: E): void {
-  const ph = client();
-  if (!ph) return;
-  ph.capture(event.name, event.props as Record<string, unknown>);
+  client()?.capture(event.name, event.props as Record<string, unknown>);
+  // GA4 gets the same events so `lead_submitted` can be marked as a key event
+  // (GA's own form_submit also fires on app forms like /admin/*).
+  if (typeof window !== "undefined") window.gtag?.("event", event.name, event.props);
+}
+
+/**
+ * Top-level route segments of `src/app/(marketing)` — the pages GA4 should
+ * count. `__tests__/analytics.test.ts` fails when this drifts from the folders.
+ */
+export const MARKETING_SEGMENTS: ReadonlySet<string> = new Set([
+  "blog",
+  "cases",
+  "contact",
+  "data-disclosure",
+  "demo",
+  "events",
+  "faq",
+  "features",
+  "financial-transparency",
+  "for-agents",
+  "for-btob",
+  "for-insurers",
+  "for-shops",
+  "glossary",
+  "guide",
+  "honest-comparison",
+  "law",
+  "network",
+  "news",
+  "poc",
+  "poc-program",
+  "pricing",
+  "privacy",
+  "resources",
+  "roi",
+  "security",
+  "security-policy",
+  "story",
+  "support",
+  "terms",
+  "tokusho",
+  "verify",
+  "vision",
+]);
+
+export function isMarketingPath(pathname: string): boolean {
+  const segment = pathname.split("/")[1] ?? "";
+  return segment === "" || MARKETING_SEGMENTS.has(segment);
 }
 
 export function grantAnalyticsConsent(): void {
