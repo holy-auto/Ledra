@@ -153,6 +153,9 @@ export default async function HomePage() {
             <Link href="/for-agents" className="text-white hover:text-white transition-colors">
               代理店の方 — 信頼のネットワークを、一緒に広げる &rarr;
             </Link>
+            <Link href="/poc-program" className="text-white hover:text-white transition-colors">
+              メーカー・保険会社・大手流通の方 — PoC プログラム &rarr;
+            </Link>
           </div>
         </ScrollReveal>
       </Section>
