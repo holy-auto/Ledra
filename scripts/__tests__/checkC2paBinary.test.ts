@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -78,6 +78,34 @@ describe("check-c2pa-binary.mjs", () => {
     // 原因の当たりが付く出力であること（ここが分からないと止めても意味がない）。
     expect(out).toMatch(/全件 503/);
     expect(out).toMatch(/Skipping Rust build/);
+  });
+
+  it(".env 系から C2PA_MODE を読む（手順書は .env に書けと言っている）", () => {
+    // `next build` は env ファイルを読むが素の `node` は読まない。process.env だけ見ていると
+    // **手順書どおり設定した人のところで黙ってスキップ**する（/code-review 指摘）。
+    // ここは自前パーサなので、引用符・コメント・`export ` 接頭辞まで含めて確かめる。
+    const envFile = path.join(ROOT, ".env.local");
+    expect(existsSync(envFile), ".env.local が既にある環境ではこのテストが上書きしてしまう").toBe(false);
+    try {
+      for (const body of [
+        "C2PA_MODE=production",
+        'C2PA_MODE="production"',
+        "export C2PA_MODE='production'",
+        "# C2PA_MODE=disabled\nC2PA_MODE=production",
+        "OTHER=1\nC2PA_MODE=production\nMORE=2",
+      ]) {
+        writeFileSync(envFile, `${body}\n`);
+        const { code, out } = run({});
+        expect(code, `${JSON.stringify(body)} で落ちた: ${out}`).toBe(0);
+        expect(out, `${JSON.stringify(body)} を production と読めていない`).toMatch(/OK —/);
+      }
+      // 本物の環境変数が .env より強いこと（next と同じ優先順）。
+      writeFileSync(envFile, "C2PA_MODE=production\n");
+      const { out } = run({ C2PA_MODE: "disabled" });
+      expect(out, "process.env が .env に負けている").toMatch(/skip/);
+    } finally {
+      rmSync(envFile, { force: true });
+    }
   });
 
   it("相対の C2PA_LIBRARY_PATH は dist/ 基準で解く（パッケージと同じ基準）", () => {
