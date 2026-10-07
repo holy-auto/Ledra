@@ -75,7 +75,12 @@ GitHub・Gmail・Slack は Cowork のファーストパーティ・コネクタ�
   1. `pipx install analytics-mcp`（Python 3.10+。公式パッケージ名は `analytics-mcp`。これで `.mcp.json` が使う `google-analytics-mcp` コマンドが入る）。
   2. **GA4 Admin API / Data API** を有効化。
   3. 認証は ADC（`gcloud auth application-default login`）か**サービスアカウント JSON**。サービスアカウントを使う場合、その GA4 プロパティに**閲覧権限**を付与し、`GA4_SERVICE_ACCOUNT_JSON`＝鍵 JSON のパスを設定。
-  4. 分析対象の **GA4 プロパティ ID** を把握しておく（`run_report` 等で指定）。
+  4. 分析対象の **GA4 プロパティ ID** は `541253180`（アカウント「Ledra」`397681196` 配下のプロパティ「Ledra」）。`run_report` 等で指定する。アカウント ID や `G-` で始まる測定 ID と取り違えない。
+  - Claude Code のクラウド環境（2026-10-07 に接続確認済み）: 組織ポリシー `iam.disableServiceAccountKeyCreation` でサービスアカウント鍵は作れないため、ユーザー認証の ADC を使う。
+    1. Google Cloud で OAuth 同意画面（内部）とデスクトップアプリの OAuth クライアントを作る（gcloud 既定のクライアントは analytics スコープがブロックされる）。
+    2. PC で `gcloud auth application-default login --client-id-file="<client_secret.json>" --scopes="https://www.googleapis.com/auth/analytics.readonly,https://www.googleapis.com/auth/webmasters.readonly,https://www.googleapis.com/auth/cloud-platform"`（PowerShell ではスコープを引用符で囲む）。ログインするのは GA4 プロパティと Search Console `sc-domain:ledra.co.jp` に閲覧権限があるアカウント。
+    3. 出来た `application_default_credentials.json` を base64 にして環境変数 `GOOGLE_ADC_B64` に入れる（生 JSON は環境設定画面で値が消えた）。`GA4_SERVICE_ACCOUNT_JSON` / `GSC_SERVICE_ACCOUNT_JSON` は `/root/google-sa.json`。
+    4. Setup script: `printf '%s' "$GOOGLE_ADC_B64" | base64 -d > /root/google-sa.json`、`chmod 600 /root/google-sa.json`、`uv tool install analytics-mcp==0.7.0`（`pip install` は Debian 管理パッケージと衝突して失敗する）。
 - すべて**読み取り専用**（設定変更不可）。
 
 > GSC/GA4 が未接続のときは、Cowork は数値を捏造せず「未接続」と明記する（`analyze-performance` スキルの方針）。
