@@ -16,6 +16,12 @@ import {
 } from "@/lib/pdfCertificate";
 import { loadPublicCertificateMedia } from "@/lib/certificateMedia/loadPublic";
 import { omitPlate } from "@/lib/certificates/publicData";
+import {
+  canViewCertificateDetails,
+  DETAIL_ACCESS_COLUMNS,
+  redactCertificateDetails,
+  type DetailAccessCert,
+} from "@/lib/certificates/detailAccess";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import type { TemplateConfig } from "@/types/templateOption";
@@ -115,19 +121,18 @@ export async function GET(req: Request) {
     | "maintenance_json"
     | "body_repair_json"
     | "accessory_json"
-  > & {
-    id: string;
-    tenant_id: string | null;
-    vehicle_id: string | null;
-    customer_id: string | null;
-    manufacturer_template_id: string | null;
-  };
+  > &
+    DetailAccessCert & {
+      id: string;
+      manufacturer_template_id: string | null;
+    };
 
   const adm = createServiceRoleAdmin("public certificate PDF — fetch full cert + anchors for rendering");
   const { data: fullCert, error: fullErr } = await adm
     .from("certificates")
     .select(
-      "id, tenant_id, vehicle_id, customer_id, ppf_coverage_json, service_type, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json, accessory_json, manufacturer_template_id",
+      "id, ppf_coverage_json, service_type, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json, accessory_json, manufacturer_template_id, " +
+        DETAIL_ACCESS_COLUMNS,
     )
     .eq("public_id", pid)
     .limit(1)
@@ -171,6 +176,10 @@ export async function GET(req: Request) {
     userAgent: meta.userAgent,
   });
 
+  // 写真・個人情報（担当者名・作業メモ）は作業店舗・所有者・履歴レポート購入者にだけ載せる（detailAccess.ts）。
+  // スタッフ署名（st）での出力は店舗が書面交付用に出すものなので載せる。
+  const detailVisible = byStaff || (await canViewCertificateDetails(fullCert));
+
   const fallbackOrigin = await getFallbackOrigin();
   const origin = buildOriginFromCert(cert, fallbackOrigin);
   const publicUrl = `${origin}/c/${cert.public_id}`;
@@ -202,7 +211,9 @@ export async function GET(req: Request) {
     // なければ storage_path (原画像)。署名 URL は短命でも PDF レンダリング中に保てば十分。
     // renderCertificatePdf は先頭 8 枚だけ描画するため、sort_order 順 (取得時点でソート済み) の
     // 先頭 8 枚に絞ってから署名する。全件署名すると未使用 URL の生成で無駄な往復が発生する。
-    const photoCandidates = allImages.filter((i) => i.storage_path || i.rendered_storage_path).slice(0, 8);
+    const photoCandidates = detailVisible
+      ? allImages.filter((i) => i.storage_path || i.rendered_storage_path).slice(0, 8)
+      : [];
     const resolvedPhotos = await Promise.all(
       photoCandidates.map(async (img): Promise<PdfPhoto | null> => {
         const path = (img.rendered_storage_path as string | null) ?? (img.storage_path as string | null);
@@ -224,7 +235,7 @@ export async function GET(req: Request) {
     photos = resolvedPhotos.filter((p): p is PdfPhoto => p !== null);
   }
 
-  const certRow: CertRow = {
+  const fullRow: CertRow = {
     public_id: cert.public_id,
     // 公開PDF は認証なしで誰でも取得できるため所有者名は出力しない (個人情報保護)。
     // ログイン発行など認証付きルート (admin/*, certificates/pdf-one 等) では実名を渡す。
@@ -251,6 +262,7 @@ export async function GET(req: Request) {
     // ⑦ 施工担当（職人）。certificates_public ビューが公開する craftsman_name をそのまま渡す。
     craftsman_name: cert.craftsman_name ?? null,
   };
+  const certRow = detailVisible ? fullRow : redactCertificateDetails(fullRow);
 
   // ── メーカー指定デザインが選択されていればそれを最優先で描画 ──
   // テンプレート解決チェーン:
@@ -342,7 +354,7 @@ export async function GET(req: Request) {
   // 動画は poster + 公開ページ URL の QR、Before-After は 2 枚並列。
   let pdfMedia: PdfMediaInfo[] = [];
   try {
-    const resolved = await loadPublicCertificateMedia(pid);
+    const resolved = detailVisible ? await loadPublicCertificateMedia(pid, { accessChecked: true }) : [];
     pdfMedia = resolved
       .map<PdfMediaInfo | null>((m) => {
         if (m.media_type === "video") {

@@ -1,0 +1,80 @@
+name: 本番デプロイの失敗を Slack に通知
+
+# Vercel の GitHub 連携が作る本番の deployment status が failure / error に
+# なったら、Slack に通知する。
+#
+# なぜ要るか: ビルド機は費用のため Elastic のまま使う（DECISION_LOG 2026-10-07）。
+# 8 GB 機が選ばれた回にフルビルドが OOM で落ちることがあり、本番 2 回
+# （2026-10-01 `5f54e29`、2026-10-06 `9df2d3c`）とも、人が commit status を見に
+# 行くまで誰も気づかなかった。その間、本番は前の版のままだった。
+#
+# 対象は本番のみ。プレビューの失敗は PR 上の Vercel のチェックで見えるので送らない
+# （送ると PR ごとのノイズになる）。成功時も送らない。
+#
+# 通知先は db-migrate.yml / vercel-deploy.yml と同じ SLACK_WEBHOOK_URL を流用する。
+# 新しいシークレットも仕組みも増やさない。
+#
+# deployment_status は vercel[bot] が作るので、このワークフローを起動できる
+# （GITHUB_TOKEN が作ったイベントでは起動しない制約に当たらない）。
+# ワークフローは既定ブランチ（main）の定義で動く。
+
+on:
+  deployment_status:
+
+# GITHUB_TOKEN は使わない
+permissions: {}
+
+jobs:
+  notify:
+    if: >
+      (github.event.deployment_status.state == 'failure' ||
+       github.event.deployment_status.state == 'error') &&
+      startsWith(github.event.deployment.environment, 'Production')
+    runs-on: ubuntu-latest
+    steps:
+      # 配信できなかったら赤くする（db-migrate.yml と同じ理由: 通知の失敗が無音だと、
+      # このワークフローが直そうとしている「誰も気づかない」を再生産する）
+      - name: Slack に通知
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          STATE: ${{ github.event.deployment_status.state }}
+          ENVIRONMENT: ${{ github.event.deployment.environment }}
+          DESCRIPTION: ${{ github.event.deployment_status.description }}
+          SHA: ${{ github.event.deployment.sha }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.deployment.sha }}
+          # Vercel のデプロイ（ログ）URL。無い場合はコミットへ
+          TARGET_URL: ${{ github.event.deployment_status.target_url || github.event.deployment_status.log_url }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+            echo "::warning::SLACK_WEBHOOK_URL が未設定のため、本番デプロイの失敗を通知できませんでした（${SHA:0:7}）。"
+            echo "⚠️ SLACK_WEBHOOK_URL 未設定のため通知していません。本番デプロイ ${SHA:0:7} は ${STATE} です。" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          url=${TARGET_URL:-$COMMIT_URL}
+          payload=$(jq -n \
+            --arg sha "${SHA:0:7}" \
+            --arg env "$ENVIRONMENT" \
+            --arg state "$STATE" \
+            --arg desc "$DESCRIPTION" \
+            --arg url "$url" \
+            --arg commit "$COMMIT_URL" \
+            '{
+              blocks: [
+                { type: "header",
+                  text: { type: "plain_text", text: "🔴 本番デプロイが失敗しました" } },
+                { type: "section",
+                  text: { type: "mrkdwn",
+                    text: ("*本番は前の版のままです。* Vercel で再デプロイ（Redeploy）してください。\nコミット: <" + $commit + "|" + $sha + ">（" + $env + " / " + $state + "）\n" + $desc) } },
+                { type: "context", elements: [
+                  { type: "mrkdwn",
+                    text: "ビルドログ先頭の `Build machine configuration` が 8 GB で、末尾が SIGKILL なら OOM（OPEN_QUESTIONS「Vercel のビルド機（Elastic）…」）。" }
+                ] },
+                { type: "actions", elements: [
+                  { type: "button", style: "danger",
+                    text: { type: "plain_text", text: "デプロイを開く" }, url: $url }
+                ] }
+              ]
+            }')
+          curl -sS --fail-with-body -X POST -H 'Content-type: application/json' \
+            --data "$payload" "$SLACK_WEBHOOK_URL"

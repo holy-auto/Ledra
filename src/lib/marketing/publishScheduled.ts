@@ -74,7 +74,6 @@ export async function publishScheduledPosts(): Promise<{ published: number; slug
     const types = new Set(publishedRows.filter((r) => !isExternalSite(r.site)).map((r) => r.type));
     if (types.has("news")) {
       revalidatePath("/news");
-      revalidatePath("/"); // トップの NewsTeaser
     }
     if (types.has("blog")) revalidatePath("/blog");
     if (types.has("event") || types.has("webinar")) revalidatePath("/events");

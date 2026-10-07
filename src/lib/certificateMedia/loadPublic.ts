@@ -1,5 +1,10 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { resolveCertificateMedia, type CertificateMediaRow, type ResolvedCertificateMedia } from "./index";
+import {
+  canViewCertificateDetails,
+  DETAIL_ACCESS_COLUMNS,
+  type DetailAccessCert,
+} from "@/lib/certificates/detailAccess";
 
 /**
  * 公開証明書 (public_id) に紐づく certificate_media を署名 URL 付きで取得する。
@@ -10,19 +15,26 @@ import { resolveCertificateMedia, type CertificateMediaRow, type ResolvedCertifi
  * B-M2 是正 (2026-09-08): 以前は `void` 以外なら全て返しており、下書き・
  * 期限切れの証明書のメディア署名 URL も取得できた。`/api/certificate/pdf`
  * は `active` 限定なのに本関数だけ不整合だったので揃える。
+ *
+ * 写真・動画は作業店舗・所有者・履歴レポート購入者にだけ返す（detailAccess.ts）。それ以外の閲覧者には空配列。
+ * 呼び出し側で判定済み（スタッフ署名の PDF 等）なら `accessChecked: true` を渡す。
  */
-export async function loadPublicCertificateMedia(publicId: string): Promise<ResolvedCertificateMedia[]> {
+export async function loadPublicCertificateMedia(
+  publicId: string,
+  opts: { accessChecked?: boolean } = {},
+): Promise<ResolvedCertificateMedia[]> {
   const supabase = createServiceRoleAdmin("public certificate media — public_id lookup, anonymous caller");
 
   const certRes = await supabase
     .from("certificates")
-    .select("id, status")
+    .select("id, status, " + DETAIL_ACCESS_COLUMNS)
     .eq("public_id", publicId)
     .limit(1)
-    .maybeSingle<{ id: string; status: string | null }>();
+    .maybeSingle<{ id: string; status: string | null } & DetailAccessCert>();
 
   if (!certRes.data?.id) return [];
   if (String(certRes.data.status ?? "").toLowerCase() !== "active") return [];
+  if (!opts.accessChecked && !(await canViewCertificateDetails(certRes.data))) return [];
 
   const mediaRes = await supabase
     .from("certificate_media")

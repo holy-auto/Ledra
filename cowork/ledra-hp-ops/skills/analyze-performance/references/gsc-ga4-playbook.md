@@ -19,7 +19,9 @@ Striking distance → 該当ページの見出し・本文の網羅性・内部�
 
 ## GA4
 
-公式 MCP（`analytics-mcp`）の `run_report` / `run_funnel_report` / `run_realtime_report` を使う。
+公式 MCP（`analytics-mcp`）の `run_report` / `run_funnel_report` / `run_realtime_report` を使う。対象プロパティ ID は `541253180`。
+
+> GA4 は Cookie 同意（`__ledra_consent=granted`）した訪問者だけを計測する（`src/components/marketing/GoogleAnalytics.tsx`）。セッション数は実数より少なく、同意しやすい層に偏る。絶対数は GSC と併読する。
 
 代表的な指標/ディメンション:
 - 指標: `sessions`, `activeUsers`, `engagedSessions`, `engagementRate`, `averageSessionDuration`, `conversions`, `eventCount`, `keyEvents`。
