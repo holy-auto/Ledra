@@ -33,7 +33,7 @@ import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
 import { shouldAutoTamperingCheck } from "./orchestrator";
-import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2pa";
+import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2paMode";
 
 const VISION_ENDPOINT = "/api/certificates/images/upload#auto-tampering-vision";
 

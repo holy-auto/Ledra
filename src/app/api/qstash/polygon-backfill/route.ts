@@ -7,7 +7,7 @@ import { anchorToPolygon, verifyAnchor, findAnchorTx } from "@/lib/anchoring/pro
 import { computeAuthenticityGrade, highestGrade, type AuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
 import { upsertVehiclePassport } from "@/lib/passport/upsertVehiclePassport";
 import { enqueuePolygonBackfillNextBatch } from "@/lib/qstash/publish";
-import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2pa";
+import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2paMode";
 
 const polygonBackfillSchema = z.object({
   job_id: z.string().uuid(),

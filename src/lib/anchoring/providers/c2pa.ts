@@ -16,22 +16,11 @@
 import type { C2paResult, C2paManifestSummary } from "./types";
 import { tls13HttpsFetch } from "@/lib/net/tls13Fetch";
 
-export type C2paMode = "disabled" | "dev-signed" | "production";
-
-/**
- * `C2PA_MODE` の唯一の正規化源。**呼び出し側は生の env を読まずにこれを使う。**
- * `Production` のような綴り違いを "disabled" に落とすので、「署名もしないが本番ゲートも
- * 発火しない」という黙って未署名の状態を作らない（#1209 の /code-review 指摘 #5）。
- *
- * ponytail: 葉のモジュール（`c2paMode.ts`）に切り出していたが、**Vercel のプレビューが
- * 落ちる原因の切り分けのため一度ここへ戻している**（2026-10-07）。原因が分かったら、
- * 読み取り専用の経路が `tls13Fetch` の undici Agent を連れてこないよう再び切り出す。
- */
-export function getMode(): C2paMode {
-  const raw = process.env.C2PA_MODE;
-  if (raw === "dev-signed" || raw === "production") return raw;
-  return "disabled";
-}
+// `C2paMode` / `getMode()` は葉のモジュールに置いてある（`c2paMode.ts`）。
+// この4行のために `c2pa.ts`（＝`tls13Fetch` の undici Agent 付き）を連れてくる
+// 呼び出し側を無くすため。既存の import を壊さないよう、ここから re-export する。
+export { getMode, type C2paMode } from "./c2paMode";
+import { getMode, type C2paMode } from "./c2paMode";
 
 /** `C2PA_MODE=disabled`＝そもそも署名を試みていない状態。失敗ではないので failure は null。 */
 const DISABLED_RESULT: C2paResult = {
