@@ -49,51 +49,72 @@
  */
 
 import { createRequire } from "node:module";
-import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+
+const require = createRequire(import.meta.url);
+
 /**
  * `C2PA_MODE` を解決する。**`.env` 系も見る。**
  *
  * 運用手順書（`docs/c2pa-production-deployment.md` §3）は「`.env` に `C2PA_MODE=production`」と
  * 書いている。`next build` は env ファイルを読むが素の `node` は読まないので、`process.env` だけ
- * 見ていると**手順書どおりに設定した人のところで検査が黙ってスキップする**（/code-review 指摘）。
+ * 見ていると**手順書どおりに設定した人のところで検査が黙ってスキップする**。
  *
- * **`@next/env` は使わない。** あれは `next` の推移的依存で、この repo が宣言していない。
- * ビルドを止めるスクリプトが**宣言していない依存**に乗るのは、hoisting の違いひとつで
- * ビルドごと落ちる形である（2026-10-07 に Vercel のプレビューが実際に落ちた）。
- * 代わりに、ここで必要な分だけ自分で読む —— 1行1つの `KEY=VALUE`、`#` のコメント、
- * 任意の引用符、`export ` 接頭辞。next の優先順（`.env.local` が `.env` に勝つ）に合わせ、
- * **既に process.env にある値は上書きしない**（本物の環境変数が最優先）。
+ * ## 自前パーサをやめた理由（2026-10-08）
+ *
+ * ここは一度**自前で1行1つの `KEY=VALUE` を読む**作りにしていた。`@next/env` が
+ * この repo の宣言外の依存（`next` の推移的依存）だったのを避けるためである。
+ * **3件とも parity を外した**（`/code-review` が実測）:
+ *
+ * - `.env.example` は `C2PA_MODE=disabled` を含む。手順書どおり末尾に `C2PA_MODE=production` を
+ *   足すと、**dotenv は後の行を採り、自前パーサは先の行を採った** → next は production、検査は skip。
+ * - `C2PA_MODE=production # 本番` → dotenv は `production`、自前パーサは `production # 本番` → skip。
+ * - `C2PA_MODE="production" # x` → dotenv は `production`、自前パーサは引用符ごと → skip。
+ *
+ * **3つとも「黙ってスキップ」で、このスクリプトが止めるはずだった事故そのものである。**
+ * parity が要件なら、parity を持っている実装を使うのが安い（CLAUDE.md の梯子 5段目）。
+ *
+ * 宣言外の依存という問題は、**`next` 経由で解決する**ことで消える ——
+ * `createRequire(require.resolve("next"))("@next/env")` は *その* `next` が使う `@next/env` を
+ * そのまま掴むので、hoisting でも版ズレでも外れない。`next` は package.json にある。
+ *
+ * 取れない場合（next が無い等）は `process.env` だけで判断し、**その旨を出力に書く**。
+ * 黙って判断基準を変えない。
  */
 function resolveMode() {
-  if (process.env.C2PA_MODE !== undefined) return process.env.C2PA_MODE;
-  // next と同じ優先順（左が強い）。production ビルド想定なので `.env.development` は見ない。
-  for (const name of [".env.production.local", ".env.local", ".env.production", ".env"]) {
-    const file = path.join(process.cwd(), name);
-    if (!existsSync(file)) continue;
-    for (const raw of readFileSync(file, "utf8").split(/\r?\n/)) {
-      const line = raw.trim().replace(/^export\s+/, "");
-      if (!line || line.startsWith("#")) continue;
-      const eq = line.indexOf("=");
-      if (eq <= 0) continue;
-      if (line.slice(0, eq).trim() !== "C2PA_MODE") continue;
-      const value = line.slice(eq + 1).trim();
-      // 引用符はあれば外す。中身の展開（${...}）はしない —— モード名に要らない。
-      const unquoted = /^(["']).*\1$/.test(value) ? value.slice(1, -1) : value;
-      return unquoted;
-    }
+  // 本物の環境変数が最優先（next も既に process.env にある値を上書きしない。実測）。
+  if (process.env.C2PA_MODE !== undefined) return { mode: process.env.C2PA_MODE, via: "process.env" };
+  try {
+    const viaNext = createRequire(require.resolve("next"));
+    // **next の CLI と同じ既定を踏む。** `next/dist/bin/next` は
+    // `process.env.NODE_ENV = process.env.NODE_ENV || defaultEnv`（build では "production"）で、
+    // **既に設定されていれば尊重する**。そして `@next/env` は `NODE_ENV === "test"` のとき
+    // モードを test にし、**`.env.local` を読まない**（`@next/env/dist/index.js` の
+    // `d !== "test" && ".env.local"`）。ここで production を強制すると、
+    // `NODE_ENV=test` のシェルで走った `next build` とこの検査がずれる。
+    process.env.NODE_ENV = process.env.NODE_ENV || "production";
+    // dev=false＝`next build`（dev 以外）と同じ。logger は黙らせる
+    // （この検査の出力に next の "Environments:" を混ぜない）。
+    viaNext("@next/env").loadEnvConfig(process.cwd(), false, { info() {}, error: console.error });
+    return { mode: process.env.C2PA_MODE, via: `@next/env（next 経由・NODE_ENV=${process.env.NODE_ENV}）` };
+  } catch (err) {
+    return {
+      mode: process.env.C2PA_MODE,
+      via: `process.env のみ —— @next/env を next 経由で取れなかった（${err instanceof Error ? err.message : String(err)}）`,
+    };
   }
-  return undefined;
 }
 
-const mode = resolveMode();
+const { mode, via } = resolveMode();
 
 if (mode !== "production") {
-  console.log(`[check:c2pa-binary] skip — C2PA_MODE=${mode ?? "(未設定)"}（production のときだけ検査する）`);
+  console.log(
+    `[check:c2pa-binary] skip — C2PA_MODE=${mode ?? "(未設定)"}（production のときだけ検査する／出典: ${via}）`,
+  );
   process.exit(0);
 }
 
-const require = createRequire(import.meta.url);
+
 
 function fail(reason, detail) {
   console.error(
@@ -145,8 +166,16 @@ try {
 // 相対の基準が `dist/` になる。ここで `scripts/` 基準のまま解くと、パッケージは読めるのに
 // この検査だけが落ちて**ビルドが通らなくなる**（/code-review 指摘。`C2PA_LIBRARY_PATH=./index.node`
 // で実際に再現した）。絶対パスはそのまま使う。
+// **裸の指定子（`@scope/pkg`）はそのまま渡す。** あちらの `require` も node_modules から解くので、
+// `dist/` 基準で解くと存在しないパスになり、**パッケージは読めるのにこの検査だけが落ちる**
+// （`./index.node` で一度やった退行の鏡像。/code-review 指摘）。
 const override = process.env.C2PA_LIBRARY_PATH;
-const target = override ? path.resolve(distDir, override) : path.join(distDir, "index.node");
+const isPathLike = (v) => v.startsWith(".") || v.startsWith("/") || path.isAbsolute(v);
+const target = override
+  ? isPathLike(override)
+    ? path.resolve(distDir, override)
+    : override
+  : path.join(distDir, "index.node");
 
 try {
   const neon = require(target);
@@ -161,9 +190,10 @@ try {
   if (neon === null || neon === undefined) {
     fail(`${target} をロードできたが export が空（壊れたバイナリの疑い）`);
   }
-  console.log(
-    `[check:c2pa-binary] OK — ${path.relative(process.cwd(), target) || target} をロードした（${shape}）`,
-  );
+  // cwd の外にあるときは相対表示が `../../..` の羅列になって読めない。絶対のまま出す。
+  const rel = path.relative(process.cwd(), target);
+  const shown = !rel || rel.startsWith("..") ? target : rel;
+  console.log(`[check:c2pa-binary] OK — ${shown} をロードした（${shape}）`);
 } catch (err) {
   fail(
     `${target} をロードできない`,

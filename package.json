@@ -40,7 +40,7 @@
     "check:audit-actions": "node scripts/check-audit-action-vocab.mjs",
     "check:ox-override": "node scripts/check-ox-override.mjs",
     "check:resurrected": "bash scripts/check-resurrected-files.sh",
-    "build:analyze": "ANALYZE=true next build",
+    "build:analyze": "node scripts/check-c2pa-binary.mjs && ANALYZE=true next build",
     "db:typegen": "supabase gen types typescript --db-url \"${SUPABASE_DB_URL:?db-migrate.yml と同じ接続URIを設定してください}\" --schema public > src/types/db.generated.ts.tmp && mv src/types/db.generated.ts.tmp src/types/db.generated.ts"
   },
   "overrides": {

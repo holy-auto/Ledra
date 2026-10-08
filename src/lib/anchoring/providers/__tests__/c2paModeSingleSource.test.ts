@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { walkSource, stripComments } from "@/lib/__tests__/sourceScan";
 import { parse, walk } from "@/lib/__tests__/astScan";
@@ -45,15 +45,38 @@ describe("C2PA_MODE は getMode() が唯一の正規化源", () => {
    */
   const ALLOWED = new Set([OWNER, path.join(ROOT, "scripts", "check-c2pa-binary.mjs")]);
 
-  /** 走査対象: `src/` と `scripts/`。`.ts`/`.tsx` に加えて `.mjs`/`.cjs`/`.js` も見る。 */
+  /**
+   * 走査対象。`.ts`/`.tsx` に加えて `.mjs`/`.cjs`/`.js` も見る。
+   *
+   * **`src/` と `scripts/` だけでは足りない**（/code-review 指摘・2026-10-08）。
+   * この検査の前提は「`C2PA_MODE` がビルド時に見える」ことなので、**ビルド時に評価される
+   * リポジトリ直下の設定ファイル**（`next.config.ts` / `instrumentation*.ts` /
+   * `sentry.*.config.ts`）こそ、生の読みが入りそうな場所である。そこを見ていなかった。
+   * 兄弟の走査（`scripts/check-schema.mjs`）が `src` と `apps/mobile/src` と `scripts` を
+   * 対象にしているのに合わせ、`apps/` と `e2e/` と `supabase/` も足す。
+   */
   const SCANNED_EXT = /\.(?:tsx?|mts|cts|mjs|cjs|js)$/;
   const isTarget = (name: string) => SCANNED_EXT.test(name) && !/\.test\.[a-z]+$/.test(name);
+  const SCANNED_DIRS = ["src", "scripts", "apps", "e2e", "supabase"];
+  /** 直下の設定ファイル。ビルド時に評価されるので、ここの生の読みは本番に効く。 */
+  const ROOT_FILES = [
+    "next.config.ts",
+    "instrumentation.ts",
+    "instrumentation-client.ts",
+    "sentry.server.config.ts",
+    "sentry.edge.config.ts",
+    "sentry.client.config.ts",
+    "playwright.config.ts",
+    "vitest.config.ts",
+    "eslint.config.mjs",
+    "postcss.config.mjs",
+  ];
 
   let cachedTargets: string[] | null = null;
   function targets(): string[] {
     cachedTargets ??= [
-      ...walkSource(path.join(ROOT, "src"), isTarget),
-      ...walkSource(path.join(ROOT, "scripts"), isTarget),
+      ...SCANNED_DIRS.flatMap((d) => walkSource(path.join(ROOT, d), isTarget)),
+      ...ROOT_FILES.map((f) => path.join(ROOT, f)).filter((f) => existsSync(f)),
     ];
     return cachedTargets;
   }
@@ -64,8 +87,10 @@ describe("C2PA_MODE は getMode() が唯一の正規化源", () => {
    * 一度も書いていないファイルに、`process.env` からそれを取り出す式は書けない。
    * コメントだけの言及はここで拾われるが、AST 側が落とす。
    */
+  let cachedCandidates: string[] | null = null;
   function candidates(): string[] {
-    return targets().filter((f) => readFileSync(f, "utf8").includes("C2PA_MODE"));
+    cachedCandidates ??= targets().filter((f) => readFileSync(f, "utf8").includes("C2PA_MODE"));
+    return cachedCandidates;
   }
 
   /**
@@ -123,6 +148,16 @@ describe("C2PA_MODE は getMode() が唯一の正規化源", () => {
     expect(files, "scripts/ の検査スクリプトに届いていない＝走査が src/ だけになっている").toContain(
       path.join(ROOT, "scripts", "check-c2pa-binary.mjs"),
     );
+    // **直下の設定ファイルに届いていること。** ビルド時に評価されるので、ここの生の読みが
+    // いちばん効く場所なのに、初版は走査していなかった（/code-review 指摘）。
+    expect(files, "next.config.ts に届いていない＝ビルド時の読み手を見ていない").toContain(
+      path.join(ROOT, "next.config.ts"),
+    );
+    // **モバイルにも届いていること。** 兄弟の走査（check-schema.mjs）は apps/mobile/src を対象にしている。
+    expect(
+      files.some((f) => f.startsWith(path.join(ROOT, "apps", "mobile", "src") + path.sep)),
+      "apps/mobile/src に1件も届いていない",
+    ).toBe(true);
     // 実数は 2500 件規模。桁を間違えた走査（`src/lib` だけ等）を弾くための下限。
     expect(files.length, "走査件数が実数から桁で外れている").toBeGreaterThan(1500);
     // 文字列の絞りが許可ファイルを落としていないこと（絞りが壊れると違反も拾えない）。

@@ -69,6 +69,11 @@
   2. **`.env` 系を読んでいなかった。** 運用手順書は「`.env` に `C2PA_MODE=production`」と書いており、
      `next build` は読むが素の `node` は読まない。**手順書どおり設定した人のところで黙ってスキップ**していた。
      `@next/env` の `loadEnvConfig` を通して next と同じ読み方に揃え、手順書にも検査の存在を明記した。
+     **2026-10-08 追記: ここは一度自前パーサに差し替え、また戻した。** 「`@next/env` は宣言外の依存で、
+     それが Vercel のプレビューを落としている」と見て `f09301f9` で外したが、**赤の原因は OOM で
+     依存とは無関係だった**（`M-20261008-bisected-a-flaky-oom-as-deterministic`）。自前パーサは
+     next と3点ずれており（同キー2行の優先・行内コメント・引用符＋コメント）、**3つとも「黙ってスキップ」**。
+     宣言外という問題は `createRequire(require.resolve("next"))("@next/env")`、つまり**`next` 経由で掴む**ことで消える。
   3. **`Object.keys(neon)` が 0 本なら落とす**ようにしていた。napi/neon は `module.exports` が関数のことも
      非列挙 getter のこともあるので、**正常なバイナリでビルドを殺しうる**。ロードが例外を投げないこと自体を
      信号とし、本数は参考表示に落とした。
@@ -78,14 +83,21 @@
      （walk の4本目の複製を作っていた）。`src/` だけでなく `scripts/` も走査し、**検査スクリプト自身が
      4人目の生の読み手**なので許可一覧に明記。陰性対照も「走査が両ディレクトリに届いているか」
      「候補絞りが許可ファイルを落としていないか」に強化し、下限を実数規模（1500）に上げた。
+     **2026-10-08 追記: 走査範囲がまだ狭かった。** `src/` と `scripts/` だけでは
+     `next.config.ts` / `instrumentation*.ts` / `sentry.*.config.ts` / `apps/mobile/src` を見ておらず、
+     **この検査の前提（ビルド時に env が見える）からすると、いちばん生の読みが入りそうな場所**だった。
+     `apps/` `e2e/` `supabase/` と直下の設定ファイルを足し、`next.config.ts`・`instrumentation.ts`・
+     `apps/mobile/src` に生の読みを1つ植えて**3箇所とも赤になることを実測**した。
   - ほかに: `getMode()` を葉のモジュール `providers/c2paMode.ts` に切り出した。これを使いたいだけの
     読み取り専用の経路（`photo-tampering` の集計・`photoTamperingAuto`）が `c2pa.ts` を import すると、
     `tls13Fetch` が**モジュール評価時に undici の Agent を作る**ので、署名しない経路のコールドスタートで
     接続プールが立ち、**Edge にも移せなくなる**。`c2pa.ts` は後方互換で re-export。
   - `check:c2pa-binary` を `scripts/ci-parallel-checks.sh` に追加した。`ci.yml` の build は
     `npm run build || true` で終了コードを捨てるので、**ビルド前段だけでは CI の信号にならなかった**。
-  - 検査スクリプト自身のテストを追加（`scripts/__tests__/checkC2paBinary.test.ts`・4件）。
-    上の (1)(3) を戻すと、それぞれ別のテストが赤になることを確認した。
+  - 検査スクリプト自身のテストを追加（`scripts/__tests__/checkC2paBinary.test.ts`・**7件**。
+    `grep -cE '^  it\('` で数え直した。初版は4件で、2026-10-08 に3件足した）。
+    変異で当たりを取った: `.env` を読まない形に戻すと2件が赤、`NODE_ENV` を production に強制すると
+    「`NODE_ENV=test` では `.env.local` を読まない」が赤、裸の指定子を `dist/` 基準で解くと1件が赤。
 - **天井を2つ明記した**（`ponytail:`）: (a) `C2PA_MODE` がビルド時に見えること（Vercel で実行時専用の
   env だと発火しない）、(b) **見ているのは「ビルド機でロードできるか」で、「本番の関数バンドルに
   バイナリが入るか」ではない**。`serverExternalPackages` に入れてあるので 48MB の `index.node` は

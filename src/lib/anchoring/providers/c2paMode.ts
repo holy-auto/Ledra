@@ -17,10 +17,18 @@ export type C2paMode = "disabled" | "dev-signed" | "production";
 
 /**
  * **呼び出し側は生の `process.env.C2PA_MODE` を読まずにこれを使う。**
- * `Production` のような綴り違いを `"disabled"` に落とすので、「署名もしないが本番ゲートも
- * 発火しない」という黙って未署名の状態を作らない（#1209 の `/code-review` 指摘 #5）。
+ * `Production` のような綴り違いは `"disabled"` に落ちる。
  *
- * この規則を守れているかは `c2paModeSingleSource.test.ts` が走査して見張る。
+ * **これは安全性の保証ではない。** `/code-review` の指摘（2026-10-08）どおり、
+ * 今の呼び出し側は正規化してもしなくても同じに振る舞う ——
+ * `uploadHandler.ts` / `processUploadedPhoto.ts` の `=== "production"` は
+ * どちらでも false、`authenticityGrade.ts:52` の `!== "dev-signed"` はどちらでも true。
+ * つまり `C2PA_MODE=Production` は**どちらの道でも「黙って未署名」になる**。
+ * ここに書いていた「黙って未署名の状態を作らない」は**言い過ぎだった**ので直した。
+ *
+ * では何のためにあるか —— **同じ正規化規則を2箇所に書かないため**である。
+ * 下流の比較が1つ変わった日に、片方だけ直して分岐するのを防ぐ。
+ * 守れているかは `c2paModeSingleSource.test.ts` が走査して見張る。
  */
 export function getMode(): C2paMode {
   const raw = process.env.C2PA_MODE;

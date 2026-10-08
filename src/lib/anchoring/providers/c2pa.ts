@@ -20,7 +20,9 @@ import { tls13HttpsFetch } from "@/lib/net/tls13Fetch";
 // この4行のために `c2pa.ts`（＝`tls13Fetch` の undici Agent 付き）を連れてくる
 // 呼び出し側を無くすため。既存の import を壊さないよう、ここから re-export する。
 export { getMode, type C2paMode } from "./c2paMode";
-import { getMode, type C2paMode } from "./c2paMode";
+// ローカルで使うのは `getMode()` だけ。型まで import すると未使用で eslint の警告になる
+// （`npm run lint` は警告を通すので黙って残る。/code-review 指摘）。
+import { getMode } from "./c2paMode";
 
 /** `C2PA_MODE=disabled`＝そもそも署名を試みていない状態。失敗ではないので failure は null。 */
 const DISABLED_RESULT: C2paResult = {
