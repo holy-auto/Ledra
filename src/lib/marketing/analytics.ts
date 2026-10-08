@@ -1,12 +1,13 @@
 /**
  * Typed analytics event emitters for the marketing site.
  *
- * Events are sent to PostHog when the client library is loaded and the
- * user has given consent. Calling these functions before the provider is
+ * Events are sent to PostHog and GA4 (gtag.js) when each is loaded and the
+ * user has given consent. Calling these functions before the providers are
  * ready (or before consent) is safe — they no-op silently.
  */
 
 import type { LeadSource } from "./leads";
+import { isMarketingPath } from "./routes";
 
 /** Dispatched on `window` when the visitor grants analytics consent. */
 export const ANALYTICS_CONSENT_EVENT = "ledra:analytics-consent";
@@ -45,9 +46,15 @@ export type MarketingEvent =
   | { name: "experiment_exposed"; props: { experiment: string; variant: string } };
 
 export function track<E extends MarketingEvent>(event: E): void {
-  const ph = client();
-  if (!ph) return;
-  ph.capture(event.name, event.props as Record<string, unknown>);
+  client()?.capture(event.name, event.props as Record<string, unknown>);
+  // GA4 gets the same events so `lead_submitted` can be marked as a key event
+  // (GA's own form_submit also fires on app forms like /admin/*).
+  if (typeof window !== "undefined") window.gtag?.("event", event.name, event.props);
+}
+
+/** Pages GA4 counts: the HP plus /signup, the trial step an HP CTA leads to. */
+export function isGaTrackedPath(pathname: string): boolean {
+  return isMarketingPath(pathname) || pathname === "/signup";
 }
 
 export function grantAnalyticsConsent(): void {

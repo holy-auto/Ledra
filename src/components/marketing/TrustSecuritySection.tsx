@@ -67,7 +67,7 @@ function Badge({ status }: { status: "compliant" | "planned" }) {
 
 export function TrustSecuritySection() {
   return (
-    <Section id="security">
+    <Section bg="alt" id="security">
       <SectionHeading
         title="信頼の根拠を、隠さず開示する。"
         subtitle="Ledra は「証明書を発行するサービス」を名乗る以上、自らの仕組みも検証可能であるべきだと考えています。技術構成と法令対応を、できる限り具体的に開示します。"
