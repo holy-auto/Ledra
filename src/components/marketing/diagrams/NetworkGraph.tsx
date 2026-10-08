@@ -1,6 +1,5 @@
 import type { NetworkNode, RegionalNode } from "@/lib/marketing/network";
 import { buildSatellites, type Point, type Satellite as SatelliteData } from "./networkGraphLayout";
-import { BRAND_ACCENT } from "@/lib/marketing/brandAccentColors";
 
 /**
  * 証明書・施工店・メーカー・保険会社のネットワークを「点と線」で見せる図。
@@ -33,7 +32,11 @@ type NetworkGraphProps = {
   className?: string;
 };
 
-const { gold: GOLD, blue: BLUE, violet: VIOLET, emerald: EMERALD } = BRAND_ACCENT;
+// globals.css の --accent-* とは意図的に別値（ダーク背景の SVG 上でより発色させるため）。
+const GOLD = "#c9a55c";
+const BLUE = "#4d9fff";
+const VIOLET = "#a78bfa";
+const EMERALD = "#34d399";
 
 /** hub → satellite の緩いカーブ（中点を法線方向に少し押し出す） */
 function curve(from: Point, to: Point, bend = 0.14): string {
