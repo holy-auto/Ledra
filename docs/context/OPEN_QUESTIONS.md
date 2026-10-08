@@ -3,6 +3,13 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## `check:drift` が Storage（`storage` スキーマ）のポリシーを見ていない（2026-10-08）
+
+- 状況: `scripts/check-schema-drift.mjs` は、本番側のポリシーを `n.nspname='public'` だけ、マイグレーション側のダンプも `ON public.` だけで拾う。
+  そのため本番にだけある `storage.objects` のポリシー（2026-10-08 に外した `assets_write_tenant` / `assets_tenant_rw`）が CI で見えなかった。
+- 選択肢: `storage` スキーマもドリフト検出の対象に加える / 本番の `storage.objects` のポリシー一覧を定期的に人が確認する。
+- 注意: 再生 DB（マイグレーションだけから作る DB）の `storage` スキーマが Supabase と同じ形でないと、幻のドリフトが大量に出る。広げる前に再生 DB 側の形を確認する。
+
 ## 「鈑金塗装」で探す人の入口ページを作るか（2026-10-08）
 
 - トップの説明文から「鈑金塗装」を外した（DECISION_LOG 2026-10-08）。トップの本文に鈑金の話が無いため。
