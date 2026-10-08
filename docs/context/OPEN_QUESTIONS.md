@@ -1479,7 +1479,10 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
     (c) `.env` 系に `C2PA_MODE=production` がある（`.env.example` しか commit されていない）、
     (d) CI のビルドが非ゼロ（Vercel 緑のコミットにも同じ警告が1件出ており判別不能）、
     (e) `build` 前段の検査スクリプト、(f) `getMode()` の葉モジュール切り出し。
-    (a)(b) はそれ自体が危ない形なので除去を維持。**(e)(f) を「切り分け」として外した2コミット（`d65994b5` /
+    **(a) は 2026-10-08 に戻した。** `@next/env` を外して自前パーサにしたら、dotenv と3点ずれて
+    **3通りとも「黙ってスキップ」**になった（`/code-review` が実測。`M-20261008-swapped-a-parity-having-impl-for-my-own-parser`）。
+    宣言外の依存という懸念は `createRequire(require.resolve("next"))("@next/env")` ——
+    **`next` 経由で掴む**ことで消える。(b) `import.meta.resolve` は除去を維持（Node の版によって未実装・挙動差があり、Vercel のビルド機の Node は固定ではない。版の境目は【要確認】。`createRequire().resolve()` はどの版でも同じなので、確かめる必要も無い）。**(e)(f) を「切り分け」として外した2コミット（`d65994b5` /
     `4eb60202`）は、決定論的な赤を前提にした誤った手順だったので revert した**
     （`M-20261008-bisected-a-flaky-oom-as-deterministic`）。なお `f9616a58` は**検査を `build` の前段に入れた状態で
     Vercel が緑**だったので、検査が Vercel で通ることはその時点で実測済みだった。

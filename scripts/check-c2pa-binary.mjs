@@ -150,7 +150,7 @@ function fail(reason, detail) {
 // *その* ディレクトリ基準で解くので、同じ基準を使う。
 let distDir;
 try {
-  // **`import.meta.resolve` は使わない。** Node 20.6 未満では未実装で、ビルドを止める
+  // **`import.meta.resolve` は使わない。** Node の版によって未実装・挙動差があり、ビルドを止める
   // スクリプトが環境差で落ちるのは本末転倒（Vercel のビルド機の Node は固定ではない）。
   // `createRequire().resolve()` はどの Node でも同じ挙動。
   distDir = path.dirname(require.resolve("@contentauth/c2pa-node"));
