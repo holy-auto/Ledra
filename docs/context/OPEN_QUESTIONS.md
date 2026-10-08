@@ -10,6 +10,14 @@
 - 作る前に Search Console の検索語を見るつもりだったが、Google の再認証が必要（`invalid_rapt`）で取れなかった。
   代表が `gcloud auth application-default login`（前回と同じ手順）をやり直し、`GOOGLE_ADC_B64` を更新するまで、GA4 / Search Console の数字はこの環境から取れない。
 
+## 入口ページを書くときに見つかった、製品側の食い違い（2026-10-08）
+
+- 車検満了のお知らせメール（`src/lib/cron/inspectionReminders.ts`）は、`vehicles.inspection_reminder_sent_at` が NULL の車両にだけ送り、送ったら時刻を入れる。
+  この値を NULL に戻す処理がどこにも無いので、**1 台につき最初の 1 回しか送られない**（次の車検の前には届かない）。直すなら、車検満了日が更新されたら戻す。
+- 料金表は「API 連携: Pro」だが、NexPTG の取り込み（`/api/external/nexptg/sync`）と外部 API キーの発行にはプランの確認が無く、どのプランでも使える。料金表を直すか、制限を入れるか。
+- AI 見積（`/api/admin/quotes/ai-from-vehicle`）のエラー文は「Standard プラン以上」だが、判定（`ai_invoice_quote`）は Starter から true。エラー文が古い。
+- 指定整備記録簿の PDF（`src/lib/pdf/pdfIndicatedInspection.tsx`）には、事業場の指定番号・所在地が入らない（tenants に正準のカラムが無いため、意図して載せていない）。指定工場が法定の記録として使うなら必要。
+
 ## GA4 のアプリ画面除外が本番で効いているか（2026-10-07）
 
 - #1265 は gtag.js が `ga-disable-<ID>` をヒットごとに読み直す前提で書いた。この環境から googletagmanager.com に届かず未検証。

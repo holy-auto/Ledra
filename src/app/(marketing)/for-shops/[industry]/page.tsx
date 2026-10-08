@@ -89,29 +89,31 @@ export default async function ShopIndustryPage({ params }: Props) {
         </FAQList>
       </Section>
 
-      {terms.length > 0 && (
-        <Section>
-          <div className="mx-auto max-w-3xl">
-            <h2 className="text-sm font-bold text-white">関連する用語</h2>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {terms.map((t) => (
-                <Link
-                  key={t.slug}
-                  href={`/glossary/${t.slug}`}
-                  className="inline-flex items-center rounded-full border border-white/[0.1] bg-white/[0.03] px-4 py-2 text-sm text-white/85 transition-colors hover:border-white/[0.2] hover:text-white"
-                >
-                  {t.term}
-                </Link>
-              ))}
-            </div>
-            <div className="mt-8">
-              <Link href="/for-shops" className="text-sm font-medium text-blue-400 hover:underline">
-                &larr; 施工店の方へ（全体）に戻る
-              </Link>
-            </div>
+      <Section>
+        <div className="mx-auto max-w-3xl">
+          {terms.length > 0 && (
+            <>
+              <h2 className="text-sm font-bold text-white">関連する用語</h2>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {terms.map((t) => (
+                  <Link
+                    key={t.slug}
+                    href={`/glossary/${t.slug}`}
+                    className="inline-flex items-center rounded-full border border-white/[0.1] bg-white/[0.03] px-4 py-2 text-sm text-white/85 transition-colors hover:border-white/[0.2] hover:text-white"
+                  >
+                    {t.term}
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
+          <div className="mt-8">
+            <Link href="/for-shops" className="text-sm font-medium text-blue-400 hover:underline">
+              &larr; 施工店の方へ（全体）に戻る
+            </Link>
           </div>
-        </Section>
-      )}
+        </div>
+      </Section>
 
       <CTABanner
         title="まずは 1 枚、証明書を発行してみてください。"
