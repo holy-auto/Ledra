@@ -24,6 +24,16 @@
   （`backfill-demo-image-placeholders.ts` も同じ）。整備の履歴タイトルに「施工」を付けないようにした。
 - 作らなかったもの: ブロックチェーンのアンカー・`vehicle_passports`（DECISION_LOG 2026-10-07）。
 
+## 2026-10-08 トップ整理の残り: 未使用コンポーネントを消し、メタ情報を本文に合わせる
+
+- 内容: #1266 でトップから外して、どこからも使われなくなったコンポーネント 14 個と `page.full.tsx`（旧トップの控え）を削除した。
+  あわせて、それだけが使っていた CarJourney 用の CSS（`globals.css`）、成長マイルストーンの定数と関数（`stats.ts`）、
+  アクセントカラーの共有ファイル（`brandAccentColors.ts`。使うのが NetworkGraph 1 つになったので中へ移した）も消した。
+  削除したセクションだけが使っていた静的ファイル 13 個（`public/brands/` のロゴ 9 個・`public/nexdiag_logo.svg`・`public/marketing/screenshots/` の 3 枚）も消した。
+  トップの description・OG・Twitter の説明を本文の「できること」に合わせて書き直した（DECISION_LOG 2026-10-08）。
+  運用文書のうち `docs/brand-contacts.md`（ロゴ掲載）と `docs/marketing/press-2-distribution-growth.md`（トップのお知らせ表示）を現状に直した。
+- 検証: tsc、eslint、prettier、marketing 配下のテスト（22 ファイル・141 件）、削除したものの名前が `src` から参照されていないことを grep で確認。
+
 ## 2026-10-07 トップページを 25 セクションから 10 セクションに絞る（#1266）
 
 - 内容: `src/app/(marketing)/page.tsx` から 15 セクション（AI 自動化・実数・台帳・機能カタログ・連携ロゴ・モバイル・大手向け PoC ブロック・
@@ -31,7 +41,7 @@
   立場別セクションに PoC プログラムへのリンクを足し、信頼の根拠セクションを alt 背景にした。トップからお知らせを外したので、
   ニュース保存時・予約公開時の `revalidatePath("/")` を外した。
 - 検証: tsc、eslint、prettier、marketing・site-content・serverActionGuards のテスト、ローカル描画（デスクトップ・モバイルでページエラー 0）、CI（Lighthouse 含む）。
-- 残り: 未使用になったコンポーネント 14 個と CarJourney 用 CSS の削除、メタ情報と本文のずれ（OPEN_QUESTIONS）。
+- 残り: 未使用になったコンポーネント 14 個と CarJourney 用 CSS の削除、メタ情報と本文のずれ → 2026-10-08 に対応。
 
 ## 2026-10-07 GA4 からアプリ画面を外し、HP の計測イベントを GA4 にも送る（#1265）
 
