@@ -6,6 +6,10 @@
 
 最終更新: 2026-10-05
 
+> 2026-10-08 追記（**デモテナントは撮影用の特例中**）: 社内撮影のため、ヒーロー車両（LEDRA-DEMO-0017〜0027）にダミー tx のアンカー表示を入れ、
+> その車両への証明書 INSERT だけ読み取り専用ポリシーの例外にしている。撮影後に戻す（OPEN_QUESTIONS「撮影用の特例を戻す」）。下の「本番アンカー 0 件」は実データの話で、
+> この撮影用の行（`polygon_network=amoy`、tx はチェーン未送信）は数えない。
+
 > 2026-10-07 追記（**本番の Polygon アンカーは未稼働**）: 本番 DB で `certificate_images.polygon_tx_hash`・`certificate_anchors`・
 > `certificate_anchor_batches` はいずれも 0 件（2026-10-07 に service role で件数確認）。ブロックチェーン証明は本番ではまだ1件も作られていない。
 > デモテナントには撮影用ヒーロー車両（LEDRA-DEMO-0017〜0027、NFC タグ付き）を追加した（RELEASE_LOG 2026-10-07）。

@@ -17,13 +17,20 @@
  *
  * クリーンアップ:
  *   npx tsx scripts/setup-demo-tenant.ts --reset
+ *
+ * 撮影用（社内撮影・非公開の紹介動画のための特例。DECISION_LOG 2026-10-07）:
+ *   npx tsx scripts/setup-demo-tenant.ts --filming          # ヒーロー車両にアンカー表示・パスポート・購入済みレポートを足す
+ *   npx tsx scripts/setup-demo-tenant.ts --filming-cleanup  # 上記と、撮影中に作った証明書を消す
  */
 
+import { createHash, randomBytes } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import { generateDemoPlaceholderJpeg } from "./demoPlaceholderImage";
 // 書き込み先バケットは公開ページの読み取り (publicData.ts の getPublicUrl) と
 // 同じ定数を使い、writer/reader がドリフトしないようにする。
 import { CERTIFICATE_IMAGE_BUCKET } from "../src/lib/certificateImages/constants";
+import { computeCertDigest } from "../src/lib/anchoring/certificateHashing";
+import { buildCertMerkle } from "../src/lib/anchoring/certificateMerkle";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -358,6 +365,10 @@ async function main(): Promise<void> {
     await reset();
     return;
   }
+  if (args.has("--filming-cleanup")) {
+    await filmingCleanup();
+    return;
+  }
 
   console.log("🚀 デモテナント `Ledra Motors` をセットアップします...\n");
 
@@ -655,6 +666,8 @@ async function main(): Promise<void> {
   await upsert("documents", invoiceRows, "id", { typeColumn: "doc_type" });
   console.log(`  ✓ ${invoiceRows.length} 件`);
 
+  if (args.has("--filming")) await filmingSetup();
+
   // 9) Report
   console.log("\n🎉 セットアップ完了\n");
   console.log("  Tenant ID :", TENANT_ID);
@@ -682,6 +695,212 @@ async function main(): Promise<void> {
         `公開証明書ページの該当画像は Storage 400 のままです。`,
     );
   }
+}
+
+// ─── 撮影用（--filming / --filming-cleanup）──────────────────
+// 社内撮影・非公開の紹介動画のための特例（DECISION_LOG 2026-10-07）。本番では
+// Polygon アンカーがまだ動いていないので、ヒーロー車両の記録に「アンカー済み」の
+// 行を作って /c のブロックチェーン表示と /v/[vin] を撮れるようにする。
+// cert_digest と Merkle root は本番と同じ関数で正しく計算するが、tx はチェーンに
+// 送っていない（tx hash は root から作った値で、Polygonscan では見つからない）。
+// デモテナントは公開されているので、撮影が終わったら --filming-cleanup で消すこと。
+
+const HERO_VEHICLE_IDN = 11;
+const HERO_VIN_NORMALIZED = "LDM800012345";
+const FILMING_BATCH_ID = uuid("ab01", 1);
+const FILMING_ORDER_ID = uuid("0d01", 1);
+
+function heroCertIds(): string[] {
+  return CERTS.filter((c) => c.vehicleIdn === HERO_VEHICLE_IDN).map((c) => uuid("ce01", c.idn));
+}
+
+async function filmingSetup(): Promise<void> {
+  console.log("─ Filming: anchors / passport / report order");
+  const placeholder = await generateDemoPlaceholderJpeg();
+  const imageSha = createHash("sha256").update(placeholder).digest("hex");
+  const heroIds = heroCertIds();
+
+  // 1) 証明書ごとにアンカー済みの写真を 1 枚足す。既存の写真行は発行済み証明書の
+  //    証跡列（sha256 / authenticity_grade）が凍結されていて更新できないので、新しい行で足す。
+  const anchoredImages = heroIds.map((certId, i) => {
+    const publicId = `LEDRA-DEMO-${certId.slice(-4)}`;
+    return {
+      id: uuid("cf02", i + 1),
+      tenant_id: TENANT_ID,
+      certificate_id: certId,
+      storage_path: `demo/${publicId}/anchored.jpg`,
+      file_name: `${publicId}-anchored.jpg`,
+      content_type: "image/jpeg",
+      file_size: placeholder.length,
+      sort_order: 0,
+      sha256: imageSha,
+      authenticity_grade: "verified",
+      polygon_network: "amoy",
+      polygon_tx_hash: `0x${createHash("sha256").update(`ledra-demo-filming-image:${certId}`).digest("hex")}`,
+    };
+  });
+  await upsert("certificate_images", anchoredImages, "id");
+  await Promise.all(
+    anchoredImages.map((img) =>
+      admin.storage
+        .from(CERTIFICATE_IMAGE_BUCKET)
+        .upload(img.storage_path, placeholder, { contentType: "image/jpeg", upsert: true }),
+    ),
+  );
+
+  // 2) 証明書記録のアンカー（cert_digest → Merkle → バッチ）
+  const { data: certs, error: certErr } = await admin
+    .from("certificates")
+    .select(
+      "id, public_id, tenant_id, status, created_at, updated_at, vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value",
+    )
+    .in("id", heroIds);
+  if (certErr) throw certErr;
+  const digests = (certs ?? []).map((c) => ({
+    certId: c.id as string,
+    ...computeCertDigest({
+      publicId: c.public_id,
+      tenantId: c.tenant_id,
+      issuedAt: c.created_at,
+      versionAt: c.updated_at ?? c.created_at,
+      status: c.status === "void" ? "void" : "active",
+      vehicleInfo: c.vehicle_info_json ?? null,
+      contentFreeText: c.content_free_text,
+      contentPreset: c.content_preset_json ?? null,
+      expiryType: c.expiry_type ?? null,
+      expiryValue: c.expiry_value ?? null,
+      imageSha256s: [imageSha],
+    }),
+  }));
+  const merkle = buildCertMerkle(digests.map((d) => d.digest));
+  const anchoredAt = dateDaysAgo(1);
+  // 再実行で root が変わる（updated_at が動く）ので、固定 id の行を上書きする
+  await upsert(
+    "certificate_anchor_batches",
+    [
+      {
+        id: FILMING_BATCH_ID,
+        merkle_root: merkle.root,
+        leaf_count: merkle.leafCount,
+        contract_address: "0x0000000000000000000000000000000000000000",
+        network: "amoy",
+        tx_hash: `0x${createHash("sha256").update(`ledra-demo-filming-batch:${merkle.root}`).digest("hex")}`,
+        anchored_at: anchoredAt,
+      },
+    ],
+    "id",
+  );
+  const anchorRows = digests.map((d, i) => ({
+    id: uuid("ac01", i + 1),
+    tenant_id: TENANT_ID,
+    certificate_id: d.certId,
+    cert_digest: d.digest,
+    canonical_json: d.canonical,
+    status: "anchored",
+    anchor_route: "batch",
+    batch_id: FILMING_BATCH_ID,
+    merkle_proof: merkle.proofByDigest.get(d.digest) ?? [],
+    polygon_network: "amoy",
+    anchored_at: anchoredAt,
+  }));
+  await upsert("certificate_anchors", anchorRows, "id");
+  for (const a of anchorRows) {
+    const { error } = await admin.from("certificates").update({ latest_anchor_id: a.id }).eq("id", a.certificate_id);
+    if (error) throw error;
+  }
+
+  // 3) 車両パスポート（/v/[vin]。本番は PASSPORT_PATENT_HOLD で 404 なのでローカルで撮る）
+  const hero = VEHICLES.find((v) => v.idn === HERO_VEHICLE_IDN)!;
+  const firstCert = CERTS.filter((c) => c.vehicleIdn === HERO_VEHICLE_IDN).sort((a, b) => b.daysAgo - a.daysAgo)[0];
+  const { error: passErr } = await admin.from("vehicle_passports").upsert(
+    {
+      vin_code_normalized: HERO_VIN_NORMALIZED,
+      display_maker: hero.maker,
+      display_model: hero.model,
+      display_year: hero.year,
+      anchored_cert_count: heroIds.length,
+      tenant_count: 1,
+      first_seen_at: dateDaysAgo(firstCert.daysAgo),
+      last_activity_at: anchoredAt,
+    },
+    { onConflict: "vin_code_normalized" },
+  );
+  if (passErr) throw passErr;
+
+  // 4) 購入済みレポート（第三者視点で /v/[vin] の全履歴を開くため）。Stripe を通していない
+  //    ので収益分配（vehicle_report_revenue_shares）は作られない。
+  const token = randomBytes(32).toString("hex");
+  const { error: orderErr } = await admin.from("vehicle_report_orders").upsert(
+    {
+      id: FILMING_ORDER_ID,
+      vin_code_normalized: HERO_VIN_NORMALIZED,
+      source_public_id: "LEDRA-DEMO-0027",
+      access_token: token,
+      status: "paid",
+      amount_jpy: 3000,
+      scope_type: "full",
+      paid_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30 * 86400_000).toISOString(),
+      created_at: new Date().toISOString(),
+    },
+    { onConflict: "id" },
+  );
+  if (orderErr) throw orderErr;
+
+  console.log(`  ✓ アンカー ${anchorRows.length} 件（tx はチェーン未送信）/ パスポート / 購入済みレポート`);
+  // cookie 名は src/lib/vehicleReport/access.ts の reportCookieName と同じ規則（import すると Supabase admin の env 読みが走る）
+  console.log(`  /v/${HERO_VIN_NORMALIZED} を第三者として開く（ブラウザのコンソールで実行）:`);
+  console.log(`    document.cookie = "vrt_${createHash("sha256").update(HERO_VIN_NORMALIZED).digest("hex").slice(0, 16)}=${token}; path=/; max-age=2592000"`);
+}
+
+async function filmingCleanup(): Promise<void> {
+  console.log("🧹 撮影用データを削除します...");
+  const seedIds = new Set(CERTS.map((c) => uuid("ce01", c.idn)));
+  const { data: onHero, error: listErr } = await admin
+    .from("certificates")
+    .select("id")
+    .eq("vehicle_id", uuid("v001", HERO_VEHICLE_IDN));
+  if (listErr) throw listErr;
+  const filmedIds = (onHero ?? []).map((c) => c.id as string).filter((id) => !seedIds.has(id));
+  const heroIds = heroCertIds();
+
+  const del = async (table: string, col: string, vals: string[]) => {
+    if (vals.length === 0) return;
+    const { error } = await admin.from(table).delete().in(col, vals);
+    if (error) throw error;
+  };
+  await del("vehicle_report_orders", "id", [FILMING_ORDER_ID]);
+  await del("vehicle_passports", "vin_code_normalized", [HERO_VIN_NORMALIZED]);
+  const { error: unlinkErr } = await admin
+    .from("certificates")
+    .update({ latest_anchor_id: null })
+    .in("id", [...heroIds, ...filmedIds]);
+  if (unlinkErr) throw unlinkErr;
+  await del("certificate_anchors", "certificate_id", [...heroIds, ...filmedIds]);
+  await del("certificate_anchor_batches", "id", [FILMING_BATCH_ID]);
+
+  // 発行済み証明書の写真は削除ガード（20260820000000）で消せないので、一時的に
+  // draft に戻して消し、元の status に戻す。
+  const { data: statuses, error: stErr } = await admin
+    .from("certificates")
+    .select("id, status")
+    .in("id", [...heroIds, ...filmedIds]);
+  if (stErr) throw stErr;
+  const touched = (statuses ?? []).filter((c) => c.status !== "draft");
+  for (const c of touched) {
+    const { error } = await admin.from("certificates").update({ status: "draft" }).eq("id", c.id);
+    if (error) throw error;
+  }
+  const anchoredImageIds = heroIds.map((_, i) => uuid("cf02", i + 1));
+  await del("certificate_images", "id", anchoredImageIds);
+  await del("certificate_images", "certificate_id", filmedIds);
+  await del("vehicle_histories", "certificate_id", filmedIds);
+  await del("certificates", "id", filmedIds);
+  for (const c of touched.filter((t) => !filmedIds.includes(t.id))) {
+    const { error } = await admin.from("certificates").update({ status: c.status }).eq("id", c.id);
+    if (error) throw error;
+  }
+  console.log(`✅ 削除完了（撮影中に作った証明書 ${filmedIds.length} 件を含む）。書き込み窓の CLOSE も忘れずに。`);
 }
 
 main().catch((err) => {

@@ -4,6 +4,16 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-08 デモテナントの撮影用特例（アンカー表示・パスポート・書き込み窓）
+
+- 内容: 社内撮影・非公開の紹介動画のため、`scripts/setup-demo-tenant.ts` に `--filming` / `--filming-cleanup` を追加し、本番デモテナントに `--filming` を適用。
+  ヒーロー車両の証明書 11 件すべてに、アンカー済みの写真 1 枚（`authenticity_grade=verified`・`polygon_network=amoy`）と `certificate_anchors`（status `anchored`）を作り、
+  `vehicle_passports`（`LDM800012345`）と購入済みレポート 1 件を入れた。cert_digest・Merkle root は本番の関数で計算。tx はチェーンに送っていない。
+- 書き込み窓: デモの読み取り専用ポリシー `demo_tenant_readonly_insert`（certificates）を、ヒーロー車両への INSERT だけ通すよう変更（`scripts/demo-filming-write-window.sql`）。
+- 検証: `--filming-cleanup` を本番で流し、アンカー・バッチ・パスポート・レポート・アンカー写真が 0 件になり、証明書 11 件が `active` に戻ることを確認。撮影中に作った想定の証明書
+  （写真・履歴付き）1 件も消えることを確認したうえで、`--filming` を入れ直した。
+- 戻し方: OPEN_QUESTIONS「撮影用の特例を戻す」。
+
 ## 2026-10-07 デモテナントに撮影用のヒーロー車両（施工・整備 11 件・NFC タグ）を追加
 
 - 内容: 紹介動画の「NFC タッチ → 1 台の車の履歴」を撮れるよう、`scripts/setup-demo-tenant.ts` に顧客 1・車両 1（TOYOTA ハリアー、車体番号 `LDM80-0012345`）・
