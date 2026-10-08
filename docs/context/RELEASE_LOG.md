@@ -108,6 +108,16 @@
     `grep -cE '^  it\('` で数え直した。初版は4件で、2026-10-08 に3件足した）。
     変異で当たりを取った: `.env` を読まない形に戻すと2件が赤、`NODE_ENV` を production に強制すると
     「`NODE_ENV=test` では `.env.local` を読まない」が赤、裸の指定子を `dist/` 基準で解くと1件が赤。
+- **`npm run build` の正確な挙動（2026-10-08 実測）**: 検査を前段に入れた状態で
+  `rm -rf .next` から回すと、**コンパイルは成功**（Turbopack 約2.1〜2.2分）し
+  `.next/build-manifest.json` が出る。**素の `npm run build` は終了コード 1** ——
+  `/blog/[slug]` の page data 収集が `Missing NEXT_PUBLIC_SUPABASE_URL or
+  NEXT_PUBLIC_SUPABASE_ANON_KEY` で落ちる（`ci.yml` が warning で許容している既知の経路で、
+  この差分とは無関係）。**CI と同じ env**（`SKIP_ENV_VALIDATION=true` ＋ ダミーの
+  Supabase URL/key）**なら終了コード 0**。
+  なお PR 本文・コメントに一度「手元で成功」と書いたが、**そのときは終了コードを見ておらず、
+  `.next/build-manifest.json` の更新時刻から推定していた**
+  （`M-20261008-called-the-build-successful-from-a-file-mtime`）。訂正済み。
 - **天井を2つ明記した**（`ponytail:`）: (a) `C2PA_MODE` がビルド時に見えること（Vercel で実行時専用の
   env だと発火しない）、(b) **見ているのは「ビルド機でロードできるか」で、「本番の関数バンドルに
   バイナリが入るか」ではない**。`serverExternalPackages` に入れてあるので 48MB の `index.node` は
