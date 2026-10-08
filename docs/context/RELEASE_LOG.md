@@ -9,6 +9,7 @@
 - 内容: #1266 でトップから外して、どこからも使われなくなったコンポーネント 14 個と `page.full.tsx`（旧トップの控え）を削除した。
   あわせて、それだけが使っていた CarJourney 用の CSS（`globals.css`）、成長マイルストーンの定数と関数（`stats.ts`）、
   アクセントカラーの共有ファイル（`brandAccentColors.ts`。使うのが NetworkGraph 1 つになったので中へ移した）も消した。
+  削除したセクションだけが使っていた静的ファイル 13 個（`public/brands/` のロゴ 9 個・`public/nexdiag_logo.svg`・`public/marketing/screenshots/` の 3 枚）も消した。
   トップの description・OG・Twitter の説明を本文の「できること」に合わせて書き直した（DECISION_LOG 2026-10-08）。
   運用文書のうち `docs/brand-contacts.md`（ロゴ掲載）と `docs/marketing/press-2-distribution-growth.md`（トップのお知らせ表示）を現状に直した。
 - 検証: tsc、eslint、prettier、marketing 配下のテスト（22 ファイル・141 件）、削除したものの名前が `src` から参照されていないことを grep で確認。
