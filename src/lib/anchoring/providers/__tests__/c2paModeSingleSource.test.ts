@@ -37,7 +37,7 @@ import ts from "typescript";
 describe("C2PA_MODE は getMode() が唯一の正規化源", () => {
   const ROOT = path.resolve(__dirname, "../../../../..");
   /** 正規化の実装そのもの。ここだけは生の env を読んでよい。 */
-  const OWNER = path.join(ROOT, "src", "lib", "anchoring", "providers", "c2paMode.ts");
+  const OWNER = path.join(ROOT, "src", "lib", "anchoring", "providers", "c2pa.ts");
   /**
    * ビルド前の検査スクリプト。`next build` の前段で走り、TS を import できない素の
    * `.mjs` なので `getMode()` を呼べず、`=== "production"` を自前で書いている。
@@ -152,7 +152,7 @@ describe("C2PA_MODE は getMode() が唯一の正規化源", () => {
       offenders,
       [
         "C2PA_MODE を直接読んでいる箇所がある。`getMode()` を使うこと",
-        '（`import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2paMode"`）。',
+        '（`import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2pa"`）。',
         "生の読みは未知の値をそのまま下流に渡すので、綴り違いが黙って通る:",
         ...offenders,
       ].join("\n"),
