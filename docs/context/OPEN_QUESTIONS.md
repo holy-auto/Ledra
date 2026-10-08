@@ -88,6 +88,12 @@ TSA の URL（`https://ts-c2pa.ssl.com/ecc`）と、証明書・TSA とも ssl.c
 （13:37:58 building → 13:46:59 success）で、**失敗はビルドの途中で止まっている**ことになる。原因は依然未特定。
 上の候補のうち「Preview エイリアスが63文字ちょうど」は、同じエイリアスで成功したので外れる。
 
+**追記（2026-10-08）: 候補のうち「キャッシュ無しフルビルドの OOM」が、別のプレビューでは実測で確定した。**
+PR #1272 の `4eb60202` のログが `4 cores, 8 GB` ＋ キャッシュ破棄 ＋ `exited with SIGKILL` ＋ OOM 検出だった
+（下の「Vercel のビルド機（Elastic）が 8 GB を…」の項）。**この項の 10-03/10-05 の失敗が同じ原因かは、ログが無いので未確認【要確認】。**
+ただし「断続的」「差分の内容と無関係（Markdown だけでも失敗）」「失敗はビルドの途中で止まる」という観察3点は、
+いずれも 8 GB＋キャッシュ破棄の OOM と整合する。**この項を推測で閉じないこと。閉じるにはログが要る。**
+
 
 ## モバイル一覧カードの `>` をバッジの右隣に移した件: 実機での見た目確認が未了（2026-10-05）
 
@@ -166,7 +172,7 @@ opt-in `tenants.require_inspector_qualification`・既定 false）。残って�
 - 起票日: 2026-10-02
 - 判断者: 開発（Claude）。上流への報告をするかは代表
 
-## Vercel のビルド機（Elastic）が 8 GB を選んだ回のフルビルドで OOM になる。取りこぼしをどう減らすか（2026-10-02 起票、10-07 に問いを変更）
+## Vercel のビルド機（Elastic）が 8 GB を選んだ回のフルビルドで OOM になる。取りこぼしをどう減らすか（2026-10-02 起票、10-07 に問いを変更、10-08 に4回目を記録）
 
 - #1184 のマージ後の本番デプロイ（`5f54e29`、13:08 UTC 開始）は、ビルドログで**メモリ不足（OOM）**と確定した
   （`Build machine configuration: 4 cores, 8 GB`、ビルドキャッシュ破棄、`exited with SIGKILL`、OOM 検出）。
@@ -197,6 +203,20 @@ opt-in `tenants.require_inspector_qualification`・既定 false）。残って�
   (iii) Codex のレビュー（#1264）によると、Vercel の 2026-06 の changelog では Elastic はメモリも監視し、OOM の後は上の機械で
   自動的に走らせる。正しければ `1200421` の成功は「直前の OOM を受けて 16 GB に上がった」ことで説明できる（原文は環境から開けず未確認【要確認】）。
   `1200421` のログの機械の行が 16 GB なら (iii) と合う。
+- **2026-10-08: 4回目。今回は PR #1272 の*プレビュー*（`4eb60202`）。** 代表が貼ったログに
+  `Build machine configuration: 4 cores, 8 GB`、`Previous build cache of deployment 'dpl_6F96Gg86xqTqiUs2aHmBigRdXVYT'
+  was too large, starting from a clean state.`、`Error: Command "npm run build" exited with SIGKILL`、
+  `At least one "Out of Memory" ("OOM") event was detected during the build.`。
+  これで OOM は**4回（プレビュー2回: 09-29 #1172・10-08 #1272／本番2回: 10-01 `5f54e29`・10-06 `9df2d3c`）**。
+  どのコミットのログかは二経路で照合: ログ先頭 19:52:24（JST 表示）＝10:52:24 UTC で、`4eb60202` の commit 時刻
+  10:51:26 UTC の58秒後。**SIGKILL までの所要は約2分18秒**（19:52:24.424 → 19:54:42.403）。
+  なお install は正常（1199 packages・33 秒）で、死んだのは Turbopack の
+  `Creating an optimized production build` の最中。
+- **同ブランチの直前3回の赤（`f09301f9` 約26分・`47fcc644` 約22分・`d65994b5` 約41分）が同じ OOM かは未確認【要確認】。**
+  所要が1桁違う（2分 vs 22〜41分）ので同一視しない。ログは代表にしか出せない。
+- **(iii)（Elastic は OOM の後に上の機械で自動的に走らせる）との整合は、まだ付かない。** 同ブランチで赤が3回続いた
+  直後の回が 8 GB だった。ただし直前3回が OOM だったかが未確認なので、(iii) の反証としては弱い。
+  **はっきり言えるのは「赤が続いても自動で 16 GB に上がるとは限らない」**まで。
 - 費用を上げずに取れる対策の候補（どれを採るかは未決）:
   1. **デプロイ失敗の通知**: Vercel の通知設定、または commit status `Vercel` の failure を見る仕組み。
      OOM 3 回のうち本番は 2 回（10-01 `5f54e29`・10-06 `9df2d3c`）、1 回（09-29 #1172）はプレビュー。本番の失敗は、どちらも
@@ -1444,23 +1464,29 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
     （`C2PA_MODE=production` のときだけネイティブのロードを要求し、駄目ならビルドを落とす）。
     **区分の変更は、やってもやらなくてもこの問題には効かない**ので、代表判断待ちの項目から外してよい
     （やる理由が残るとすれば「意図を型で示す」だけ）。
-  - 【要確認・代表の手が必要】**PR #1272 の Vercel プレビューが赤で、原因が特定できていない。**
-    GitHub Actions は全緑（赤0件）で、赤いのは Vercel のコミットステータスだけ。実測した範囲:
-    `main` は成功、同ブランチの `f9616a58` も成功、`ac72bc93` と `f09301f9` は失敗。
-    手元で `next build`（Supabase env をダミーで補完）は**成功**する。
-    外れた仮説4つ —— (a) `@next/env` への直接 import、(b) `import.meta.resolve`、
+  - 【解決済み 2026-10-08】**PR #1272 の Vercel プレビューの赤は OOM だった。この PR の差分は原因ではない。**
+    代表がビルドログを貼り、`4eb60202` のビルドが `Build machine configuration: 4 cores, 8 GB` /
+    `Previous build cache of deployment 'dpl_6F96Gg86xqTqiUs2aHmBigRdXVYT' was too large, starting from a clean state.` /
+    `Error: Command "npm run build" exited with SIGKILL` / `At least one "Out of Memory" ("OOM") event was detected` で
+    終わっていた。**2026-09-29・10-01・10-06 と同じ形**（上の「Vercel のビルド機（Elastic）が 8 GB を…」の項）。
+    差分からも否定できる: Vercel が緑だった `f9616a58` と `4eb60202` の間で Turbopack が見る `src/` の差は
+    **`c2pa.ts` のコメント5行だけ**で、`npm run build` はこの時点で検査を外していたぶん**やることが減っている**。
+    **外れた仮説は合計6つ**: (a) `@next/env` への直接 import、(b) `import.meta.resolve`、
     (c) `.env` 系に `C2PA_MODE=production` がある（`.env.example` しか commit されていない）、
-    (d) CI のビルドが非ゼロ（Vercel 緑のコミットにも同じ警告が1件出ており判別不能）。
-    (a)(b) はそれ自体が危ない形なので除去を維持した。
-    **必要なもの: Vercel のビルドログ。** この環境に Vercel のトークンが無く
-    `npx vercel inspect dpl_Ba83HhqVjHLLmuJsVoUYBSJAg78b --logs` が打てない。
-    `gh` は Actions のログ取得もリダイレクト拒否で返せない（`check-runs/<id>/annotations` は使える）。
-    代替として「葉モジュールの切り出しだけを戻したコミットで Vercel を回す」切り分けを PR で提案済み。
+    (d) CI のビルドが非ゼロ（Vercel 緑のコミットにも同じ警告が1件出ており判別不能）、
+    (e) `build` 前段の検査スクリプト、(f) `getMode()` の葉モジュール切り出し。
+    (a)(b) はそれ自体が危ない形なので除去を維持。**(e)(f) を「切り分け」として外した2コミット（`d65994b5` /
+    `4eb60202`）は、決定論的な赤を前提にした誤った手順だったので revert した**
+    （`M-20261008-bisected-a-flaky-oom-as-deterministic`）。なお `f9616a58` は**検査を `build` の前段に入れた状態で
+    Vercel が緑**だったので、検査が Vercel で通ることはその時点で実測済みだった。
+    この環境に Vercel のトークンが無く `npx vercel inspect <dpl_id> --logs` は打てないままなので、
+    **次に Vercel が赤いときもログは代表に頼むのが最短**（今回それ1つで決着した）。
   - 【未決】**`MISTAKE_LEDGER.md` の型表の重複を機械で見る検査が無い。** `check:ledger-ids` は
     見出しの ID を見るので、**型表の行が2本になっても通る**（2026-10-07 に実際にそうなった:
     マージ解消で F 行が複製され、2本の ID 一覧が食い違った。
     `M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing`）。
-    `grep -oE '^\| \*\*[A-I]\.' | sort | uniq -c` で9型が1本かを見るだけなので検査は安いが、
+    `grep -oE '^\| \*\*[A-Z]\.' | sort | uniq -c` で全型が1本かを見るだけなので検査は安いが（**2026-10-08 訂正: ここは `[A-I]` と書いていた。
+    表は A〜L の12型あるので J/K/L の複製を見逃す範囲だった。実測で複製は無し**）、
     「表の行 vs エントリ」をどこまで形式化するか決めていない。
   - 【要確認】**output file tracing が `index.node` を本番の関数バンドルに入れているか。**
     `next.config.ts` の `serverExternalPackages` に入れてあるので、48MB のバイナリは tracing 経由でしか

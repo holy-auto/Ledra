@@ -77,13 +77,54 @@
 | **J. 兄弟実装と揃えていない** | 同じ理由で複数箇所に同種のガード・分岐を書いたのに、片方にしか適用しなかった／既存の兄弟実装が既に持っていた条件を新しい実装に持ち込まなかった。**「同じパターンで書いた」つもりが実は違う**のがこの型の核。**「AをBに置き換える」判断をしたのに、A自体を全リポジトリでgrepせず一部だけ置き換えて終わる**のも同じ | M-066, **M-069**, **M-092**, **M-093**, **M-20260916-timeout-branch-missed-sibling-fix**, **M-20260919-cancel-checkout-scattered-across-4-handlers**, **M-20260919-handled-completed-branch-not-failed-branch**, **M-20260919-else-fix-not-swept-to-siblings**, **M-20260921-claimed-all-db-errors-swept-but-left-booking-upsert**, **M-20260923-fixed-url-length-in-one-route-not-its-sibling**, **M-20261001-new-loader-dropped-query-error-unlike-siblings**, **M-20261005-abs-chevron-reserved-space-in-one-row-only**, **M-20261005-rewrote-customer-resolver-that-already-existed**, **M-20261007-paid-scope-copied-the-window-not-the-opt-out** |
 | **K. 新しいコード経路を、それが実際に呼ばれる文脈で動かして試していない** | 単体の変更としては正しいのに、それが実際に発火する呼び出し元・エラー経路まで通して動かしていない。ユニットテストがあっても「起こりうる呼び出し順」を再現していなければ検出できない | **M-067**, **M-20260923-draft-autosave-baseline-before-prefill**, **M-20261005-fail-closed-flag-read-blocked-non-opt-in-tenants**, **M-20261006-breakdown-ids-wiped-by-draft-edit** |
 | **L. 既定を開いたまま守る（除外リスト）** | 「見せないもの」を並べて塞ぐ。塞いだ時点では実データと一致していても、**既定が公開**なので、値が増えるたびに漏れる。**母集団を数えていない**のが根（「今あるもの」を実測して、「入りうるもの」を数えていない）。外向けの経路では許可リストにして、知らないものを既定で落とす | **M-077** |
-| **E. 手元とCIの差を忘れる** | 手元では通るのに CI だけ落ちる構成を作る。書いた本人には見えない。**リポジトリが用意した「CIと同じ検査」を走らせず、思い出せる検査だけ個別に走らせる**のも同じ | M-009, **M-030**, **M-084**, **M-089**, **M-094**, **M-20260922-pushed-without-ci-parallel-checks**, **M-20260923-schema-snapshot-missed-again**, **M-20260929-build-oom-cause-guessed-three-times**, **M-20260929-merged-main-without-migration-order-lint** |
-| **F. 確認できる事実を確認しない** | 環境から1コマンドで確かめられる事実（今日の日付・件数・バージョン・設定ファイルの中身・**CI が実際に走ったか**・**同じ問題を直している PR が既に開いていないか**）を、確かめずに書く。**自分がこれから追記しようとしているログファイル自身に、既に矛盾する記述が無いか確認しない**のも同じ。**本番の実データをそのまま調査ログ・事業ログに転記する**のも同じ（PIIのマスクを確認事実として扱わない） | M-011, M-014, M-015, M-016, **M-018**, **M-021**, **M-026**, **M-027**, M-034, M-037, **M-045**, **M-049**, **M-053**, **M-059**, **M-070**, **M-071**, **M-073**, **M-080**, **M-081**, **M-082**, **M-086**, **M-088**, **M-090**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-called-it-untraceable-without-checking-open-prs**, **M-20260919-said-no-open-pr-has-it-again**, **M-20260919-hand-applied-ahead-of-a-pending-migration**, **M-20260919-skipped-the-check-i-had-just-written**, **M-20260919-green-ci-read-as-production-applied**, **M-20260919-credited-my-own-dirty-tree-to-another-session**, **M-20260919-wrote-a-replay-count-i-never-read**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-counted-12-as-11-again**, **M-20260921-reported-a-subtraction-as-a-measurement**, **M-20260921-two-samples-read-as-all**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-said-typegen-red-on-every-merge**, **M-20260922-said-ten-checks-without-listing-them**, **M-20260923-git-add-all-swept-a-formatted-generated-file**, **M-20260925-migration-timestamp-collided-with-parallel-pr**, **M-20260927-anon-customer-names-read-as-by-design**, **M-20261001-cited-sources-i-never-opened-in-decision-log**, **M-20261001-wrote-not-observed-over-my-own-vercel-font-record**, **M-20261001-said-fix-reaches-production-before-deploy-checked**, **M-20261001-reported-applied-migrations-as-not-applied**, **M-20261002-asserted-conformance-impact-from-our-own-gpsa**, **M-20261002-said-no-mechanism-without-reading-the-workflow-that-exists**, **M-20261001-acted-on-dependabot-pr-without-checking-it-was-closed**, **M-20261001-duplicated-an-open-pr-for-four-days**, **M-20260929-logged-the-wrong-zip-as-sent**, **M-20261003-fixed-the-pr-body-and-left-the-business-logs-wrong**, **M-20261005-called-ci-green-from-check-runs-only**, **M-20261005-blamed-migrations-for-a-stale-clone**, **M-20261005-handed-user-cli-commands-i-never-ran**, **M-20261005-diagnosed-device-from-origin-not-users-checkout**, **M-20261005-took-sharps-limit-as-the-limit-of-what-i-could-verify**, **M-20261006-built-on-a-not-null-premise-from-my-own-log**, **M-20261007-read-elastic-build-machine-as-fixed-16gb**, **M-20261007-claimed-env-vars-apply-only-to-new-session**, **M-20261007-posted-rerun-done-before-result**, **M-20261007-claimed-single-source-without-grepping-the-siblings**, **M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing**, **M-20261007-read-an-empty-tool-result-as-no-problem-found** |
+| **E. 手元とCIの差を忘れる** | 手元では通るのに CI だけ落ちる構成を作る。書いた本人には見えない。**リポジトリが用意した「CIと同じ検査」を走らせず、思い出せる検査だけ個別に走らせる**のも同じ | M-009, **M-030**, **M-084**, **M-089**, **M-094**, **M-20260922-pushed-without-ci-parallel-checks**, **M-20260923-schema-snapshot-missed-again**, **M-20260929-build-oom-cause-guessed-three-times**, **M-20260929-merged-main-without-migration-order-lint**, **M-20261008-bisected-a-flaky-oom-as-deterministic** |
+| **F. 確認できる事実を確認しない** | 環境から1コマンドで確かめられる事実（今日の日付・件数・バージョン・設定ファイルの中身・**CI が実際に走ったか**・**同じ問題を直している PR が既に開いていないか**）を、確かめずに書く。**自分がこれから追記しようとしているログファイル自身に、既に矛盾する記述が無いか確認しない**のも同じ。**本番の実データをそのまま調査ログ・事業ログに転記する**のも同じ（PIIのマスクを確認事実として扱わない） | M-011, M-014, M-015, M-016, **M-018**, **M-021**, **M-026**, **M-027**, M-034, M-037, **M-045**, **M-049**, **M-053**, **M-059**, **M-070**, **M-071**, **M-073**, **M-080**, **M-081**, **M-082**, **M-086**, **M-088**, **M-090**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-called-it-untraceable-without-checking-open-prs**, **M-20260919-said-no-open-pr-has-it-again**, **M-20260919-hand-applied-ahead-of-a-pending-migration**, **M-20260919-skipped-the-check-i-had-just-written**, **M-20260919-green-ci-read-as-production-applied**, **M-20260919-credited-my-own-dirty-tree-to-another-session**, **M-20260919-wrote-a-replay-count-i-never-read**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-counted-12-as-11-again**, **M-20260921-reported-a-subtraction-as-a-measurement**, **M-20260921-two-samples-read-as-all**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-said-typegen-red-on-every-merge**, **M-20260922-said-ten-checks-without-listing-them**, **M-20260923-git-add-all-swept-a-formatted-generated-file**, **M-20260925-migration-timestamp-collided-with-parallel-pr**, **M-20260927-anon-customer-names-read-as-by-design**, **M-20261001-cited-sources-i-never-opened-in-decision-log**, **M-20261001-wrote-not-observed-over-my-own-vercel-font-record**, **M-20261001-said-fix-reaches-production-before-deploy-checked**, **M-20261001-reported-applied-migrations-as-not-applied**, **M-20261002-asserted-conformance-impact-from-our-own-gpsa**, **M-20261002-said-no-mechanism-without-reading-the-workflow-that-exists**, **M-20261001-acted-on-dependabot-pr-without-checking-it-was-closed**, **M-20261001-duplicated-an-open-pr-for-four-days**, **M-20260929-logged-the-wrong-zip-as-sent**, **M-20261003-fixed-the-pr-body-and-left-the-business-logs-wrong**, **M-20261005-called-ci-green-from-check-runs-only**, **M-20261005-blamed-migrations-for-a-stale-clone**, **M-20261005-handed-user-cli-commands-i-never-ran**, **M-20261005-diagnosed-device-from-origin-not-users-checkout**, **M-20261005-took-sharps-limit-as-the-limit-of-what-i-could-verify**, **M-20261006-built-on-a-not-null-premise-from-my-own-log**, **M-20261007-read-elastic-build-machine-as-fixed-16gb**, **M-20261007-claimed-env-vars-apply-only-to-new-session**, **M-20261007-posted-rerun-done-before-result**, **M-20261007-claimed-single-source-without-grepping-the-siblings**, **M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing**, **M-20261007-read-an-empty-tool-result-as-no-problem-found**, **M-20261008-bisected-a-flaky-oom-as-deterministic** |
 | **G. 構造テストを振る舞いの証明として扱う** | ソースを grep して「その語が書かれている」を確かめただけで、**値が通るか**を確かめていない。テストは緑、機能は壊れている。**ファイルに在ること**を、**その経路が実際に動く/覆われている**ことの証拠として扱うのも同じ | **M-033**, **M-20260921-file-content-read-as-behavior**, **M-20261002-closed-open-question-on-settings-screen-not-build-log**, **M-20261002-checked-one-side-effect-and-called-it-no-orphans** |
 | **H. 未確定の前提の上に作る** | 依頼者しか決められない前提を確認しないまま、その前提が変われば丸ごと消える実装を先に作る | **M-043** |
 | **I. 前提が途中で変わったのに読み直さない** | 判断したときは正しかった観察が、その後の `main` 取り込みなどで無効になっているのに、変更を見直さない。**衝突しなかったファイルにこそ潜む**。**自分が書いた実測値が、自分のマージで古くなる**のも同じ | **M-047**, **M-051**, **M-20260925-my-own-merge-staled-the-replay-count**, **M-20260929-merged-main-without-migration-order-lint**, **M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing** |
 
 ---
+
+## M-20261008-bisected-a-flaky-oom-as-deterministic 揺れる OOM の赤を決定論的な赤として二分探索し、動いていた設計を2回後退させた（2026-10-08・型 E／F）
+
+**Before**: PR #1272 の Vercel プレビューが4コミット連続で赤になった。ビルドログが読めず、GitHub Actions は全緑（赤0件）。
+`47fcc644`（**ドキュメントのみ**のコミット）でも赤だったのを見て「一時障害ではない → `f09301f9` のコードに原因が残っている」と結論し、
+コミットメッセージと PR コメントにそう書いた。その上で、**動いていた設計を2回後退させた** ——
+`d65994b5` で `build` の前段から `check-c2pa-binary.mjs` を外し、`4eb60202` で `getMode()` の葉モジュール切り出しを戻した。
+「次の Vercel の色で原因を絞る」という手順を PR に書いて実行した。
+
+**After**: 代表がビルドログを貼った。`4eb60202` のビルドは
+`Build machine configuration: 4 cores, 8 GB` / `Previous build cache of deployment 'dpl_6F96Gg86xqTqiUs2aHmBigRdXVYT' was too large, starting from a clean state.` /
+`Error: Command "npm run build" exited with SIGKILL` / `At least one "Out of Memory" ("OOM") event was detected during the build.`。
+**2026-09-29・10-01・10-06 と同じ形の OOM** で、しかも 9 日前の自分の台帳に
+「上限すれすれで、通るかどうかは揺れる」と書いてある失敗だった（`M-20260929-build-oom-cause-guessed-three-times`）。
+診断は**差分からも否定できた**: Vercel が緑だった `f9616a58` と `4eb60202` の間で、Turbopack が見る `src/` 配下の差は
+**`c2pa.ts` のコメント5行だけ**（`git diff f9616a58 4eb60202 -- src/ ':!*__tests__*'` で確認）。
+加えて `npm run build` は検査を外したぶん**やることが減っている**。コメント5行で 8 GB を超えるはずがない。
+後退させた2コミットは revert し、設計を元に戻した（検査を `build` の前段に戻し、`c2paMode.ts` を復活）。
+
+**なぜ気づけなかったか**: 「一時的でない → コードが原因」と**2択**で考えた。選択肢は3つある ——
+(1) 一時障害、(2) **持続する環境側の状態**（キャッシュが上限超過で捨てられる → 以後は毎回フルビルド → 8 GB が選ばれた回に毎回落ちる）、(3) コード。
+(2) を数えていなかったので、「連続して赤」を「コードが原因」の証拠として読んだ。**連続は持続性の証拠であって、場所の証拠ではない。**
+もう1つ: **二分探索は「同じ入力なら同じ結果」を前提にした手順**である。その前提が成り立つかを確かめずに手順を始めた。
+しかも前提が崩れていることは、**自分の台帳・DECISION_LOG・OPEN_QUESTIONS の3つに既に書いてあった**
+（DECISION_LOG 2026-10-07「8 GB の回にときどき落ちることは受け入れ」）。`grep -niE 'oom|sigkill' docs/context/` の1コマンドで出る。
+
+**型 E の再発防止が効かなかった理由**: 09-29 の対策は習慣2つだった ——「本番と同じ条件で段階別に計測してから**原因を口にする**」
+「上限すれすれの失敗は『次は通る／落ちる』を**予想しない**」。今回は原因を口にする代わりに**切り分けのコミットを打った**ので、
+「口にする前に」の歯止めに引っかからなかった。**コミットは発言より強い主張なのに、発言用の歯止めしか持っていなかった。**
+2つ目も、予想の代わりに**実験**をしたことで素通りした。
+
+**型 F の面**: 同じ失敗の形が台帳・DECISION_LOG・OPEN_QUESTIONS の3箇所にあり、どれも1コマンドで引ける。引かずに始めた。
+
+**再発を止める仕組み**: 仕組み無し（判断に依存）。
+- 習慣: **Vercel／CI の赤に対して切り分けのコミットを打つ前に**
+  `grep -niE 'oom|sigkill|タイムアウト' docs/context/MISTAKE_LEDGER.md docs/context/DECISION_LOG.md docs/context/OPEN_QUESTIONS.md` を打つ。
+  同じ形が出たら、二分探索ではなくそちらの対策を見る。
+- 習慣: 二分探索を始める前に「**同じコミットをもう一度回したら同じ色になるか**」を確かめる。
+  確かめられない（ログが読めない等）なら、二分探索の結論は書かない。
+- 習慣: **動いている設計を後退させる切り分けは最後の手段**にする。先に打つのは「同じコミットの再実行」と「ログの入手を頼む」。
+  今回はログを頼むのが最短で、実際それ1つで決着した。
 
 ## M-20261007-read-an-empty-tool-result-as-no-problem-found 道具が答えを返せなかったのを「異常なし」と読み、2回そのまま報告した（2026-10-07・型 A／F）
 
@@ -149,7 +190,7 @@ CLAUDE.md の「判断の道具そのものを検証する」はまさにこれ�
 **なぜ気づけなかったか**: **確かめたのは「自分のものが入っているか」で、「表が表のままか」ではない。**
 自分の ID で grep すれば「C 行と F 行に1件ずつ」と出る。2本目の F 行にも入っていたら、
 やはり同じ出力になる —— **検査が区別できない形だった。** 見るべきは
-`grep -oE '^\| \*\*[A-I]\.' | sort | uniq -c` で全型が1本かどうかだった。
+`grep -oE '^\| \*\*[A-Z]\.' | sort | uniq -c` で全型が1本かどうかだった。
 過去に同じ表で「行末文字列の置換が複数行に当たる」事故をやって行頭アンカーに変えており、
 **この表が複製に弱いと知っていた**のに、複製そのものを数えなかった。
 型 I（前提が途中で変わったのに読み直さない）でもある: 「両側を残す」は**エントリ**には正しく、
@@ -157,8 +198,11 @@ CLAUDE.md の「判断の道具そのものを検証する」はまさにこれ�
 
 **再発防止**: 仕組み無し（`check:ledger-ids` は見出しを見る検査で、表は見ていない。
 表の重複を見る検査を足すのは別作業として OPEN_QUESTIONS に残す）。習慣として、
-**`MISTAKE_LEDGER.md` の衝突を解消したら `grep -oE '^\| \*\*[A-I]\.' | sort | uniq -c` で
-9型すべてが1本であることを確かめ、残した行の ID 数が base から自分の追加分だけ増えていることを数える。**
+**`MISTAKE_LEDGER.md` の衝突を解消したら `grep -oE '^\| \*\*[A-Z]\.' | sort | uniq -c` で
+全型が1本であることを確かめ、残した行の ID 数が base から自分の追加分だけ増えていることを数える。**
+（**2026-10-08 訂正: この習慣を書いたとき範囲を `[A-I]` と書き、「9型」と数えていた。表は A〜L の12型あり、
+J/K/L の複製を見逃す範囲だった。** 複製を見る検査の範囲を自分で狭く書く、という同じ型の誤りである。
+`[A-Z]` に直し、実測で A〜L すべて1本であることを確認した。）
 「自分のものが入っているか」ではなく「**壊れていないか**」を見る。
 
 
