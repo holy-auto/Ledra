@@ -101,7 +101,6 @@ type PublicStatusResponse = {
   shop?: {
     name?: string | null;
     slug?: string | null;
-    custom_domain?: string | null;
   } | null;
   verification_url?: string | null;
   days_until_expiry?: number | null;
