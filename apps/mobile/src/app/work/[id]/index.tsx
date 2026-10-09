@@ -200,10 +200,12 @@ export default function WorkDetailScreen() {
 
   const { data: photos = [] } = useQuery<WorkPhoto[]>({
     queryKey: ["work-photos", certId],
+    // 一覧だけなのでサムネイルだけ署名させる
     queryFn: async () =>
-      (await mobileApi<{ images: WorkPhoto[] }>(`/certificates/${certId}/images`)).images,
-    // 署名 URL は 1 時間で切れるので、それより前に取り直す
+      (await mobileApi<{ images: WorkPhoto[] }>(`/certificates/${certId}/images?variant=thumbnail`)).images,
+    // 署名 URL は 1 時間で切れる。画面を開いたままでも切れる前に取り直す
     staleTime: 30 * 60 * 1000,
+    refetchInterval: 30 * 60 * 1000,
     enabled: !!certId,
   });
 
@@ -539,7 +541,12 @@ export default function WorkDetailScreen() {
                 {photos.map((photo) =>
                   photo.thumbnail_url ? (
                     <Image key={photo.id} source={{ uri: photo.thumbnail_url }} style={styles.photoThumb} />
-                  ) : null,
+                  ) : (
+                    // URL を取れなかった写真も枠は出す（写真が有るのか無いのか分からなくならないように）
+                    <View key={photo.id} style={[styles.photoThumb, styles.photoBroken]}>
+                      <Text style={styles.emptyText}>読み込めません</Text>
+                    </View>
+                  ),
                 )}
               </View>
             ) : (
@@ -867,6 +874,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     backgroundColor: colors.surfaceVariant,
   },
+  photoBroken: { alignItems: "center", justifyContent: "center" },
 
   // Docs
   docRow: {

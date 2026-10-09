@@ -19,13 +19,13 @@ const TENANT = "11111111-1111-1111-1111-111111111111";
 const CERT_ID = "22222222-2222-42d2-a222-222222222222";
 
 /** `.from(t).select().eq()...` の最小の代役。certificates は maybeSingle、certificate_images は order で返す。 */
-function callerSupabase(certRow: unknown, images: unknown[]) {
+function callerSupabase(certRow: unknown, images: unknown[], certError: unknown = null) {
   return {
     from: (t: string) => {
       const b: any = {
         select: () => b,
         eq: () => b,
-        maybeSingle: async () => ({ data: certRow, error: null }),
+        maybeSingle: async () => ({ data: certRow, error: certError }),
         order: async () => ({ data: t === "certificate_images" ? images : [], error: null }),
       };
       return b;
@@ -33,7 +33,7 @@ function callerSupabase(certRow: unknown, images: unknown[]) {
   };
 }
 
-const req = () => new Request(`http://x/api/mobile/certificates/${CERT_ID}/images`) as any;
+const req = (qs = "") => new Request(`http://x/api/mobile/certificates/${CERT_ID}/images${qs}`) as any;
 const params = Promise.resolve({ id: CERT_ID });
 
 beforeEach(() => {
@@ -109,5 +109,27 @@ describe("GET /api/mobile/certificates/[id]/images [写真の署名 URL]", () =>
     mocks.createSignedUrls.mockResolvedValueOnce({ data: null, error: { message: "boom" } });
     const body = await (await GET(req(), { params })).json();
     expect(body.images[0]).toMatchObject({ url: null, thumbnail_url: null, medium_url: null });
+  });
+
+  it("証明書の読み取りが失敗したら 404 ではなく 500（一時障害を「無い」と言わない）", async () => {
+    mocks.resolveMobileCaller.mockResolvedValueOnce({
+      tenantId: TENANT,
+      supabase: callerSupabase(null, [], { message: "db down" }),
+    });
+    expect((await GET(req(), { params })).status).toBe(500);
+    expect(mocks.createSignedUrls).not.toHaveBeenCalled();
+  });
+
+  it("?variant=thumbnail はサムネイル（無ければ原本）だけ署名する", async () => {
+    mocks.resolveMobileCaller.mockResolvedValueOnce({
+      tenantId: TENANT,
+      supabase: callerSupabase({ id: CERT_ID }, [
+        { id: "i1", storage_path: "a/1.jpg", thumbnail_path: "a/1_t.webp", medium_path: "a/1_m.webp" },
+        { id: "i2", storage_path: "a/2.jpg", thumbnail_path: null, medium_path: null },
+      ]),
+    });
+    mocks.createSignedUrls.mockResolvedValueOnce({ data: [], error: null });
+    await GET(req("?variant=thumbnail"), { params });
+    expect(mocks.createSignedUrls).toHaveBeenCalledWith(["a/1_t.webp", "a/2.jpg"], 3600);
   });
 });

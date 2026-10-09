@@ -117,7 +117,9 @@ export default function CertificateDetailScreen() {
   /** 拡大表示中の写真。タップで開く */
   const [preview, setPreview] = useState<CertImage | null>(null);
   /** 読み込めなかった写真。**黙って空白にすると「出ない」としか分からない** */
-  const [brokenIds, setBrokenIds] = useState<string[]>([]);
+  // 読み込みに失敗した URL（id ではなく URL で持つ。署名 URL は取り直すたびに変わるので、取り直せば再表示される）
+  const [brokenUrls, setBrokenUrls] = useState<string[]>([]);
+  const [previewBroken, setPreviewBroken] = useState(false);
 
   const { data: cert, isLoading } = useQuery({
     queryKey: ["certificate", id],
@@ -136,12 +138,14 @@ export default function CertificateDetailScreen() {
     enabled: !!id && !!user?.tenantId,
   });
 
+  const fetchImages = async () =>
+    (await mobileApi<{ images: CertImage[] }>(`/certificates/${id}/images`)).images;
   const { data: images = [] } = useQuery({
     queryKey: ["certificate-images", id],
-    queryFn: async () =>
-      (await mobileApi<{ images: CertImage[] }>(`/certificates/${id}/images`)).images,
-    // 署名 URL は 1 時間で切れるので、それより前に取り直す
+    queryFn: fetchImages,
+    // 署名 URL は 1 時間で切れる。画面を開いたままでも切れる前に取り直す
     staleTime: 30 * 60 * 1000,
+    refetchInterval: 30 * 60 * 1000,
     enabled: !!id && !!user?.tenantId,
   });
 
@@ -213,7 +217,8 @@ export default function CertificateDetailScreen() {
         Alert.alert("権限エラー", "写真を端末に保存する権限を許可してください");
         return;
       }
-      const url = img.url;
+      // 保存は原本を取り直してから（表示中の署名 URL が切れていても保存できるように）
+      const url = (await fetchImages()).find((i) => i.id === img.id)?.url;
       if (!url) throw new Error("写真の URL を取得できませんでした");
       const ext = img.ext;
       const dest = new File(Paths.cache, `cert-${img.id}.${ext}`);
@@ -403,11 +408,14 @@ export default function CertificateDetailScreen() {
                 <View key={img.id} style={styles.imageCard}>
                   {/* タップで拡大。一覧のサムネイルだけでは施工内容を確認できない */}
                   <Pressable
-                    onPress={() => setPreview(img)}
+                    onPress={() => {
+                      setPreviewBroken(false);
+                      setPreview(img);
+                    }}
                     accessibilityRole="imagebutton"
                     accessibilityLabel={`証明書画像を拡大 (${img.stage ?? "未指定"})`}
                   >
-                    {brokenIds.includes(img.id) || !img.thumbnail_url ? (
+                    {!img.thumbnail_url || brokenUrls.includes(img.thumbnail_url) ? (
                       <View style={[styles.image, styles.imageBroken]}>
                         <Icon source="image-off" size={24} color={colors.textSecondary} />
                         <Text style={styles.imageBrokenText}>読み込めません</Text>
@@ -421,7 +429,9 @@ export default function CertificateDetailScreen() {
                         resizeMode="cover"
                         // 失敗を握りつぶすと「写真が出ない」の原因が切り分けられない
                         onError={() =>
-                          setBrokenIds((prev) => (prev.includes(img.id) ? prev : [...prev, img.id]))
+                          setBrokenUrls((prev) =>
+                            !img.thumbnail_url || prev.includes(img.thumbnail_url) ? prev : [...prev, img.thumbnail_url],
+                          )
                         }
                         accessibilityLabel={`証明書画像 (${img.stage ?? "未指定"})`}
                       />
@@ -539,12 +549,20 @@ export default function CertificateDetailScreen() {
           <Dialog.Content style={styles.previewContent}>
             {preview && (
               <>
-                <Image
-                  source={{ uri: preview.medium_url ?? undefined }}
-                  style={styles.previewImage}
-                  resizeMode="contain"
-                  accessibilityLabel={`証明書画像 (${preview.stage ?? "未指定"})`}
-                />
+                {preview.medium_url && !previewBroken ? (
+                  <Image
+                    source={{ uri: preview.medium_url }}
+                    style={styles.previewImage}
+                    resizeMode="contain"
+                    onError={() => setPreviewBroken(true)}
+                    accessibilityLabel={`証明書画像 (${preview.stage ?? "未指定"})`}
+                  />
+                ) : (
+                  <View style={[styles.previewImage, styles.imageBroken]}>
+                    <Icon source="image-off" size={24} color={colors.textSecondary} />
+                    <Text style={styles.imageBrokenText}>読み込めません（画面を引っ張って更新してください）</Text>
+                  </View>
+                )}
                 <Text style={styles.qrCaption}>
                   {preview.stage ? (STAGE_MAP[preview.stage] ?? STAGE_MAP.unspecified).label : "段階未指定"}
                 </Text>

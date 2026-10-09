@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { signImagePaths } from "@/lib/certificateImages/signedUrls";
+import { signAssetPaths } from "@/lib/signedUrl";
 import { apiOk, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
@@ -15,6 +15,8 @@ export const dynamic = "force-dynamic";
  * 保存先（assets バケット）を非公開にすると表示できなくなるので、署名 URL をこの経路で受け取る。
  * 署名はユーザーロールでは発行できない（assets の RLS はユーザーロールを通さない）ので、テナント境界を
  * RLS で確認したうえで service-role で発行する。閲覧は所属メンバーなら誰でも（一覧表示と同じ）。
+ *
+ * `?variant=thumbnail` のときはサムネイル（無ければ原本）だけ署名する（一覧だけを出す画面用。署名の数を 3 分の 1 にする）。
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -27,12 +29,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params;
 
     // 証明書がこのテナントに実在することを RLS スコープで確認（他テナントの写真に署名させない）
-    const { data: cert } = await caller.supabase
+    const { data: cert, error: certErr } = await caller.supabase
       .from("certificates")
       .select("id")
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .maybeSingle();
+    // 一時障害を「無い」と言わない（モバイルは 404 を再試行しない）
+    if (certErr) throw certErr;
     if (!cert?.id) return apiNotFound("証明書が見つかりません。");
 
     const { data: rows, error } = await caller.supabase
@@ -51,9 +55,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       authenticity_grade: string | null;
     }>;
     const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const signed = await signImagePaths(
+    const thumbOnly = new URL(request.url).searchParams.get("variant") === "thumbnail";
+    const signed = await signAssetPaths(
       admin,
-      images.flatMap((i) => [i.storage_path, i.thumbnail_path, i.medium_path]),
+      images.flatMap((i) =>
+        thumbOnly ? [i.thumbnail_path ?? i.storage_path] : [i.storage_path, i.thumbnail_path, i.medium_path],
+      ),
     );
     const url = (p: string | null) => (p && signed.get(p)) || null;
 

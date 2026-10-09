@@ -5,7 +5,7 @@ import {
   type CertificateMediaRow,
   type ResolvedCertificateMedia,
 } from "@/lib/certificateMedia";
-import { signImagePaths } from "@/lib/certificateImages/signedUrls";
+import { signAssetPaths } from "@/lib/signedUrl";
 import {
   canViewCertificateDetails,
   DETAIL_ACCESS_COLUMNS,
@@ -358,13 +358,21 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
   }
 
   const imageRows = !imgRes.error && imgRes.data ? imgRes.data : [];
-  // 署名 URL（公開 URL は使わない。保存先を非公開にしても表示が壊れないように）。見せない閲覧者の分は発行しない。
-  const signed = detailVisible
-    ? await signImagePaths(
-        supabase,
-        imageRows.flatMap((i) => [i.storage_path, i.rendered_storage_path]),
-      )
-    : new Map<string, string>();
+  // void 状態のときは写真もメディアも公開しない（ページ側も出さない）
+  const certStatusLower = String(cert.status ?? "").toLowerCase();
+  const isVoid = certStatusLower === "void";
+  const mediaRows = !mediaRes.error && mediaRes.data && !isVoid && detailVisible ? mediaRes.data : [];
+  // 写真は署名 URL（公開 URL は使わない。保存先を非公開にしても表示が壊れないように）。見せない閲覧者・void の分は発行しない。
+  // 署名とメディアの解決は互いに独立なので並べて待つ。
+  const [signed, media] = await Promise.all([
+    detailVisible && !isVoid
+      ? signAssetPaths(
+          supabase,
+          imageRows.flatMap((i) => [i.storage_path, i.rendered_storage_path]),
+        )
+      : Promise.resolve(new Map<string, string>()),
+    Promise.all(mediaRows.map((row) => resolveCertificateMedia(supabase, row))) as Promise<ResolvedCertificateMedia[]>,
+  ]);
   const images: (ImageRow & { url: string | null; rendered_url: string | null })[] = imageRows.map((img) => {
     // 写真を見せない閲覧者には URL・注釈・ファイル名を渡さない（件数と認証グレードだけ残す）。
     // assets バケットは（非公開化するまで）公開なので、パスだけでも写真に届く。パスも落とす。
@@ -382,14 +390,6 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
     const renderedUrl = (img.rendered_storage_path && signed.get(img.rendered_storage_path)) || null;
     return { ...img, url, rendered_url: renderedUrl };
   });
-
-  // certificate_media: void 状態のときは images と同じく公開しない
-  const certStatusLower = String(cert.status ?? "").toLowerCase();
-  const isVoid = certStatusLower === "void";
-  const mediaRows = !mediaRes.error && mediaRes.data && !isVoid && detailVisible ? mediaRes.data : [];
-  const media: ResolvedCertificateMedia[] = await Promise.all(
-    mediaRows.map((row) => resolveCertificateMedia(supabase, row)),
-  );
 
   // reservations: 来店以降のステータスのみ公開対象。日時は scheduled_date + start_time
   // から ISO 文字列に整形して、UnifiedTimeline 側でソートできるようにする。

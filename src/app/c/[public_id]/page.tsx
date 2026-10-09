@@ -88,6 +88,7 @@ type PublicStatusResponse = {
     file_size?: number | null;
     sort_order?: number | null;
     created_at?: string | null;
+    storage_path?: string | null;
     url?: string | null;
     rendered_url?: string | null;
     annotations?: unknown;
@@ -204,8 +205,9 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
   const images = allImages.filter((img) => !!img?.url);
   const media = !isVoidCertificate ? (data.media ?? []) : [];
   const detailHidden = data.detail_visible === false && !isVoidCertificate;
-  // 写真を見せない閲覧者（URL 無し）にも件数と認証グレードは出す。見せる閲覧者は従来どおり表示できる写真で数える。
-  const heroImages = detailHidden ? allImages : images;
+  // 件数と認証グレードは、写真を見せない閲覧者（URL 無し）にも出す。見せる閲覧者は保存パスのある写真で数える
+  // （署名 URL の発行に一時的に失敗しても、件数・グレード・アンカーが落ちないように）。
+  const heroImages = detailHidden ? allImages : allImages.filter((img) => !!img.storage_path);
   const heroGrade: AuthenticityGrade = highestGrade(
     heroImages.map((img) => img.authenticity_grade as AuthenticityGrade | null | undefined),
   );
