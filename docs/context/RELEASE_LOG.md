@@ -35,6 +35,13 @@
   23件に増やしたあと測り直していなかった。** 今の版で実測し直した内訳は
   重複行 1件赤・行数の床 1件赤・死んだ ID 3件赤・`[A-I]` 16件赤。
   `M-20261009-carried-a-mutation-count-past-the-change-that-invalidated-it`）
+- **2026-10-09 追記（この PR で分かったこと: 衝突している PR には CI が走らない）**:
+  この PR は4回 push しても GitHub Actions の `pull_request` 実行が**1件も作られなかった**。
+  原因は PR が作成時点から `mergeable_state=dirty` だったことで、**`main` を取り込んで衝突を解いた
+  直後の push で4本（CI・CodeQL・Gitleaks・Lines of Code）が即座に作られた**。
+  別セッションの #1292 でも同じ（`dirty`・`refs/pull/1292/merge` が無い・実行0件）。
+  **衝突している PR は「CI がまだ」と見分けが付かない** —— チェック欄には Vercel と Supabase の
+  2本だけが並び、緑に見える。詳細と運用は DECISION_LOG 2026-10-09。
 - **2026-10-09 追記（書いた当日の最初の取り込みで実際に止めた）**: この PR を `main`（`f1b5be91`）に
   追従させたところ、**台帳の型表が自動マージで壊れた** —— E・F 行が二重になり、表の途中に空行が入って
   **12行が9行に割れた**。`npm run check:ledger-ids` が「型表の行が 9 行しか読めなかった（下限は 12 行）」で
