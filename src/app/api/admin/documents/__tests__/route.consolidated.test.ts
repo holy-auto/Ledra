@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   userClient: null as any,
   admin: null as any,
   role: "admin",
+  sync: vi.fn(),
 }));
 
 vi.mock("next/server", async (orig) => ({ ...(await orig<typeof import("next/server")>()), after: vi.fn() }));
@@ -25,6 +26,11 @@ vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({}) },
 }));
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+// 元請求書の取消扱い・戻しの中身は consolidatedSupersede.test.ts で見る。ここでは呼ぶ契機だけ見る
+vi.mock("@/lib/documents/consolidatedSupersede", async (orig) => ({
+  ...(await orig<typeof import("@/lib/documents/consolidatedSupersede")>()),
+  syncConsolidatedSources: mocks.sync,
+}));
 // 採番は DB を見るので、固定番号で insert を1回だけ呼ぶ
 vi.mock("@/lib/invoice/invoiceNumber", () => ({
   insertDocWithRetry: (_a: unknown, _t: unknown, _d: unknown, _p: unknown, insert: (n: string) => unknown) =>
@@ -115,6 +121,81 @@ beforeEach(() => {
   mocks.userClient = null;
   mocks.admin = null;
   mocks.role = "admin";
+  mocks.sync.mockReset();
+});
+
+describe("合算請求書と元の請求書の二重計上を防ぐ（元請求書の取消扱い・戻しを呼ぶ契機）", () => {
+  it("合算請求書を取消にしたら、元の請求書を戻すために同期を呼ぶ", async () => {
+    mocks.userClient = client({ documents: { doc_type: "consolidated_invoice", status: "sent", meta_json: {} } });
+    mocks.admin = client({});
+
+    const res = await PUT(req("PUT", { id: DOC_ID, status: "cancelled" }));
+
+    expect(res.status).toBe(200);
+    expect(mocks.sync).toHaveBeenCalledWith(
+      mocks.admin,
+      "t1",
+      expect.objectContaining({ id: DOC_ID, doc_type: "consolidated_invoice", status: "cancelled" }),
+    );
+  });
+
+  it("ステータスを変えない編集では同期を呼ばない", async () => {
+    mocks.userClient = client({ documents: { doc_type: "consolidated_invoice", status: "draft", meta_json: {} } });
+    mocks.admin = client({});
+
+    await PUT(req("PUT", { id: DOC_ID, note: "x" }));
+
+    expect(mocks.sync).not.toHaveBeenCalled();
+  });
+
+  it("合算請求書にまとめて取消扱いになった請求書は、ここから戻させない（戻すと両方が未入金に乗る）", async () => {
+    mocks.userClient = client({
+      documents: { doc_type: "invoice", status: "cancelled", meta_json: { consolidated_into: "cinv-1" } },
+    });
+    mocks.admin = client({});
+
+    const res = await PUT(req("PUT", { id: DOC_ID, status: "sent" }));
+
+    expect(res.status).toBe(400);
+    expect(mocks.admin.calls.update).toBeUndefined();
+  });
+
+  it("取消した合算請求書は戻させない（取消の間に元の請求書が別の合算へまとめ直されうる）", async () => {
+    mocks.userClient = client({ documents: { doc_type: "consolidated_invoice", status: "cancelled", meta_json: {} } });
+    mocks.admin = client({});
+
+    const res = await PUT(req("PUT", { id: DOC_ID, status: "sent" }));
+
+    expect(res.status).toBe(400);
+    expect(mocks.admin.calls.update).toBeUndefined();
+  });
+
+  it("meta_json を丸ごと送る更新でも、まとめ先（戻すための印）を消さない", async () => {
+    const meta = { consolidated_into: "cinv-1", status_before_consolidation: "sent" };
+    mocks.userClient = client({ documents: { doc_type: "invoice", status: "cancelled", meta_json: meta } });
+    mocks.admin = client({});
+
+    await PUT(req("PUT", { id: DOC_ID, meta_json: { consolidated_into: null } }));
+
+    expect(mocks.admin.calls.update.meta_json).toEqual(meta);
+  });
+
+  it("合算請求書を削除したら、実際に消えたものについて元の請求書を戻す", async () => {
+    const doc = { id: DOC_ID, status: "sent", doc_type: "consolidated_invoice", meta_json: {} };
+    mocks.userClient = client({ documents: [doc] });
+    mocks.admin = client({ payment_entries: [], billing_splits: [], documents: null });
+
+    expect((await DELETE(req("DELETE", { id: DOC_ID }))).status).toBe(200);
+    expect(mocks.sync).toHaveBeenCalledWith(mocks.admin, "t1", doc, { deleted: true });
+  });
+
+  it("消えなかった（入金済へ変わった）合算請求書の元請求書は戻さない", async () => {
+    mocks.userClient = client({ documents: [{ id: DOC_ID, status: "sent", doc_type: "consolidated_invoice" }] });
+    mocks.admin = client({ payment_entries: [], billing_splits: [], documents: null }, { deleteReturnsNothing: true });
+
+    expect((await DELETE(req("DELETE", { id: DOC_ID }))).status).toBe(409);
+    expect(mocks.sync).not.toHaveBeenCalled();
+  });
 });
 
 describe("PUT /api/admin/documents（合算請求書の下書き編集）", () => {
@@ -328,6 +409,15 @@ describe("POST /api/admin/documents（合算請求書の明細を元帳票の明
     ]);
     expect([row.subtotal, row.tax, row.total]).toEqual([100592, 10059, 110651]);
     expect(row.meta_json).toMatchObject({ consolidated_items: "inline", is_tax_inclusive: false });
+    // 作成したら元の請求書を取消扱いにする（二重計上を防ぐ）
+    expect(mocks.sync).toHaveBeenCalledWith(
+      mocks.admin,
+      "t1",
+      expect.objectContaining({
+        doc_type: "consolidated_invoice",
+        meta_json: expect.objectContaining({ source_document_ids: ["a", "b"] }),
+      }),
+    );
   });
 
   it("税込/税抜が混在してまとめられないときは要約行のまま作り、inline の印を外す（別紙の内訳に回す）", async () => {
@@ -352,6 +442,7 @@ describe("POST /api/admin/documents（合算請求書の明細を元帳票の明
       const res = await POST(req("POST", body));
       expect(res.status).toBe(400);
       expect(mocks.admin.calls.insert).toBeUndefined();
+      expect(mocks.sync).not.toHaveBeenCalled();
     }
     // 見つからない元帳票（他テナント・削除済み）が混じっていても拒否する
     mocks.admin = client({ tenants: { registration_number: null }, documents: [SOURCES[0]] });

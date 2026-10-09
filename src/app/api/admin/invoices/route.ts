@@ -2,17 +2,13 @@ import { NextRequest, after } from "next/server";
 import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { parsePagination } from "@/lib/api/pagination";
-import {
-  apiJson,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { invoiceCreateSchema, invoiceUpdateSchema, invoiceDeleteSchema } from "@/lib/validations/invoice";
 import { buildTaxBreakdown, totalTax, isValidRegistrationNumber } from "@/lib/invoice/taxBreakdown";
 import { recordInvoicePaymentBalance } from "@/lib/invoice/recordPayment";
 import { insertInvoiceWithRetry } from "@/lib/invoice/invoiceNumber";
 import { autoRegisterMenuItems } from "@/lib/documents/autoRegisterMenuItems";
+import { consolidatedInto } from "@/types/document";
 
 export const dynamic = "force-dynamic";
 
@@ -359,6 +355,23 @@ export const PUT = withCaller(
 
     // RLS をバイパスしてサービスロールで UPDATE（tenant_id と doc_type で必ずスコープ限定）
     const { admin } = createTenantScopedAdmin(caller.tenantId);
+
+    // 合算請求書にまとめて取消扱いになった請求書は戻させない（帳票 API と同じ。戻すと二重計上になる）
+    if (body.status !== undefined) {
+      const { data: cur, error: curErr } = await admin
+        .from("documents")
+        .select("meta_json")
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      if (curErr) return apiInternalError(curErr, "invoices update read");
+      if (consolidatedInto(cur?.meta_json)) {
+        return apiValidationError(
+          "合算請求書にまとめた請求書はステータスを変更できません。合算請求書を取消・削除すると元に戻ります。",
+        );
+      }
+    }
+
     const { data, error } = await admin
       .from("documents")
       .update(updates)

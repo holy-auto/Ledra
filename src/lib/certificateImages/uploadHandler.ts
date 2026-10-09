@@ -16,7 +16,7 @@ import { isPhotoTsaEnabled } from "@/lib/anchoring/providers/photoTsa";
 import { verifyDeviceAttestation } from "@/lib/anchoring/providers/deviceAttestation";
 import { consumeCaptureNonce, type ConsumeNonceResult } from "@/lib/certificates/captureNonce";
 import { processUploadedPhoto } from "@/lib/certificateImages/processUploadedPhoto";
-import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2pa";
+import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2paMode";
 import { createC2paSigner } from "@/lib/anchoring/providers/c2paSigner";
 import { normalizeStage } from "@/lib/certificateImages/stage";
 import { maybeAutoTamperingCheckForCertificate } from "@/lib/ai/automation/photoTamperingAuto";

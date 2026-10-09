@@ -4,9 +4,10 @@ import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { nextStatusesFor, type DocType, type DocumentStatus } from "@/types/document";
+import { consolidatedInto, nextStatusesFor, type DocType, type DocumentStatus } from "@/types/document";
 import { resolveBaseUrl } from "@/lib/url";
 import { recordPaymentOnPaid, runDocumentFinalizeEffects } from "@/lib/documents/statusEffects";
+import { syncConsolidatedSources } from "@/lib/documents/consolidatedSupersede";
 import { type SealableDocument } from "@/lib/documents/documentSeal";
 import {
   apiOk,
@@ -59,7 +60,7 @@ export async function PUT(request: NextRequest) {
 
     const { data: existing, error: readErr } = await admin
       .from("documents")
-      .select("id, doc_type, status")
+      .select("id, doc_type, status, meta_json")
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .maybeSingle();
@@ -79,6 +80,13 @@ export async function PUT(request: NextRequest) {
     const allowed = nextStatusesFor(existing.doc_type as DocType, priorStatus);
     if (!allowed.includes(status)) {
       return apiValidationError(`このステータスへは変更できません（${priorStatus} → ${status}）。`);
+    }
+
+    // 管理画面 PUT と同じく、合算請求書にまとめた請求書は戻させない（二重計上になる）
+    if (consolidatedInto(existing.meta_json)) {
+      return apiValidationError(
+        "合算請求書にまとめた請求書はステータスを変更できません。合算請求書を取消・削除すると元に戻ります。",
+      );
     }
 
     // documents に更新トリガは無い。管理画面 PUT と同じく明示的に入れないと
@@ -107,6 +115,13 @@ export async function PUT(request: NextRequest) {
     if (!data) {
       return apiValidationError("他の操作でステータスが変わりました。画面を更新してやり直してください。");
     }
+
+    await syncConsolidatedSources(admin, caller.tenantId, {
+      id: data.id as string,
+      doc_type: data.doc_type as string,
+      status: data.status as string,
+      meta_json: data.meta_json,
+    });
 
     if (status === "paid" && data) {
       await recordPaymentOnPaid(admin, {
