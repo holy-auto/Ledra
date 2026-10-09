@@ -9,6 +9,7 @@ import { InsurerPdfDoc } from "@/lib/insurerPdfDoc";
 import { apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import type { InsurerAccessAction } from "@/lib/insurer/auditActions";
+import { certificatePublicUrl } from "@/lib/url";
 
 export const runtime = "nodejs";
 
@@ -16,12 +17,6 @@ function getClientMeta(req: Request) {
   const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? null;
   const ua = req.headers.get("user-agent") ?? null;
   return { ip, ua };
-}
-
-function buildBaseUrl(req: Request) {
-  const proto = req.headers.get("x-forwarded-proto") ?? "http";
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "localhost:3000";
-  return `${proto}://${host}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -62,8 +57,7 @@ export async function GET(req: NextRequest) {
     });
     if (logErr) return apiValidationError(logErr.message);
 
-    const baseUrl = buildBaseUrl(req);
-    const publicUrl = `${baseUrl}/c/${encodeURIComponent(pid)}`;
+    const publicUrl = certificatePublicUrl(pid);
 
     let qrDataUrl = "";
     try {

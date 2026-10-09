@@ -7,8 +7,7 @@
 
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { renderCertificatePdf, type CertRow } from "@/lib/pdfCertificate";
-
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.APP_URL ?? "https://ledra.jp";
+import { certificatePublicUrl } from "@/lib/url";
 
 /** PDF に埋め込む署名情報 */
 export interface PdfSignatureInfo {
@@ -90,8 +89,7 @@ export async function generateCertificatePdfBytes(certificateId: string): Promis
     throw new Error(`[pdfUtils] Certificate not found: ${certificateId}`);
   }
 
-  // 公開 URL は常に本ドメイン（独自ドメインは未配線。certificate/pdf/route.ts の buildOrigin と同じ理由）
-  const publicUrl = `${BASE_URL}/c/${cert.public_id}`;
+  const publicUrl = certificatePublicUrl(cert.public_id);
 
   // CertRow は Record<string, any> を許容するので Record<string, unknown>
   // からは直接代入できない。ここだけ一度 any 経由で橋渡しする。将来

@@ -1,7 +1,6 @@
 import { enforceBilling, isNavigation, redirectToPublic } from "@/lib/billing/guard";
 import { electronicDeliveryBlockMessage, BLOCKED_UNVERIFIED } from "@/lib/delivery/deliveryConsent";
 import { isValidStaffPdfToken } from "@/lib/certificates/staffPdfLink";
-import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
@@ -16,6 +15,7 @@ import {
 } from "@/lib/pdfCertificate";
 import { loadPublicCertificateMedia } from "@/lib/certificateMedia/loadPublic";
 import { omitPlate } from "@/lib/certificates/publicData";
+import { certificatePublicUrl } from "@/lib/url";
 import {
   canViewCertificateDetails,
   DETAIL_ACCESS_COLUMNS,
@@ -49,21 +49,6 @@ type CertPublic = {
   tenant_slug: string | null;
   craftsman_name?: string | null;
 };
-
-// QR・本文の公開 URL は常に本ドメイン。テナントの独自ドメイン（tenants.custom_domain）はアプリ側に配線されておらず
-// （proxy.ts は resolveTenantByHost を呼ばない）、QR が開けないページを指していた。ログイン・購入の cookie も本ドメインにしか無い。
-function buildOrigin(fallbackOrigin: string) {
-  return process.env.APP_URL || fallbackOrigin;
-}
-
-async function getFallbackOrigin(): Promise<string> {
-  const h = await headers(); // Next.js 16: Promise
-  const xfProto = h.get("x-forwarded-proto");
-  const xfHost = h.get("x-forwarded-host");
-  const host = xfHost ?? h.get("host") ?? "localhost:3000";
-  const proto = xfProto ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
-}
 
 // 公開ビュー certificates_public（customer_name / content_free_text を NULL 化済み）をサーバー側で読む。
 // 以前は anon キーで REST を叩いていたため、anon に certificates の SELECT（active 全件）を
@@ -179,9 +164,8 @@ export async function GET(req: Request) {
   // スタッフ署名（st）での出力は店舗が書面交付用に出すものなので載せる。
   const detailVisible = byStaff || (await canViewCertificateDetails(fullCert));
 
-  const fallbackOrigin = await getFallbackOrigin();
-  const origin = buildOrigin(fallbackOrigin);
-  const publicUrl = `${origin}/c/${cert.public_id}`;
+  // QR・本文の公開 URL は本ドメイン固定（リクエストのホスト・テナントの独自ドメインは使わない。url.ts）
+  const publicUrl = certificatePublicUrl(cert.public_id);
 
   let anchors: AnchorInfo[] = [];
   let photos: PdfPhoto[] = [];
