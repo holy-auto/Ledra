@@ -167,6 +167,18 @@ describe("redactCertificateDetails [匿名向けに個人情報を落とす]", (
       damage_map_json: null,
     });
   });
+  it("膜厚は値を残してメモだけ落とす。他のプリセット項目は触らない", () => {
+    const r = redactCertificateDetails({
+      content_preset_json: {
+        film_thickness: [{ location: "ボンネット", after_um: 95, notes: "山田様宅で測定" }],
+        gloss: "A",
+      },
+    });
+    expect(r.content_preset_json).toEqual({
+      film_thickness: [{ location: "ボンネット", after_um: 95, notes: "" }],
+      gloss: "A",
+    });
+  });
   it("JSON が無い・配列なら null", () => {
     expect(redactCertificateDetails({ maintenance_json: null, body_repair_json: [] }).body_repair_json).toBeNull();
   });

@@ -1,4 +1,5 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { todayInJst } from "@/lib/retention";
 import { OUTWARD_VISIBLE_TYPES } from "@/lib/audit/certificateLog";
 import {
   resolveCertificateMedia,
@@ -430,7 +431,9 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
     }
   }
 
-  const warrantyActive = cert.warranty_period_end != null && new Date(cert.warranty_period_end).getTime() > Date.now();
+  // 保証期限は date 型。UTC 0 時と比べると最終日の 9:00 JST で切れるので、JST の今日と日付どうしで比べる。
+  const warrantyActive =
+    cert.warranty_period_end != null && String(cert.warranty_period_end).slice(0, 10) >= todayInJst();
 
   return {
     ok: true,

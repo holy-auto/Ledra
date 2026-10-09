@@ -18,17 +18,20 @@ function toNum(v: unknown): number | null {
 export function parseFilmThickness(preset: unknown): FilmThicknessRow[] {
   const raw = preset && typeof preset === "object" ? (preset as Record<string, unknown>).film_thickness : null;
   if (!Array.isArray(raw)) return [];
-  return raw
-    .map((r) => {
-      const o = r && typeof r === "object" ? (r as Record<string, unknown>) : {};
-      return {
-        location: typeof o.location === "string" ? o.location.trim() : "",
-        before_um: toNum(o.before_um),
-        after_um: toNum(o.after_um),
-        notes: typeof o.notes === "string" ? o.notes.trim() : "",
-      };
-    })
-    .filter((r) => r.location || r.before_um != null || r.after_um != null);
+  return (
+    raw
+      .map((r) => {
+        const o = r && typeof r === "object" ? (r as Record<string, unknown>) : {};
+        return {
+          location: typeof o.location === "string" ? o.location.trim() : "",
+          before_um: toNum(o.before_um),
+          after_um: toNum(o.after_um),
+          notes: typeof o.notes === "string" ? o.notes.trim() : "",
+        };
+      })
+      // 部位だけ選んで値を入れていない行も保存されるので、測定値のある行だけ出す。
+      .filter((r) => r.before_um != null || r.after_um != null)
+  );
 }
 
 /** 「施工前 80 / 施工後 95 µm」。PDF の埋め込みフォントに「→」が無いので矢印は使わない。 */

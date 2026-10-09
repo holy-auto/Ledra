@@ -4,8 +4,8 @@ import { useRef, useState } from "react";
 import {
   DAMAGE_KINDS,
   DAMAGE_DIAGRAM,
-  DAMAGE_KIND_COLOR,
-  damageKindLabel,
+  DAMAGE_KIND_COLOR as KIND_COLOR,
+  damageKindLabel as kindLabel,
   toNormalized,
   serializeDamageMap,
   type DamageKind,
@@ -21,9 +21,6 @@ import HelpTooltip from "@/components/ui/HelpTooltip";
  * FormData で吸い上げる（body_repair_json / film_thickness_json と同じパターン）。
  * 実写真注釈と違い車両模式図に落とすので、保険査定等で位置が一目で伝わる。
  */
-
-const KIND_COLOR = DAMAGE_KIND_COLOR;
-const kindLabel = damageKindLabel;
 
 export default function DamageMapSection() {
   const [markers, setMarkers] = useState<DamageMarker[]>([]);

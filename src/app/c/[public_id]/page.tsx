@@ -500,9 +500,11 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
               {data.certificate.warranty_period_end ? (
                 <div className="rounded-lg bg-base px-3 py-2 text-secondary">
                   保証期限: <span className="text-primary">{formatDate(data.certificate.warranty_period_end)}</span>
-                  <span className={`ml-2 text-xs ${data.warranty_active ? "text-emerald-400" : "text-muted"}`}>
-                    {data.warranty_active ? "保証期間内" : "保証期間外"}
-                  </span>
+                  {!isVoidCertificate ? (
+                    <span className={`ml-2 text-xs ${data.warranty_active ? "text-emerald-400" : "text-muted"}`}>
+                      {data.warranty_active ? "保証期間内" : "保証期間外"}
+                    </span>
+                  ) : null}
                 </div>
               ) : null}
               {data.certificate.warranty_exclusions ? (
@@ -545,7 +547,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
                 <path d={DAMAGE_DIAGRAM.windshield} fill="currentColor" fillOpacity={0.08} />
                 <path d={DAMAGE_DIAGRAM.rearWindow} fill="currentColor" fillOpacity={0.08} />
                 {damageMap.markers.map((m, i) => (
-                  <g key={m.id}>
+                  <g key={i}>
                     <circle
                       cx={m.x * DAMAGE_DIAGRAM.width}
                       cy={m.y * DAMAGE_DIAGRAM.height}
@@ -567,7 +569,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
               </svg>
               <ol className="grid flex-1 gap-1 text-sm text-secondary">
                 {damageMap.markers.map((m, i) => (
-                  <li key={m.id}>
+                  <li key={i}>
                     <span className="font-medium text-primary">
                       {i + 1}. {damageKindLabel(m.kind)}
                     </span>

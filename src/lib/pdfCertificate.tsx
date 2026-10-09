@@ -1150,7 +1150,14 @@ export async function renderCertificatePdf(
               <Text style={styles.cardEyebrow}>保証情報 · Warranty</Text>
               <View style={[styles.row, styles.rowFirst]}>
                 <Text style={styles.rowLabel}>保証期間終了日</Text>
-                <Text style={styles.rowValue}>{row.warranty_period_end}</Text>
+                <Text style={styles.rowValue}>
+                  {new Date(row.warranty_period_end).toLocaleDateString("ja-JP", {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                    timeZone: "Asia/Tokyo",
+                  })}
+                </Text>
               </View>
             </View>
           )}
@@ -1205,7 +1212,7 @@ export async function renderCertificatePdf(
                   <Path d={DAMAGE_DIAGRAM.windshield} fill="#e0e7ff" stroke="#c7d2fe" strokeWidth={1} />
                   <Path d={DAMAGE_DIAGRAM.rearWindow} fill="#e0e7ff" stroke="#c7d2fe" strokeWidth={1} />
                   {damageMap.markers.map((m, i) => (
-                    <G key={m.id}>
+                    <G key={i}>
                       <Circle
                         cx={m.x * DAMAGE_DIAGRAM.width}
                         cy={m.y * DAMAGE_DIAGRAM.height}
@@ -1226,7 +1233,7 @@ export async function renderCertificatePdf(
                 </Svg>
                 <View style={{ flex: 1 }}>
                   {damageMap.markers.map((m, i) => (
-                    <Text key={m.id} style={styles.bullet}>
+                    <Text key={i} style={styles.bullet}>
                       {i + 1}. {damageKindLabel(m.kind)}
                       {m.note ? ` — ${m.note}` : ""}
                     </Text>

@@ -109,6 +109,16 @@ function pick(v: unknown, keys: readonly string[]): Record<string, unknown> | nu
   return out;
 }
 
+function dropThicknessNotes(preset: unknown): unknown {
+  if (!preset || typeof preset !== "object" || Array.isArray(preset)) return preset;
+  const ft = (preset as Record<string, unknown>).film_thickness;
+  if (!Array.isArray(ft)) return preset;
+  return {
+    ...preset,
+    film_thickness: ft.map((r) => (r && typeof r === "object" ? { ...(r as object), notes: "" } : r)),
+  };
+}
+
 /**
  * 匿名閲覧向けに、施工内容から個人情報（担当者の氏名・自由記述）を落とす。
  * **許可リスト**: 知らないキーは出さない（キーが増えても既定で漏れない）。
@@ -120,6 +130,7 @@ export function redactCertificateDetails<
     body_repair_json?: unknown;
     accessory_json?: unknown;
     damage_map_json?: unknown;
+    content_preset_json?: unknown;
   },
 >(cert: T): T {
   return {
@@ -130,5 +141,9 @@ export function redactCertificateDetails<
     accessory_json: pick(cert.accessory_json, PUBLIC_DETAIL_KEYS.accessory_json),
     // 傷の位置とメモは写真と同じく車両状態の記録なので、匿名閲覧には出さない。
     damage_map_json: null,
+    // 膜厚の測定値は施工内容として出すが、行ごとのメモは他の作業メモと同じく落とす。
+    ...(cert.content_preset_json !== undefined
+      ? { content_preset_json: dropThicknessNotes(cert.content_preset_json) }
+      : {}),
   };
 }

@@ -2,12 +2,13 @@ import { describe, it, expect } from "vitest";
 import { parseFilmThickness, formatThickness } from "../filmThickness";
 
 describe("parseFilmThickness", () => {
-  it("数値・数値文字列を読み、空行と壊れた値を落とす", () => {
+  it("数値・数値文字列を読み、測定値の無い行と壊れた値を落とす", () => {
     const rows = parseFilmThickness({
       film_thickness: [
         { location: " ボンネット ", before_um: 80, after_um: "95", notes: "" },
         { location: "", before_um: null, after_um: "", notes: "メモだけ" },
         { location: "ルーフ", before_um: "abc", after_um: 100 },
+        { location: "ドア", before_um: null, after_um: null, notes: "" },
         "壊れた行",
       ],
     });
