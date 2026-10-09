@@ -22,15 +22,10 @@ export type ShopIndustry = {
   glossary: string[];
 };
 
-const warrantyFeature = {
-  title: "保証期間と、保証の対象外",
-  description: "保証の終了日・有効条件・保証の対象外を証明書に記載。対象外の文面は店舗の既定文として使い回せます。",
-};
-
 const followUpFeature = {
   title: "施工後のフォロー連絡",
   description:
-    "施工後のフォロー、メンテナンスの時期、季節の提案、保証が終わる前のお知らせを、設定した日数・月数で自動で送ります（LINE 連携済みのお客様には LINE、それ以外はメール）。",
+    "施工後のフォロー、メンテナンスの時期、保証が終わる前のお知らせを、設定した日数・月数で自動で送ります（LINE 連携済みのお客様には LINE、それ以外はメール）。冬前・梅雨前の季節の提案はメールで送ります。",
 };
 
 export const SHOP_INDUSTRIES: ShopIndustry[] = [
@@ -58,7 +53,10 @@ export const SHOP_INDUSTRIES: ShopIndustry[] = [
           "ブランドと製品名を製品ごとに証明書へ記載。下地とトップなど、複数の製品を重ねた施工もそのまま残せます。",
         href: "/features/digital-certificate",
       },
-      warrantyFeature,
+      {
+        title: "有効期限と有効条件",
+        description: "証明書の有効期限と、保証が有効であるための条件を証明書に記載します。",
+      },
       {
         title: "膜厚の記録",
         description:
@@ -69,13 +67,8 @@ export const SHOP_INDUSTRIES: ShopIndustry[] = [
       {
         title: "お客様はスマホで確認",
         description:
-          "証明書は QR コードや URL で共有。公開ページでは施工前後の写真をスライダーで見比べられます。顧客ポータルから予約も受け付けられます。",
+          "証明書は QR コードや URL で共有。公開ページでは施工前後の写真をスライダーで見比べられます。予約枠を設定すれば、顧客ポータルから予約も受け付けられます。",
         href: "/features/customer-portal",
-      },
-      {
-        title: "改ざんを検知できる記録",
-        description: "発行した証明書は改ざんを検知できる形で記録。保険会社や買取店にもそのまま見せられます。",
-        href: "/features/blockchain-anchoring",
       },
     ],
     faqs: [
@@ -124,7 +117,11 @@ export const SHOP_INDUSTRIES: ShopIndustry[] = [
         title: "フィルムの銘柄と種類",
         description: "フィルムのブランド・製品名と、グロス・マット・サテン・カラーなどの種類を証明書に記載します。",
       },
-      warrantyFeature,
+      {
+        title: "保証期間と、保証の対象外",
+        description:
+          "保証の終了日・有効条件・保証の対象外を証明書の PDF に記載。対象外の文面は店舗の既定文として使い回せます。",
+      },
       {
         title: "施工前後の写真",
         description:
@@ -214,8 +211,7 @@ export const SHOP_INDUSTRIES: ShopIndustry[] = [
       },
       {
         question: "写真は作業の前後で分けられますか？",
-        answer:
-          "入庫後〜作業前・作業中・作業後に分けて保存できます。証明書の公開ページでは、作業前後をスライダーで見比べられます。",
+        answer: "作業前と作業後の写真を組にして登録すると、証明書の公開ページでスライダーで見比べられます。",
       },
     ],
     glossary: [
@@ -260,7 +256,7 @@ export const SHOP_INDUSTRIES: ShopIndustry[] = [
       {
         title: "車検証の読み取り",
         description:
-          "車検証の QR コードや画像から、車名・型式・年式・ナンバー・車台番号・車検満了日を読み取って登録します。",
+          "車検証を撮影した画像から、車名・型式・年式・ナンバー・車台番号・車検満了日を読み取って登録します。",
         href: "/features/vehicle-ocr",
       },
       {

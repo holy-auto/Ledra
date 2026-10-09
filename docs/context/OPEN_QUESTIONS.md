@@ -30,6 +30,9 @@
 - 料金表は「API 連携: Pro」だが、NexPTG の取り込み（`/api/external/nexptg/sync`）と外部 API キーの発行にはプランの確認が無く、どのプランでも使える。料金表を直すか、制限を入れるか。
 - AI 見積（`/api/admin/quotes/ai-from-vehicle`）のエラー文は「Standard プラン以上」だが、判定（`ai_invoice_quote`）は Starter から true。エラー文が古い。
 - 指定整備記録簿の PDF（`src/lib/pdf/pdfIndicatedInspection.tsx`）には、事業場の指定番号・所在地が入らない（tenants に正準のカラムが無いため、意図して載せていない）。指定工場が法定の記録として使うなら必要。
+- **改ざん検知の表記**: 証明書レコードのアンカリングは `CERT_RECORD_ANCHOR_ENABLED`（既定 false）で有効化しないと動かない（`src/lib/anchoring/certificateAnchorService.ts`）。
+  本番で有効かはこの環境から確認できない。入口ページでは書かなかったが、トップの説明文・「できること」・`/features/blockchain-anchoring` は「改ざん検知付き」と書いている。代表が Vercel の本番の環境変数を確認する。
+- コーティングの証明書では、保証の終了日・保証の対象外が PDF にも公開ページにも出ない（PDF の 2 ページ目は PPF・整備・鈑金・用品のときだけ）。季節の提案はメールのみ（他のフォローは LINE 優先）。
 - 施工証明書の作成画面で入力できる**ロット番号**（`coating_products_json.lot_number`）・**膜厚**（`content_preset_json.film_thickness`）・**損傷マップ**（`damage_map_json`）は、保存されるが、証明書の PDF・公開ページ・管理画面のどこにも表示されない。入力させるなら表示するか、表示しないなら入力欄を見直すか。
 
 ## GA4 のアプリ画面除外が本番で効いているか（2026-10-07）
