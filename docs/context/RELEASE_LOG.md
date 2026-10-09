@@ -145,6 +145,19 @@
   なお PR 本文・コメントに一度「手元で成功」と書いたが、**そのときは終了コードを見ておらず、
   `.next/build-manifest.json` の更新時刻から推定していた**
   （`M-20261008-called-the-build-successful-from-a-file-mtime`）。訂正済み。
+- **2026-10-09 `main` にマージ（squash `c4627a3d`・PR #1272）。** マージ時点で GitHub Actions は
+  9 本すべて緑（E2E / CodeQL / Migrations Replay / Client Bundle Size / Count lines of code /
+  Scan for secrets / Lint, Type Check & Unit Tests / Analyze / Vercel Preview Comments）。
+  **Vercel のプレビューは building のまま待たずにマージした** —— 必須チェックではなく、
+  このブランチで赤9件・緑2件がすべて**同一コード**で起きており、差分と無関係だと3経路で確定したため
+  （ログの OOM・差分の内容・同一コードでの赤/緑の反転。DECISION_LOG 2026-10-08）。
+  マージ直前に件数を数え直した: 台帳 10 件・`checkC2paBinary.test.ts` 7 件
+  （本文には「2→3→4 件」「4→5 件」と書いて外しており、都度訂正した）。
+  マージの道中で main を2回取り込み（#1277・#1275）、どちらも MISTAKE_LEDGER の型表が衝突したので
+  **和集合で1行ずつ**に戻した（A 75 / B 27 / C 37 / D 14 / J 15 を実測）。
+  また `ci-parallel-checks.sh`（10本同時）の回で `providers.test.ts` の先頭テストが
+  既定 5s のタイムアウトで落ちたので 30s を付けた
+  （`M-20261009-extended-three-test-timeouts-and-missed-the-first-caller`）。
 - **天井を2つ明記した**（`ponytail:`）: (a) `C2PA_MODE` がビルド時に見えること（Vercel で実行時専用の
   env だと発火しない）、(b) **見ているのは「ビルド機でロードできるか」で、「本番の関数バンドルに
   バイナリが入るか」ではない**。`serverExternalPackages` に入れてあるので 48MB の `index.node` は
