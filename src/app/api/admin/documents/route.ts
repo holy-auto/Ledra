@@ -12,7 +12,7 @@ import {
 import { consolidatedSourceIds, loadConsolidatedSources } from "@/lib/documents/consolidatedSources";
 import { isConsolidatableDoc } from "@/lib/documents/consolidateEligibility";
 import { buildConsolidatedItems } from "@/lib/documents/consolidatedItems";
-import { syncConsolidatedSources } from "@/lib/documents/consolidatedSupersede";
+import { keepConsolidationKeys, syncConsolidatedSources } from "@/lib/documents/consolidatedSupersede";
 import { filterDeletableDocuments } from "@/lib/documents/deleteEligibility";
 import { logger } from "@/lib/logger";
 import { parsePagination } from "@/lib/api/pagination";
@@ -241,7 +241,7 @@ export const POST = withCaller(
     let isTaxInclusive = !!input.is_tax_inclusive;
     const metaJson: Record<string, unknown> = {
       // 封印キーはサーバのみが書く。クライアント入力からは剥がして偽装封印を防ぐ。
-      ...stripClientIntegritySeal(input.meta_json as Record<string, unknown> | undefined),
+      ...keepConsolidationKeys(stripClientIntegritySeal(input.meta_json as Record<string, unknown> | undefined)),
       is_tax_inclusive: isTaxInclusive,
     };
 
@@ -486,6 +486,15 @@ export const PUT = withCaller(
         "合算請求書にまとめた請求書はステータスを変更できません。合算請求書を取消・削除すると元に戻ります。",
       );
     }
+    // 取消した合算請求書は戻さない（nextStatusesFor と同じ。取消の間に元の請求書が別の合算へまとめ直されうる）
+    if (
+      body.status !== undefined &&
+      body.status !== "cancelled" &&
+      existing?.doc_type === "consolidated_invoice" &&
+      existing.status === "cancelled"
+    ) {
+      return apiValidationError("取消した合算請求書は戻せません。元の帳票から作り直してください。");
+    }
 
     // 「確定 (draft→sent)」を検出するため、ステータス更新時は変更前の状態を控える。
     const priorStatus: string | null = body.status !== undefined ? (existing?.status ?? null) : null;
@@ -544,7 +553,10 @@ export const PUT = withCaller(
     if (body.delivery_date !== undefined) updates.delivery_date = body.delivery_date;
     if (body.template_id !== undefined) updates.template_id = body.template_id || null;
     if (body.meta_json !== undefined)
-      updates.meta_json = stripClientIntegritySeal(body.meta_json as Record<string, unknown> | undefined);
+      updates.meta_json = keepConsolidationKeys(
+        stripClientIntegritySeal(body.meta_json as Record<string, unknown> | undefined),
+        existing?.meta_json,
+      );
 
     if (body.items !== undefined) {
       const taxRate = body.tax_rate ?? 10;
@@ -561,7 +573,10 @@ export const PUT = withCaller(
       // しないと下書き編集で合算内訳が消え、送付 PDF に内訳が出なくなる。
       // 封印は内容が変わると無効になるので、既存値・クライアント入力の双方から剥がす。
       const existingMeta = stripClientIntegritySeal(existing?.meta_json as Record<string, unknown> | null);
-      const baseMeta = stripClientIntegritySeal(body.meta_json as Record<string, unknown> | undefined);
+      const baseMeta = keepConsolidationKeys(
+        stripClientIntegritySeal(body.meta_json as Record<string, unknown> | undefined),
+        existing?.meta_json,
+      );
       updates.meta_json = { ...existingMeta, ...baseMeta, is_tax_inclusive: isTaxInclusive };
     }
 

@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn() } }));
 
-import { syncConsolidatedSources } from "../consolidatedSupersede";
-import { consolidatedInto } from "@/types/document";
+import { keepConsolidationKeys, syncConsolidatedSources } from "../consolidatedSupersede";
+import { consolidatedInto, nextStatusesFor } from "@/types/document";
 
 type Row = { id: string; tenant_id: string; doc_type: string; status: string; meta_json: Record<string, unknown> };
 
@@ -55,7 +55,7 @@ const cinv = (status: string) => ({
   id: "cinv",
   doc_type: "consolidated_invoice",
   status,
-  meta_json: { source_document_ids: ["inv-sent", "inv-overdue", "inv-paid", "dlv", "other-tenant"] },
+  meta_json: { source_document_ids: ["inv-sent", "inv-overdue", "inv-draft", "inv-paid", "dlv", "other-tenant"] },
 });
 
 describe("syncConsolidatedSources（合算請求書と元請求書の二重計上を防ぐ）", () => {
@@ -63,6 +63,7 @@ describe("syncConsolidatedSources（合算請求書と元請求書の二重計�
     fakeDb([
       row("inv-sent", "invoice", "sent"),
       row("inv-overdue", "invoice", "overdue"),
+      row("inv-draft", "invoice", "draft"),
       row("inv-paid", "invoice", "paid"),
       row("dlv", "delivery", "sent"),
       row("other-tenant", "invoice", "sent", "t2"),
@@ -76,6 +77,8 @@ describe("syncConsolidatedSources（合算請求書と元請求書の二重計�
     expect(status(db)).toEqual({
       "inv-sent": "cancelled",
       "inv-overdue": "cancelled",
+      // 下書きも外す（後から送付されると二重になる）
+      "inv-draft": "cancelled",
       "inv-paid": "paid",
       dlv: "sent",
       "other-tenant": "sent",
@@ -90,7 +93,7 @@ describe("syncConsolidatedSources（合算請求書と元請求書の二重計�
     await syncConsolidatedSources(db as never, "t1", cinv("sent"));
     await syncConsolidatedSources(db as never, "t1", cinv("cancelled"));
 
-    expect(status(db)).toMatchObject({ "inv-sent": "sent", "inv-overdue": "overdue" });
+    expect(status(db)).toMatchObject({ "inv-sent": "sent", "inv-overdue": "overdue", "inv-draft": "draft" });
     expect(db.rows.find((r) => r.id === "inv-sent")!.meta_json).toEqual({ note: "inv-sent" });
 
     await syncConsolidatedSources(db as never, "t1", cinv("sent"));
@@ -104,5 +107,22 @@ describe("syncConsolidatedSources（合算請求書と元請求書の二重計�
     const db = seed();
     await syncConsolidatedSources(db as never, "t1", { ...cinv("sent"), doc_type: "invoice" });
     expect(status(db)["inv-sent"]).toBe("sent");
+  });
+
+  it("取消した合算請求書は戻せない（取消の間に元の請求書が別の合算へまとめ直されうる）", () => {
+    expect(nextStatusesFor("consolidated_invoice", "cancelled")).toEqual([]);
+    expect(nextStatusesFor("invoice", "cancelled")).toEqual(["sent"]);
+  });
+});
+
+describe("keepConsolidationKeys（サーバだけが書くキーをクライアント入力から守る）", () => {
+  it("meta_json を丸ごと送ってもまとめ先は消えず、クライアントが勝手に付けたまとめ先は剥がす", () => {
+    const existing = { consolidated_into: "cinv", status_before_consolidation: "sent", note: "x" };
+    expect(keepConsolidationKeys({}, existing)).toEqual({
+      consolidated_into: "cinv",
+      status_before_consolidation: "sent",
+    });
+    expect(keepConsolidationKeys({ consolidated_into: "forged", a: 1 }, { a: 0 })).toEqual({ a: 1 });
+    expect(keepConsolidationKeys({ consolidated_into: "forged" })).toEqual({});
   });
 });

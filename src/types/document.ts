@@ -105,6 +105,8 @@ const INVOICE_LIKE_DOC_TYPES = new Set(["invoice", "consolidated_invoice", "staf
 
 /** doc_type に応じた次のステータス遷移候補を返す。 */
 export function nextStatusesFor(docType: string, status: string): string[] {
+  // 取消した合算請求書は戻さない（元の請求書は取消時に戻り、別の合算請求書へまとめ直されうる）。作り直す
+  if (docType === "consolidated_invoice" && status === "cancelled") return [];
   const map = INVOICE_LIKE_DOC_TYPES.has(docType) ? INVOICE_STATUS_TRANSITIONS : STATUS_TRANSITIONS;
   return map[status] ?? [];
 }

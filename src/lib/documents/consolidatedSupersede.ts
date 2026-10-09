@@ -5,15 +5,34 @@ import { logger } from "@/lib/logger";
 const CONSOLIDATED_INTO_KEY = "consolidated_into";
 const PRIOR_STATUS_KEY = "status_before_consolidation";
 
-/** 置き換えの対象にする元請求書のステータス（未入金のもの）。入金済は入金記録があるので触らない。 */
-const SUPERSEDABLE_STATUSES = ["sent", "overdue"];
+/** 置き換えの対象にする元請求書のステータス（未入金のもの）。入金済は入金記録があるので触らない。
+ *  下書きも外す（後から送付されると合算請求書と両方が未入金に乗る）。 */
+const SUPERSEDABLE_STATUSES = ["draft", "sent", "overdue"];
+
+/**
+ * meta_json のうち、合算の付け外しでサーバだけが書くキーを、クライアント入力から剥がして既存値で上書きする。
+ * 剥がさないと、meta_json を丸ごと送る更新でまとめ先が消え（戻せなくなる）、逆に任意の帳票を「合算済」にできる。
+ */
+export function keepConsolidationKeys(
+  clientMeta: Record<string, unknown>,
+  existingMeta?: unknown,
+): Record<string, unknown> {
+  const out = { ...clientMeta };
+  const prev = (existingMeta as Record<string, unknown> | null) ?? {};
+  for (const k of [CONSOLIDATED_INTO_KEY, PRIOR_STATUS_KEY]) {
+    if (k in prev) out[k] = prev[k];
+    else delete out[k];
+  }
+  return out;
+}
 
 /**
  * 合算請求書と元の請求書の両方が未入金・売掛・督促に乗る二重計上を防ぐ。
  *
  * 合算請求書が生きている間（取消・削除以外。下書きを含む）は、元の請求書（未入金のもの）を取消扱いにし、
  * まとめ先と元のステータスを meta_json に残す。合算請求書を取消・削除したら元のステータスへ戻す。
- * 何度呼んでも同じ結果になる（作成・取消・取消の取り消し・削除のたびに呼ぶ）。
+ * 何度呼んでも同じ結果になる（作成・ステータス変更・削除のたびに呼ぶ）。取消した合算請求書は戻せない
+ * （nextStatusesFor）。戻せると、取消の間に別の合算請求書へまとめ直した請求書を二重に請求する。
  * 納品書は請求ではない（売掛に数えない）ので触らない。
  *
  * ponytail: 下書きの合算請求書の間も元請求書を外すので、下書きのまま放置すると売掛から消えて見える

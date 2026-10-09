@@ -27,7 +27,10 @@ vi.mock("@/lib/logger", () => ({
 }));
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 // 元請求書の取消扱い・戻しの中身は consolidatedSupersede.test.ts で見る。ここでは呼ぶ契機だけ見る
-vi.mock("@/lib/documents/consolidatedSupersede", () => ({ syncConsolidatedSources: mocks.sync }));
+vi.mock("@/lib/documents/consolidatedSupersede", async (orig) => ({
+  ...(await orig<typeof import("@/lib/documents/consolidatedSupersede")>()),
+  syncConsolidatedSources: mocks.sync,
+}));
 // 採番は DB を見るので、固定番号で insert を1回だけ呼ぶ
 vi.mock("@/lib/invoice/invoiceNumber", () => ({
   insertDocWithRetry: (_a: unknown, _t: unknown, _d: unknown, _p: unknown, insert: (n: string) => unknown) =>
@@ -155,6 +158,26 @@ describe("合算請求書と元の請求書の二重計上を防ぐ（元請求�
 
     expect(res.status).toBe(400);
     expect(mocks.admin.calls.update).toBeUndefined();
+  });
+
+  it("取消した合算請求書は戻させない（取消の間に元の請求書が別の合算へまとめ直されうる）", async () => {
+    mocks.userClient = client({ documents: { doc_type: "consolidated_invoice", status: "cancelled", meta_json: {} } });
+    mocks.admin = client({});
+
+    const res = await PUT(req("PUT", { id: DOC_ID, status: "sent" }));
+
+    expect(res.status).toBe(400);
+    expect(mocks.admin.calls.update).toBeUndefined();
+  });
+
+  it("meta_json を丸ごと送る更新でも、まとめ先（戻すための印）を消さない", async () => {
+    const meta = { consolidated_into: "cinv-1", status_before_consolidation: "sent" };
+    mocks.userClient = client({ documents: { doc_type: "invoice", status: "cancelled", meta_json: meta } });
+    mocks.admin = client({});
+
+    await PUT(req("PUT", { id: DOC_ID, meta_json: { consolidated_into: null } }));
+
+    expect(mocks.admin.calls.update.meta_json).toEqual(meta);
   });
 
   it("合算請求書を削除したら、実際に消えたものについて元の請求書を戻す", async () => {
