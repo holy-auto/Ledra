@@ -37,7 +37,7 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # 表示名と実行コマンド。**CI はこの1箇所だけを見る。**
-NAMES=(lint lint:migrations tsc test:coverage check:schema check:context-dates check:ox-override check:ledger-ids check:audit-actions)
+NAMES=(lint lint:migrations tsc test:coverage check:schema check:context-dates check:ox-override check:ledger-ids check:audit-actions check:c2pa-binary)
 CMDS=(
   "npm run lint"
   "npm run lint:migrations"
@@ -63,6 +63,11 @@ CMDS=(
   # コードが 20 種を書き、保険会社ポータルの6エンドポイントが本番で
   # 落ち続けた (DECISION_LOG 2026-09-23)
   "npm run check:audit-actions"
+  # C2PA_MODE=production のとき、@contentauth/c2pa-node のネイティブバイナリが
+  # 実際にロードできるか。build の前段にも同じ検査を置いてあるが、ci.yml の build は
+  # `npm run build || true` で終了コードを捨てるので CI では信号にならない
+  # (/code-review 2026-10-07)。production 以外では即 skip して何もしない
+  "npm run check:c2pa-binary"
 )
 
 # NAMES と CMDS は添字で対応する並列配列で、間に説明コメントが挟まるため
