@@ -3,6 +3,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import {
   DOC_TYPES,
+  consolidatedInto,
   hasInlineConsolidatedItems,
   isDocumentDeletable,
   isDocumentEditable,
@@ -11,6 +12,7 @@ import {
 import { consolidatedSourceIds, loadConsolidatedSources } from "@/lib/documents/consolidatedSources";
 import { isConsolidatableDoc } from "@/lib/documents/consolidateEligibility";
 import { buildConsolidatedItems } from "@/lib/documents/consolidatedItems";
+import { syncConsolidatedSources } from "@/lib/documents/consolidatedSupersede";
 import { filterDeletableDocuments } from "@/lib/documents/deleteEligibility";
 import { logger } from "@/lib/logger";
 import { parsePagination } from "@/lib/api/pagination";
@@ -376,6 +378,16 @@ export const POST = withCaller(
       });
     }
 
+    // 合算請求書にまとめた元の請求書は取消扱いにする（両方が未入金に乗る二重計上を防ぐ）
+    if (data?.id) {
+      await syncConsolidatedSources(admin, caller.tenantId, {
+        id: data.id as string,
+        doc_type: data.doc_type as string,
+        status: data.status as string,
+        meta_json: data.meta_json,
+      });
+    }
+
     // 品目マスタに無い明細は自動登録する（保存自体は失敗させない fire-and-forget）。
     // staff_invoice の明細は cost_price/margin_rate が「案件金額/レス率」という別意味
     // なので、通常の原価/利益率として品目マスタへ登録してしまわないよう除外する。
@@ -465,6 +477,14 @@ export const PUT = withCaller(
     // POST 側と同じ理由（service-role で RLS をバイパスするため）で API 層でもガードする。
     if (existing?.doc_type === "staff_invoice" && !requireMinRole(caller, "admin")) {
       return apiForbidden("外注請求書の更新は管理者ロールのみ可能です。");
+    }
+
+    // 合算請求書にまとめて取消扱いになった請求書を戻すと、合算請求書と両方が未入金に乗る。
+    // 戻すのは合算請求書の取消・削除で行う（そのとき元のステータスへ自動で戻る）。
+    if (body.status !== undefined && body.status !== existing?.status && consolidatedInto(existing?.meta_json)) {
+      return apiValidationError(
+        "合算請求書にまとめた請求書はステータスを変更できません。合算請求書を取消・削除すると元に戻ります。",
+      );
     }
 
     // 「確定 (draft→sent)」を検出するため、ステータス更新時は変更前の状態を控える。
@@ -591,6 +611,15 @@ export const PUT = withCaller(
       });
     }
 
+    if (priorStatus !== null && priorStatus !== data?.status && data) {
+      await syncConsolidatedSources(admin, caller.tenantId, {
+        id: data.id as string,
+        doc_type: data.doc_type as string,
+        status: data.status as string,
+        meta_json: data.meta_json,
+      });
+    }
+
     // 請求書が「入金済」に更新されたら売掛元帳 (payment_entries) にも残高分を記帳して
     // 消込を整合させる (status=paid だけだと元帳上は未消込のまま残るため)。
     // 記帳失敗は status 更新 (主) を巻き戻さず log のみ (best-effort)。
@@ -695,6 +724,11 @@ export const DELETE = withCaller(
         message: "帳票の状態が変わったため削除できませんでした。再読み込みしてください。",
         status: 409,
       });
+    }
+
+    // 削除した合算請求書にまとめていた元の請求書を、元のステータスへ戻す
+    for (const d of deleted) {
+      await syncConsolidatedSources(admin, caller.tenantId, d, { deleted: true });
     }
 
     // 削除の日時・作業者を監査ログに残す（第２ ２（３）/ G2）。実際に消えた行だけを記録する。

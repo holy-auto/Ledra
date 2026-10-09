@@ -152,6 +152,15 @@ export function hasInlineConsolidatedItems(metaJson: unknown): boolean {
   return (metaJson as { consolidated_items?: unknown } | null)?.consolidated_items === "inline";
 }
 
+/**
+ * 合算請求書にまとめたため取消扱いになっている請求書なら、まとめ先の合算請求書 ID を返す
+ * （src/lib/documents/consolidatedSupersede.ts が付け外しする）。
+ */
+export function consolidatedInto(metaJson: unknown): string | null {
+  const v = (metaJson as { consolidated_into?: unknown } | null)?.consolidated_into;
+  return typeof v === "string" ? v : null;
+}
+
 /** 合算請求書の PDF・送付・詳細画面に元帳票ごとの内訳を載せるか（未設定は表示）。 */
 export function showsConsolidatedBreakdown(metaJson: unknown): boolean {
   return (metaJson as { show_consolidated_breakdown?: unknown } | null)?.show_consolidated_breakdown !== false;
