@@ -20,6 +20,31 @@ export const DAMAGE_KINDS = [
 
 export type DamageKind = (typeof DAMAGE_KINDS)[number]["key"];
 
+/** 種別ごとの表示色（作成画面・PDF・公開ページで共通）。 */
+export const DAMAGE_KIND_COLOR: Record<DamageKind, string> = {
+  scratch: "#f59e0b",
+  dent: "#ef4444",
+  paint: "#8b5cf6",
+  rust: "#a16207",
+  other: "#6b7280",
+};
+
+export function damageKindLabel(kind: DamageKind): string {
+  return DAMAGE_KINDS.find((k) => k.key === kind)?.label ?? kind;
+}
+
+/**
+ * 車両のトップダウン図（viewBox 0 0 300 330、前が上）。作成画面の DamageMapSection と同じ形を
+ * PDF・公開ページでも描くための共通定義。マーカーは x*WIDTH, y*HEIGHT に置く。
+ */
+export const DAMAGE_DIAGRAM = {
+  width: 300,
+  height: 330,
+  body: "M100,20 Q90,20 85,30 L80,60 Q75,80 75,100 L75,260 Q75,280 85,290 L95,305 Q100,310 110,310 L190,310 Q200,310 205,305 L215,290 Q225,280 225,260 L225,100 Q225,80 220,60 L215,30 Q210,20 200,20 Z",
+  windshield: "M105,45 L195,45 L210,85 L90,85 Z",
+  rearWindow: "M95,240 L205,240 L200,270 L100,270 Z",
+} as const;
+
 const KIND_SET = new Set<string>(DAMAGE_KINDS.map((k) => k.key));
 
 export interface DamageMarker {

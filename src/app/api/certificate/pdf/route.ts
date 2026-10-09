@@ -121,6 +121,7 @@ export async function GET(req: Request) {
     | "maintenance_json"
     | "body_repair_json"
     | "accessory_json"
+    | "damage_map_json"
   > &
     DetailAccessCert & {
       id: string;
@@ -131,7 +132,7 @@ export async function GET(req: Request) {
   const { data: fullCert, error: fullErr } = await adm
     .from("certificates")
     .select(
-      "id, ppf_coverage_json, service_type, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json, accessory_json, manufacturer_template_id, " +
+      "id, ppf_coverage_json, service_type, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json, accessory_json, damage_map_json, manufacturer_template_id, " +
         DETAIL_ACCESS_COLUMNS,
     )
     .eq("public_id", pid)
@@ -250,6 +251,7 @@ export async function GET(req: Request) {
     maintenance_json: fullCert?.maintenance_json ?? null,
     body_repair_json: fullCert?.body_repair_json ?? null,
     accessory_json: fullCert?.accessory_json ?? null,
+    damage_map_json: fullCert?.damage_map_json ?? null,
     service_type: fullCert?.service_type ?? null,
     expiry_type: cert.expiry_type ?? null,
     expiry_value: cert.expiry_value ?? null,

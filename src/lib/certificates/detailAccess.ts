@@ -119,6 +119,7 @@ export function redactCertificateDetails<
     maintenance_json?: unknown;
     body_repair_json?: unknown;
     accessory_json?: unknown;
+    damage_map_json?: unknown;
   },
 >(cert: T): T {
   return {
@@ -127,5 +128,7 @@ export function redactCertificateDetails<
     maintenance_json: pick(cert.maintenance_json, PUBLIC_DETAIL_KEYS.maintenance_json),
     body_repair_json: pick(cert.body_repair_json, PUBLIC_DETAIL_KEYS.body_repair_json),
     accessory_json: pick(cert.accessory_json, PUBLIC_DETAIL_KEYS.accessory_json),
+    // 傷の位置とメモは写真と同じく車両状態の記録なので、匿名閲覧には出さない。
+    damage_map_json: null,
   };
 }
