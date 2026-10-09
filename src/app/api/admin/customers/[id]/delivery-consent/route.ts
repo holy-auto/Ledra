@@ -1,5 +1,5 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { apiOk, apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiOk, apiJson, apiError, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { withCaller } from "@/lib/api/withCaller";
 import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 import {
@@ -17,6 +17,7 @@ export const runtime = "nodejs";
  *   GET    … 現在の承諾状態（none/granted/revoked）と付随情報
  *   POST   … 承諾を記録（granted）。開示した交付方法 method と任意メモを残す（書面/口頭で得た承諾の記録を含む）
  *   DELETE … 店舗代行での撤回（revoked・revoked_via='admin'）。使用者本人の撤回は /api/customer/delivery-consent/revoke。
+ *            ?mode=cancel_record のときは、押し間違えた「店舗の記録」の取り消し（店舗が記録した承諾だけを消して未承諾に戻す）。
  *
  * 見積/請求の送付（documents/share）は対象外。規制対象記録（証明書＝記録簿の写し）の電子交付にのみ効かせる。
  */
@@ -120,6 +121,45 @@ export const DELETE = withCaller<{ id: string }>(
       if (!(await customerInTenant(admin, caller.tenantId, customerId))) {
         return apiNotFound("顧客が見つかりません。");
       }
+      // 押し間違えた「店舗の記録」の取り消し（撤回とは別）。店舗が記録した承諾だけを消して未承諾に戻す。
+      // お客様本人の承諾（granted_by=null）は店舗からは消せない（本人の操作の証跡なので）。
+      if (new URL(req.url).searchParams.get("mode") === "cancel_record") {
+        const { data: current, error: readErr } = await admin
+          .from("delivery_consents")
+          .select("status, granted_at, granted_by, method, note, consent_version")
+          .eq("tenant_id", caller.tenantId)
+          .eq("customer_id", customerId)
+          .maybeSingle();
+        if (readErr) return apiInternalError(readErr, "delivery-consent cancel_record read");
+        const cur = current as { status: string; granted_by: string | null } | null;
+        if (cur?.status !== "granted" || !cur.granted_by) {
+          return apiError({
+            code: "conflict",
+            message: "取り消せるのは、店舗が記録した承諾だけです。",
+            status: 409,
+          });
+        }
+        const { error: delErr } = await admin
+          .from("delivery_consents")
+          .delete()
+          .eq("tenant_id", caller.tenantId)
+          .eq("customer_id", customerId)
+          .eq("status", "granted")
+          .not("granted_by", "is", null);
+        if (delErr) return apiInternalError(delErr, "delivery-consent cancel_record");
+        // 行は消えるので、取り消した記録の中身は監査ログに残す。
+        void logTenantAuditEvent(admin, {
+          tenantId: caller.tenantId,
+          userId: caller.userId,
+          action: "delivery_consent_record_cancelled_by_shop",
+          table: "delivery_consents",
+          recordId: customerId,
+          extra: { cancelled: current },
+          req,
+        });
+        return apiOk({ status: "none" });
+      }
+
       const now = new Date().toISOString();
       // 店舗代行の撤回。行が無くても「撤回済み」を先回りで記録できるよう upsert。
       const { error } = await admin.from("delivery_consents").upsert(

@@ -59,18 +59,44 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
     void load();
   }, [load]);
 
-  async function act(method: "POST" | "DELETE") {
+  // 店舗の記録・撤回・記録の取り消しは、押し間違えると承諾の状態がそのまま変わるので必ず確認を挟む。
+  const ACTIONS = {
+    record: {
+      method: "POST",
+      query: "",
+      confirm:
+        "お客様から書面・口頭で承諾を得ましたか？\n「店舗が記録した承諾」として保存します（お客様ご自身の操作の記録にはなりません）。\nお客様に承諾していただく場合は「承諾のお願い」を使ってください。",
+      done: "承諾を記録しました。",
+    },
+    revoke: {
+      method: "DELETE",
+      query: "",
+      confirm: "お客様から撤回の申し出がありましたか？\n撤回すると、電子交付（受領サイン依頼など）はできなくなります。",
+      done: "撤回を記録しました。",
+    },
+    cancelRecord: {
+      method: "DELETE",
+      query: "?mode=cancel_record",
+      confirm:
+        "店舗が記録した承諾を取り消して「未承諾」に戻します。取り消した事実は操作ログに残ります。よろしいですか？",
+      done: "店舗の記録を取り消しました（未承諾に戻りました）。",
+    },
+  } as const;
+
+  async function act(kind: keyof typeof ACTIONS) {
+    const a = ACTIONS[kind];
+    if (!window.confirm(a.confirm)) return;
     setBusy(true);
     setMsg(null);
     try {
-      const res = await fetch(`/api/admin/customers/${customerId}/delivery-consent`, {
-        method,
+      const res = await fetch(`/api/admin/customers/${customerId}/delivery-consent${a.query}`, {
+        method: a.method,
         headers: { "content-type": "application/json" },
-        body: method === "POST" ? JSON.stringify({ method: "メール/LINE/SMS/ダウンロード" }) : undefined,
+        body: kind === "record" ? JSON.stringify({ method: "メール/LINE/SMS/ダウンロード" }) : undefined,
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? "処理に失敗しました。");
-      setMsg({ text: method === "POST" ? "承諾を記録しました。" : "撤回を記録しました。", ok: true });
+      setMsg({ text: a.done, ok: true });
       await load();
     } catch (e) {
       setMsg({ text: e instanceof Error ? e.message : "処理に失敗しました。", ok: false });
@@ -153,28 +179,11 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
         </p>
       )}
       {msg && <p className={`mt-1 text-[11px] ${msg.ok ? "text-success-text" : "text-danger-text"}`}>{msg.text}</p>}
-      <div className="mt-2 flex gap-2">
-        <button
-          type="button"
-          onClick={() => act("POST")}
-          disabled={busy || loading || loadError || state === "granted"}
-          className="btn-ghost text-xs disabled:opacity-50"
-        >
-          承諾を記録
-        </button>
-        <button
-          type="button"
-          onClick={() => act("DELETE")}
-          disabled={busy || loading || loadError || state === "revoked"}
-          className="text-xs text-danger-text underline disabled:opacity-50"
-        >
-          撤回を記録
-        </button>
-      </div>
       {state !== "granted" && !loading && !loadError && (
-        <div className="mt-3 border-t border-border pt-3">
-          <p className="text-[11px] text-muted">
-            お客様にご自身の端末で承諾していただくリンクを作れます（14日間・1回限り）。店頭では QR
+        <div className="mt-3">
+          <div className="text-xs font-semibold text-primary">お客様に承諾をお願いする</div>
+          <p className="mt-1 text-[11px] text-muted">
+            お客様ご自身の端末で説明を読んで承諾していただくリンクを作ります（14日間・1回限り）。店頭では QR
             を読んでもらってください。
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -182,7 +191,7 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
               type="button"
               onClick={() => requestConsent("link")}
               disabled={busy}
-              className="btn-ghost text-xs disabled:opacity-50"
+              className="btn-primary text-xs disabled:opacity-50"
             >
               リンクと QR を作る
             </button>
@@ -190,7 +199,7 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
               type="button"
               onClick={() => requestConsent("email")}
               disabled={busy}
-              className="btn-ghost text-xs disabled:opacity-50"
+              className="btn-secondary text-xs disabled:opacity-50"
             >
               メールで送る
             </button>
@@ -198,7 +207,7 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
               type="button"
               onClick={() => requestConsent("line")}
               disabled={busy}
-              className="btn-ghost text-xs disabled:opacity-50"
+              className="btn-secondary text-xs disabled:opacity-50"
             >
               LINE で送る
             </button>
@@ -224,6 +233,43 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
               </div>
             </div>
           )}
+        </div>
+      )}
+      {!loading && !loadError && (
+        <div className="mt-3 border-t border-border pt-2 text-[11px] text-muted">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {state !== "granted" && (
+              <button
+                type="button"
+                onClick={() => act("record")}
+                disabled={busy}
+                className="underline disabled:opacity-50"
+              >
+                書面・口頭で承諾を得た（店舗として記録）
+              </button>
+            )}
+            {row?.status === "granted" && row.granted_by && (
+              // 押し間違えた店舗の記録を「撤回」と区別して戻せるように。お客様本人の承諾は店舗からは取り消せない。
+              <button
+                type="button"
+                onClick={() => act("cancelRecord")}
+                disabled={busy}
+                className="underline disabled:opacity-50"
+              >
+                店舗の記録を取り消す（未承諾に戻す）
+              </button>
+            )}
+            {state !== "revoked" && (
+              <button
+                type="button"
+                onClick={() => act("revoke")}
+                disabled={busy}
+                className="text-danger-text underline disabled:opacity-50"
+              >
+                撤回の申し出を記録
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>
