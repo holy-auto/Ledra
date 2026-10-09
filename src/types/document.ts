@@ -105,6 +105,8 @@ const INVOICE_LIKE_DOC_TYPES = new Set(["invoice", "consolidated_invoice", "staf
 
 /** doc_type に応じた次のステータス遷移候補を返す。 */
 export function nextStatusesFor(docType: string, status: string): string[] {
+  // 取消した合算請求書は戻さない（元の請求書は取消時に戻り、別の合算請求書へまとめ直されうる）。作り直す
+  if (docType === "consolidated_invoice" && status === "cancelled") return [];
   const map = INVOICE_LIKE_DOC_TYPES.has(docType) ? INVOICE_STATUS_TRANSITIONS : STATUS_TRANSITIONS;
   return map[status] ?? [];
 }
@@ -150,6 +152,15 @@ export function isDocumentDeletable(docType: string, status: string): boolean {
  */
 export function hasInlineConsolidatedItems(metaJson: unknown): boolean {
   return (metaJson as { consolidated_items?: unknown } | null)?.consolidated_items === "inline";
+}
+
+/**
+ * 合算請求書にまとめたため取消扱いになっている請求書なら、まとめ先の合算請求書 ID を返す
+ * （src/lib/documents/consolidatedSupersede.ts が付け外しする）。
+ */
+export function consolidatedInto(metaJson: unknown): string | null {
+  const v = (metaJson as { consolidated_into?: unknown } | null)?.consolidated_into;
+  return typeof v === "string" ? v : null;
 }
 
 /** 合算請求書の PDF・送付・詳細画面に元帳票ごとの内訳を載せるか（未設定は表示）。 */

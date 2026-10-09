@@ -14,6 +14,7 @@ import {
   CONVERSION_TARGETS,
   DOC_TYPES,
   isDocumentEditable,
+  consolidatedInto,
   nextStatusesFor,
   statusLabel,
   statusVariant,
@@ -249,7 +250,9 @@ export default function DocumentDetailClient({
 
   const seal = describeIntegritySeal(doc.meta_json);
   const items = (doc.items_json ?? []) as DocumentItem[];
-  const nextStatuses = nextStatusesFor(doc.doc_type, doc.status);
+  // 合算請求書にまとめた請求書は、合算請求書の取消・削除でだけ戻す（ここから戻すと二重計上になる）
+  const mergedInto = consolidatedInto(doc.meta_json);
+  const nextStatuses = mergedInto ? [] : nextStatusesFor(doc.doc_type, doc.status);
   const docLabel = DOC_TYPES[doc.doc_type as DocType]?.label ?? doc.doc_type;
   const conversionTargets = CONVERSION_TARGETS[doc.doc_type as DocType] ?? [];
   const canEdit = isDocumentEditable(doc.doc_type, doc.status);
@@ -267,6 +270,14 @@ export default function DocumentDetailClient({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <span className="text-sm text-muted">ステータス:</span>
             <Badge variant={statusVariant(doc.status)}>{statusLabel(doc.status)}</Badge>
+            {mergedInto && (
+              <span className="text-xs text-muted">
+                <a href={`/admin/documents/${mergedInto}`} className="text-accent underline">
+                  合算請求書
+                </a>
+                にまとめたため取消扱い（合算請求書を取消・削除すると元に戻ります）
+              </span>
+            )}
             {doc.is_invoice_compliant && <Badge variant="info">インボイス対応</Badge>}
             {seal && (
               <span className="inline-flex flex-wrap items-center gap-1" title={seal.detail ?? undefined}>
