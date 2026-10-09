@@ -23,11 +23,26 @@
 - 下書きの合算請求書の間は元の請求書が売掛から外れて見える（削除で戻る）。既存の下書きはマイグレーションの対象外で、送付時に揃う。
 - 組織ダッシュボードの「当月売上」は種別・ステータスを問わず全帳票を足している（見積・取消も入る）。
 
+## 業態別の入口ページが検索で拾われているか（2026-10-08）
 
-## 「鈑金塗装」で探す人の入口ページを作るか（2026-10-08）
+- 代表の「様々な入口ページを作って」で、`/for-shops/coating`・`/ppf`・`/bodywork`・`/maintenance` の 4 ページを作った（DECISION_LOG 2026-10-08）。
+  Search Console で、公開から 4 週間ほど後にこの 4 ページの表示回数と検索語を見る。表示が出ない業態は、見出し・説明文の言葉を検索語に寄せる。
+- 作る前に Search Console の検索語を見るつもりだったが、Google の再認証が必要（`invalid_rapt`）で取れなかった。
+  代表が `gcloud auth application-default login`（前回と同じ手順）をやり直し、`GOOGLE_ADC_B64` を更新するまで、GA4 / Search Console の数字はこの環境から取れない。
 
-- トップの説明文から「鈑金塗装」を外した（DECISION_LOG 2026-10-08）。トップの本文に鈑金の話が無いため。
-  鈑金塗装の店を集客の対象にするなら、HP 見直しの3番目（業務語の入口ページ）として専用ページを作るかを決める。作るなら Search Console で「鈑金」系の表示回数を先に見る。
+## 入口ページを書くときに見つかった、製品側の食い違い（2026-10-08）
+
+- 車検満了のお知らせメール（`src/lib/cron/inspectionReminders.ts`）は、`vehicles.inspection_reminder_sent_at` が NULL の車両にだけ送り、送ったら時刻を入れる。
+  この値を NULL に戻す処理がどこにも無いので、**1 台につき最初の 1 回しか送られない**（次の車検の前には届かない）。直すなら、車検満了日が更新されたら戻す。
+- 料金表は「API 連携: Pro」だが、NexPTG の取り込み（`/api/external/nexptg/sync`）と外部 API キーの発行にはプランの確認が無く、どのプランでも使える。料金表を直すか、制限を入れるか。
+- AI 見積（`/api/admin/quotes/ai-from-vehicle`）のエラー文は「Standard プラン以上」だが、判定（`ai_invoice_quote`）は Starter から true。エラー文が古い。
+- 指定整備記録簿の PDF（`src/lib/pdf/pdfIndicatedInspection.tsx`）には、事業場の指定番号・所在地が入らない（tenants に正準のカラムが無いため、意図して載せていない）。指定工場が法定の記録として使うなら必要。
+- **改ざん検知の表記**: 証明書レコードのアンカリングは `CERT_RECORD_ANCHOR_ENABLED`（既定 false）で有効化しないと動かない（`src/lib/anchoring/certificateAnchorService.ts`）。
+  本番で有効かはこの環境から確認できない。入口ページでは書かなかったが、トップの説明文・「できること」・`/features/blockchain-anchoring` は「改ざん検知付き」と書いている。代表が Vercel の本番の環境変数を確認する。
+- コーティングの証明書では、保証の終了日・保証の対象外が PDF にも公開ページにも出ない（PDF の 2 ページ目は PPF・整備・鈑金・用品のときだけ）。季節の提案はメールのみ（他のフォローは LINE 優先）。
+- 指定整備記録簿（完成検査）の PDF は管理画面からの出力だけで、同意つきの電子交付（受け取り署名）の対象は施工・整備の証明書の PDF。記録簿そのものを電子交付するなら結線が要る。
+- `src/proxy.ts` の `MARKETING_PATHS` は完全一致の短い一覧で、`/for-shops/coating`・`/features/*`・`/glossary/*` などの下層ページは `refreshSessionAndProtect` を通る（匿名なら表示に問題なし。ログイン中の訪問者では毎回 `auth.getUser()` が走る）。`isMarketingPath` に寄せるかは別途。
+- 施工証明書の作成画面で入力できる**ロット番号**（`coating_products_json.lot_number`）・**膜厚**（`content_preset_json.film_thickness`）・**損傷マップ**（`damage_map_json`）は、保存されるが、証明書の PDF・公開ページ・管理画面のどこにも表示されない。入力させるなら表示するか、表示しないなら入力欄を見直すか。
 
 ## GA4 のアプリ画面除外が本番で効いているか（2026-10-07）
 
