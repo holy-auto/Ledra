@@ -1585,13 +1585,20 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
     Vercel が緑**だったので、検査が Vercel で通ることはその時点で実測済みだった。
     この環境に Vercel のトークンが無く `npx vercel inspect <dpl_id> --logs` は打てないままなので、
     **次に Vercel が赤いときもログは代表に頼むのが最短**（今回それ1つで決着した）。
-  - 【未決】**`MISTAKE_LEDGER.md` の型表の重複を機械で見る検査が無い。** `check:ledger-ids` は
-    見出しの ID を見るので、**型表の行が2本になっても通る**（2026-10-07 に実際にそうなった:
-    マージ解消で F 行が複製され、2本の ID 一覧が食い違った。
-    `M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing`）。
-    `grep -oE '^\| \*\*[A-Z]\.' | sort | uniq -c` で全型が1本かを見るだけなので検査は安いが（**2026-10-08 訂正: ここは `[A-I]` と書いていた。
-    表は A〜L の12型あるので J/K/L の複製を見逃す範囲だった。実測で複製は無し**）、
-    「表の行 vs エントリ」をどこまで形式化するか決めていない。
+  - 【解決済み 2026-10-09】**型表の重複を `check:ledger-ids` で見るようにした。**
+    2026-10-07 にマージ解消で F 行が複製され、2本の ID 一覧が食い違った
+    （`M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing`）。
+    そのとき「`grep -oE '^\| \*\*[A-Z]\.' | sort | uniq -c` で確かめる」習慣を決めたが、
+    **2026-10-09 の4回のマージで4回とも手で打つ必要があった。** 習慣で持つものではないので
+    検査にした。しかもその習慣は**範囲を `[A-I]` と書いていて J/K/L を見逃す形**だった
+    （10-08 に訂正）—— **範囲を自分で狭く書く誤りも、床の検査が機械的に落とす。**
+    `scripts/check-ledger-ids.mjs` に3つ足した（既存スクリプトに寄せ、新規は作らない）:
+    (6-a) 型表の行が型ごとに1本か、(6-b) 行数の床（今は A〜L の12行。書式が変わって
+    0行になった日から永久に緑、を防ぐ）、(7) 表に載っている**新形式 ID が実在のエントリか**
+    （和集合にするときの打ち間違い・改名の置き忘れで、索引が死んだ ID を指すのを止める）。
+    陰性対照4つを `scripts/__tests__/check-ledger-ids.test.ts` に置き、
+    検査を1つずつ外す変異で赤になることを確認した（`[A-I]` に狭める変異は13件赤）。
+    pre-commit と CI の両方で走る（`check:ledger-ids` は `ci-parallel-checks.sh` の8本目）。
   - 【要確認】**output file tracing が `index.node` を本番の関数バンドルに入れているか。**
     `next.config.ts` の `serverExternalPackages` に入れてあるので、48MB のバイナリは tracing 経由でしか
     入らない。`scripts/check-c2pa-binary.mjs` が見るのは**ビルド機でロードできるか**までで、

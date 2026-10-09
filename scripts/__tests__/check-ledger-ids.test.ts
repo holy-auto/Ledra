@@ -17,7 +17,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 // @ts-expect-error -- .mjs に型定義は無い。検査対象は実行時の挙動。
-import { checkLedger, KNOWN_LEGACY_EXCESS, MIN_ENTRIES } from "../check-ledger-ids.mjs";
+import { checkLedger, KNOWN_LEGACY_EXCESS, MIN_ENTRIES, MIN_TYPE_ROWS } from "../check-ledger-ids.mjs";
 
 const LEDGER = join(dirname(fileURLToPath(import.meta.url)), "../../docs/context/MISTAKE_LEDGER.md");
 const real: string = readFileSync(LEDGER, "utf8");
@@ -69,6 +69,17 @@ describe("checkLedger（陽性対照 — 正しい文書は通る）", () => {
     const r = checkLedger(real);
     expect(r.legacyDupes).toHaveLength(10);
     expect(r.legacyExcess).toBe(KNOWN_LEGACY_EXCESS);
+  });
+  it("型表を A〜L の12行・型ごとに1本として読む（定数と実物が一致している）", () => {
+    const r = checkLedger(real);
+    expect(r.error).toBe(null);
+    expect(r.typeRows).toBe(MIN_TYPE_ROWS);
+  });
+
+  it("型表に載っている新形式 ID はすべて実在のエントリである", () => {
+    // 表は「この型は過去にどれだったか」を引く索引なので、指し先が無いと引けない。
+    // 旧番号（`M-005` 等）は新形式の見出しとして実在しないので検査の対象外。
+    expect(checkLedger(real).error).toBe(null);
   });
 });
 
@@ -143,6 +154,37 @@ describe("checkLedger（陰性対照 — 壊れを1つずつ入れる）", () =>
     const r = checkLedger(broken, { minEntries: total });
     expect(r.ok).toBe(false);
     expect(r.error).toContain(`エントリが ${total - 3} 件しか読めなかった`);
+  });
+
+  it("型表の行が2本になったら落ちる（マージで「両側を残す」をやった形）", () => {
+    // 2026-10-07 に実際にこれで壊し、ID 一覧が食い違った状態をマージした
+    // （M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing）。
+    // そのとき決めた「grep で1本かを確かめる」習慣は、10-09 の4回のマージで
+    // 4回とも手で打つ必要があった。だから検査にした。
+    const lines = real.split("\n");
+    const i = lines.findIndex((l) => /^\| \*\*[A-Z]\. /.test(l));
+    expect(i, "型表の行が1行も見つからない＝検査が何も見ていない").toBeGreaterThan(-1);
+    const dupe = [...lines.slice(0, i + 1), lines[i], ...lines.slice(i + 1)].join("\n");
+    const r = checkLedger(dupe);
+    expect(r.error).toContain("型表の行が重複している");
+    expect(r.error, "直し方（和集合で1本に戻す）が出ていないと、また両側を残してしまう").toContain("和集合");
+  });
+
+  it("型表が実在しない ID を指したら落ちる（打ち間違い・改名の置き忘れ）", () => {
+    const broken = real.replace(/^\| \*\*A\. .*$/m, (row) => `${row.slice(0, -1)}, **M-20991231-does-not-exist** |`);
+    expect(broken, "A 行の書き換えが当たっていない").not.toBe(real);
+    const r = checkLedger(broken);
+    expect(r.error).toContain("実在しない ID を指している");
+    expect(r.error).toContain("M-20991231-does-not-exist");
+  });
+
+  it("型表の行が読めなくなったら落ちる（書式が変わって0件になる形）", () => {
+    // 「重複が無い」だけを見ると、表の書式が変わって0行になった日から永久に緑になる（型 A）。
+    const flattened = real.replace(/^\| \*\*([A-Z])\. /gm, "| $1. ");
+    expect(flattened, "行頭の書き換えが当たっていない").not.toBe(real);
+    const r = checkLedger(flattened);
+    expect(r.error).toContain("型表の行が");
+    expect(r.error).toContain("下限は");
   });
 });
 
