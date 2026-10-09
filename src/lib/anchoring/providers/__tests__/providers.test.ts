@@ -26,6 +26,13 @@ describe("invokeAllUploadProviders", () => {
     delete process.env.POLYGON_ANCHOR_ENABLED;
   });
 
+  // **このファイルで最初に `loadProviders()` を呼ぶテストが、provider グラフ全体の
+  // モジュール評価を1人で払う。** 単体では 241ms だが、`ci-parallel-checks.sh` が10本を
+  // 同時に走らせた回に **default 5s を超えて落ちた**（2026-10-09 実測）。
+  // 同じ形は `M-20260913-ci-test-timeout` にある。下の3テストは同じ理由で既に 30s に
+  // 延ばしてあり、**ここに適用し忘れていた**。
+  // 注意: 延長が要るのは「最初に `loadProviders()` を呼ぶテスト」なので、
+  // 並び替えでこれより前に `loadProviders()` を呼ぶテストを足すなら、そちらにも付ける。
   it("returns safe defaults when all providers are disabled", async () => {
     const { invokeAllUploadProviders } = await loadProviders();
     const result = await invokeAllUploadProviders(dummyBuffer, "image/jpeg", "abc123");
@@ -39,7 +46,7 @@ describe("invokeAllUploadProviders", () => {
     });
     expect(result.deepfake).toEqual({ score: null, verdict: null });
     expect(result.polygon).toEqual({ txHash: null, anchored: false, network: null });
-  });
+  }, 30_000);
 
   // c2pa-node の native binding 初期化 + 失敗ハンドリングが含まれるため、
   // 高負荷の CI ランナー上では default 5s timeout を超えうる。30s に拡張。
