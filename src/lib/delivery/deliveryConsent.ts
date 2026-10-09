@@ -13,7 +13,7 @@
  *     事前承諾をシステムで強制する opt-in）。
  */
 
-import { createHash } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DeliveryConsentState } from "@/lib/domain/states";
 import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
@@ -50,6 +50,51 @@ export function computeDeliveryConsentTextHash(): string {
   return createHash("sha256").update(deliveryConsentText(), "utf8").digest("hex");
 }
 
+/** 承諾依頼リンク（/consent/delivery/<token>）の有効日数。 */
+export const CONSENT_REQUEST_TTL_DAYS = 14;
+
+/** 承諾依頼リンクのトークンは平文で保存せず、sha256 だけを持つ（DB が漏れてもリンクを再現できない）。 */
+export function hashConsentRequestToken(token: string): string {
+  return createHash("sha256").update(`delivery-consent-request|${token}`, "utf8").digest("hex");
+}
+
+export function newConsentRequestToken(): { token: string; tokenHash: string } {
+  const token = randomBytes(32).toString("base64url");
+  return { token, tokenHash: hashConsentRequestToken(token) };
+}
+
+export type ConsentRequestLookup =
+  | { state: "ok"; id: string; tenantId: string; customerId: string; expiresAt: string }
+  | { state: "used" | "expired" | "not_found" }
+  | { state: "error"; error: unknown };
+
+/** 承諾依頼リンクのトークンから依頼を引く（公開ページと承諾 API の共通）。`db` は service-role。 */
+export async function findConsentRequest(
+  db: Pick<SupabaseClient, "from">,
+  token: string,
+  now: Date = new Date(),
+): Promise<ConsentRequestLookup> {
+  // 発行するトークンは 32 バイトの base64url（43 文字）。形の違うものは DB に問い合わせない。
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return { state: "not_found" };
+  const { data, error } = await db
+    .from("delivery_consent_requests")
+    .select("id, tenant_id, customer_id, expires_at, used_at")
+    .eq("token_hash", hashConsentRequestToken(token))
+    .maybeSingle();
+  if (error) return { state: "error", error };
+  const r = data as {
+    id: string;
+    tenant_id: string;
+    customer_id: string;
+    expires_at: string;
+    used_at: string | null;
+  } | null;
+  if (!r) return { state: "not_found" };
+  if (r.used_at) return { state: "used" };
+  if (new Date(r.expires_at).getTime() <= now.getTime()) return { state: "expired" };
+  return { state: "ok", id: r.id, tenantId: r.tenant_id, customerId: r.customer_id, expiresAt: r.expires_at };
+}
+
 /** 行（無ければ null）から現在の承諾状態を返す。 */
 export function deliveryConsentStatus(row: DeliveryConsentRow | null | undefined): DeliveryConsentStatus {
   if (!row) return "none";
@@ -67,7 +112,7 @@ export function isElectronicDeliveryBlocked(row: DeliveryConsentRow | null | und
 const BLOCKED_REVOKED =
   "この顧客は電子交付の承諾を撤回しています。電磁的方法での交付はできません（書面交付等に切り替えてください）。";
 const BLOCKED_NO_CONSENT =
-  "この顧客から電子交付の承諾を得ていません（店舗設定で事前承諾を必須にしています）。顧客詳細で承諾を記録するか、書面交付等に切り替えてください。";
+  "この顧客から電子交付の承諾を得ていません（店舗設定で事前承諾を必須にしています）。顧客詳細の「電子交付の承諾」から承諾のお願いを送るか承諾を記録するか、書面交付等に切り替えてください。";
 const BLOCKED_NO_CUSTOMER =
   "顧客が紐付いていない証明書は承諾を確認できません（店舗設定で事前承諾を必須にしています）。顧客を紐付けて承諾を記録するか、書面交付等に切り替えてください。";
 /** 承諾状態を確認できなかった（DB 一時障害）ときの理由。呼び出し側が「再試行で直る」ものとして扱えるよう公開する。 */
@@ -165,4 +210,64 @@ export async function customerFacingDeliveryBlock(
     req: ctx.req,
   });
   return block;
+}
+
+/**
+ * 使用者本人の承諾を記録する（顧客ポータル・承諾依頼リンクの共通処理）。 [G3 / 第２ ４（３）]
+ * 既に承諾済みなら何もしない（店舗が記録した承諾＝誰がいつ取ったかを上書きしない）。
+ * 本人の承諾は granted_by=null で表す（店舗の記録は必ず granted_by=操作者）。method は「示した交付方法」の列なので
+ * 入れず、示した文言は consent_version / consent_text_hash で特定する。撤回後の再承諾は同じ行を上書きするので、
+ * 撤回の記録と経路（via）・接続元（IP/UA）は監査ログに残す（G4 の証跡）。
+ */
+export async function grantDeliveryConsentAsCustomer(
+  db: Pick<SupabaseClient, "from">,
+  p: { tenantId: string; customerId: string; via: "portal" | "link"; requestId?: string; req?: Request },
+): Promise<{ ok: true; alreadyGranted: boolean } | { ok: false; error: unknown }> {
+  const { data: current, error: readErr } = await db
+    .from("delivery_consents")
+    .select("status, revoked_at, revoked_via")
+    .eq("tenant_id", p.tenantId)
+    .eq("customer_id", p.customerId)
+    .maybeSingle();
+  if (readErr) return { ok: false, error: readErr };
+  const prev = current as { status: string; revoked_at: string | null; revoked_via: string | null } | null;
+  if (prev?.status === "granted") return { ok: true, alreadyGranted: true };
+
+  const now = new Date().toISOString();
+  const { error } = await db.from("delivery_consents").upsert(
+    {
+      tenant_id: p.tenantId,
+      customer_id: p.customerId,
+      status: "granted",
+      method: null,
+      note: null,
+      consent_version: DELIVERY_CONSENT_VERSION,
+      consent_text_hash: computeDeliveryConsentTextHash(),
+      granted_at: now,
+      granted_by: null,
+      revoked_at: null,
+      revoked_by: null,
+      revoked_via: null,
+      updated_at: now,
+    },
+    { onConflict: "tenant_id,customer_id" },
+  );
+  if (error) return { ok: false, error };
+  void logTenantAuditEvent(db, {
+    tenantId: p.tenantId,
+    actorType: "system",
+    action: "delivery_consent_granted_by_customer",
+    table: "delivery_consents",
+    recordId: p.customerId,
+    extra: {
+      via: p.via,
+      ...(p.requestId ? { request_id: p.requestId } : {}),
+      consent_version: DELIVERY_CONSENT_VERSION,
+      previous_status: prev?.status ?? "none",
+      previous_revoked_at: prev?.revoked_at ?? null,
+      previous_revoked_via: prev?.revoked_via ?? null,
+    },
+    req: p.req,
+  });
+  return { ok: true, alreadyGranted: false };
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import QRCode from "qrcode";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
 /**
@@ -79,6 +80,39 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
     }
   }
 
+  // 承諾のお願い（お客様が自分の端末で承諾するリンク）。店頭なら QR を読んでもらう。
+  const [request, setRequest] = useState<{ url: string; qr: string; expiresAt: string } | null>(null);
+
+  async function requestConsent(send: "link" | "email" | "line") {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/admin/customers/${customerId}/delivery-consent/request`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ send }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok || typeof j?.url !== "string") throw new Error(j?.message ?? "リンクを作成できませんでした。");
+      setRequest({
+        url: j.url,
+        qr: await QRCode.toDataURL(j.url, { margin: 1, width: 200 }),
+        expiresAt: String(j.expires_at),
+      });
+      if (send !== "link") {
+        setMsg(
+          j.delivered
+            ? { text: send === "email" ? "メールで送りました。" : "LINE で送りました。", ok: true }
+            : { text: "送信できませんでした。下のリンクを別の方法でお渡しください。", ok: false },
+        );
+      }
+    } catch (e) {
+      setMsg({ text: e instanceof Error ? e.message : "リンクを作成できませんでした。", ok: false });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const badgeClass =
     state === "granted"
       ? "bg-success/10 text-success-text"
@@ -104,7 +138,7 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
         <p className="mt-1 text-[11px] text-muted">
           承諾: {new Date(row.granted_at).toLocaleString("ja-JP")}（
           {/* 店舗の記録は必ず granted_by=操作者。本人のポータル承諾だけが granted_by=null */}
-          {row.granted_by ? "店舗が記録" : "お客様本人（顧客ポータル）"}）
+          {row.granted_by ? "店舗が記録" : "お客様本人"}）
         </p>
       )}
       {row?.revoked_at && (
@@ -132,6 +166,61 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
           撤回を記録
         </button>
       </div>
+      {state !== "granted" && !loading && !loadError && (
+        <div className="mt-3 border-t border-border pt-3">
+          <p className="text-[11px] text-muted">
+            お客様にご自身の端末で承諾していただくリンクを作れます（14日間・1回限り）。店頭では QR
+            を読んでもらってください。
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => requestConsent("link")}
+              disabled={busy}
+              className="btn-ghost text-xs disabled:opacity-50"
+            >
+              リンクと QR を作る
+            </button>
+            <button
+              type="button"
+              onClick={() => requestConsent("email")}
+              disabled={busy}
+              className="btn-ghost text-xs disabled:opacity-50"
+            >
+              メールで送る
+            </button>
+            <button
+              type="button"
+              onClick={() => requestConsent("line")}
+              disabled={busy}
+              className="btn-ghost text-xs disabled:opacity-50"
+            >
+              LINE で送る
+            </button>
+          </div>
+          {request && (
+            <div className="mt-2 flex items-start gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element -- data URL の QR */}
+              <img
+                src={request.qr}
+                alt="承諾のお願いのリンク（QR コード）"
+                className="h-28 w-28 rounded bg-white p-1"
+              />
+              <div className="min-w-0 text-[11px] text-muted">
+                <div className="break-all text-primary">{request.url}</div>
+                <button
+                  type="button"
+                  onClick={() => void navigator.clipboard?.writeText(request.url)}
+                  className="mt-1 underline"
+                >
+                  リンクをコピー
+                </button>
+                <div className="mt-1">有効期限: {new Date(request.expiresAt).toLocaleString("ja-JP")}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

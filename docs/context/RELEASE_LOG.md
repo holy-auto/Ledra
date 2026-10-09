@@ -4,6 +4,21 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-09 電子交付の承諾を、お客様ご自身の端末でいただくリンクを追加
+
+- 内容: 顧客詳細の「電子交付の承諾」に「リンクと QR を作る／メールで送る／LINE で送る」を追加した（DECISION_LOG 2026-10-09）。
+  - お客様はリンク（`/consent/delivery/<token>`、14日間・1回限り）で開示文言を読み、チェックして承諾する。記録は本人承諾
+    （`granted_by=null`）で、経路・依頼 ID・IP/UA を `audit_logs`（`delivery_consent_granted_by_customer`, `via=link`）に残す。
+  - 新テーブル `delivery_consent_requests`（マイグレーション `20261009141300_delivery_consent_requests.sql`）。トークンは sha256 だけ保存。
+  - 店舗の承諾記録・撤回記録、お客様本人の撤回にも監査ログを追加（`delivery_consent_recorded_by_shop` /
+    `delivery_consent_revoked_by_shop` / `delivery_consent_revoked_by_customer`、依頼は `delivery_consent_requested`）。
+  - 未承諾で受領サイン依頼が止まったときの文言で、承諾のお願いを送れることを案内する。
+- 検証: tsc、eslint（エラー 0）、prettier、`check:schema`、全マイグレーションの再生（524 / 524）、
+  承諾リンク API のテスト（記録・使用済み・期限切れ・不正トークン・文言の版・承諾済みを上書きしない）と既存の承諾まわりのテスト。
+  公開ページはサーバ描画の出力を確認（未承諾なら文言とボタン、使用後は「記録済み」）。ブラウザ・本番 DB では未確認。
+  店舗側の発行 API はテスト無し（手で叩いての確認もしていない）。
+- 本番への適用: マージ後、いつもの手順でマイグレーションを適用する（【要確認】適用の実施）。メール送信は `RESEND_FROM` が要る。
+
 ## 2026-10-09 証明書 PDF の QR・URL を常に Ledra の本ドメインにする（リクエストのホストも使わない）
 
 - 内容: 独自ドメイン（`tenants.custom_domain`）を設定したテナントの証明書 PDF は、QR と本文の公開 URL が `https://<独自ドメイン>/c/<公開ID>` を指していた。
