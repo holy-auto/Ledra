@@ -9,8 +9,10 @@ export default function DemoTenantBanner() {
   if (loading || !data || !isDemoTenant(data.tenant_id)) return null;
 
   return (
-    <div role="status" className="sticky top-0 z-40 border-b border-amber-400/30 bg-amber-500/10 backdrop-blur-sm">
-      <div className="mx-auto flex max-w-7xl items-start gap-3 px-4 py-2.5 text-xs sm:text-sm">
+    // 固定しない: AdminTopBar (sticky top-0) と PageBar (sticky top-11) の下に潜り込み、
+    // モバイルで 2〜3 行に折り返した分が見出しに重なっていた。pr-16 は固定ハンバーガーの分。
+    <div role="status" className="border-b border-amber-400/30 bg-amber-500/10">
+      <div className="mx-auto flex max-w-7xl items-start gap-3 px-4 py-2.5 pr-16 text-xs sm:text-sm lg:pr-4">
         <svg
           aria-hidden="true"
           viewBox="0 0 24 24"

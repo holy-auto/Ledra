@@ -18,6 +18,33 @@
 - 検証: tsc・eslint（0 error）・check:schema 緑。`certificatePublicUrl` の単体テスト（環境変数の順・末尾スラッシュ・スキーム補完・環境変数無し）を追加。
   公開 PDF の承諾ゲートのテストは「ゲート通過」の目印を公開 URL の組み立てに移し、ゲートを外すと 6 件中 4 件が落ちることを確認。lib・PDF 関連 5,294 件緑（2 件は既存のスキップ）。
 
+## 2026-10-09 デモ環境の案内帯がスクロール時に見出しへ重なる不具合を直す
+
+- 内容: 管理画面のデモ案内帯（`DemoTenantBanner`）が `sticky top-0` で、同じく固定の上部バー（`AdminTopBar`、高さ 44px・z 45）の下に潜り込み、
+  モバイルで 2〜3 行に折り返したはみ出し分がページ見出し（`PageBar`、`top-11`）に重なっていた。撮影中に代表が気づいた。案内帯を固定せず、スクロールで流れるようにした。
+  右端は固定のメニューボタンと重ならないよう余白を取った。
+
+## 2026-10-08 デモテナントの撮影用特例（アンカー表示・パスポート・書き込み窓）
+
+- 内容: 社内撮影・非公開の紹介動画のため、`scripts/setup-demo-tenant.ts` に `--filming` / `--filming-cleanup` を追加し、本番デモテナントに `--filming` を適用。
+  ヒーロー車両の証明書 11 件すべてに、アンカー済みの写真 1 枚（`authenticity_grade=verified`・`polygon_network=amoy`）と `certificate_anchors`（status `anchored`）を作り、
+  `vehicle_passports`（`LDM800012345`）と購入済みレポート 1 件を入れた。cert_digest・Merkle root は本番の関数で計算。tx はチェーンに送っていない。
+- 書き込み窓: デモの読み取り専用ポリシー `demo_tenant_readonly_insert`（certificates）を、ヒーロー車両への INSERT だけ通すよう変更（`scripts/demo-filming-write-window.sql`）。
+- 検証: `--filming-cleanup` を本番で流し、アンカー・バッチ・パスポート・レポート・アンカー写真が 0 件になり、証明書 11 件が `active` に戻ることを確認。撮影中に作った想定の証明書
+  （写真・履歴付き）1 件も消えることを確認したうえで、`--filming` を入れ直した。
+- 戻し方: OPEN_QUESTIONS「撮影用の特例を戻す」。
+
+## 2026-10-07 デモテナントに撮影用のヒーロー車両（施工・整備 11 件・NFC タグ）を追加
+
+- 内容: 紹介動画の「NFC タッチ → 1 台の車の履歴」を撮れるよう、`scripts/setup-demo-tenant.ts` に顧客 1・車両 1（TOYOTA ハリアー、車体番号 `LDM80-0012345`）・
+  証明書 11 件（LEDRA-DEMO-0017〜0027。新車コーティング・PPF・6/12/24ヶ月点検・鈑金塗装・初回車検・オイル交換など、約 3 年半ぶん）と
+  NFC タグ 1 件（`LDM-NFC-0001`、最新の 0027 に貼付済み）を追加。整備は `maintenance_json`（作業種別・走行距離・交換部品・所見）、鈑金は `body_repair_json` 付き。
+- 本番デモテナントへ投入済み（証明書 27・車両 11・顧客 9・写真 108・履歴 38）。NFC タグに書き込む URL は `https://app.ledra.co.jp/c/LEDRA-DEMO-0027`。
+- ついでに直したもの: シードの import 先 `../src/lib/certificateImages` がディレクトリ（index 無し）で、スクリプトが起動時に落ちていた。`/constants` を指すよう修正
+  （`backfill-demo-image-placeholders.ts` も同じ）。整備の履歴タイトルに「施工」を付けないようにした。
+- 作らなかったもの: ブロックチェーンのアンカー・`vehicle_passports`（DECISION_LOG 2026-10-07）。
+
+
 ## 2026-10-08 ロゴ・印影を Storage API から直接書き換えられるポリシーを外す
 
 - 内容: 本番の `assets` バケットに、マイグレーションには一度も現れない本番だけの RLS ポリシーが 2 本あった。

@@ -18,7 +18,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { generateDemoPlaceholderJpeg } from "./demoPlaceholderImage";
 // 書き込み先バケットは公開ページの読み取り (publicData.ts の getPublicUrl) と同じ定数。
-import { CERTIFICATE_IMAGE_BUCKET } from "../src/lib/certificateImages";
+import { CERTIFICATE_IMAGE_BUCKET } from "../src/lib/certificateImages/constants";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
