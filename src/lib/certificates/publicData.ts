@@ -94,7 +94,6 @@ type ManufacturerPublicRow = {
 type TenantRow = {
   name: string | null;
   slug: string | null;
-  custom_domain: string | null;
 };
 
 type VehicleRow = {
@@ -200,7 +199,6 @@ export type PublicCertificateData = {
   shop: {
     name: string | null;
     slug: string | null;
-    custom_domain: string | null;
   } | null;
   /**
    * Active manufacturer info when the certificate was issued under a
@@ -247,12 +245,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
   const [detailVisible, tenantRes, vehicleRes, nfcRes, histRes, imgRes, vcRes, mediaRes, reservationsRes] =
     await Promise.all([
       canViewCertificateDetails(cert),
-      supabase
-        .from("tenants")
-        .select("name, slug, custom_domain")
-        .eq("id", cert.tenant_id)
-        .limit(1)
-        .maybeSingle<TenantRow>(),
+      supabase.from("tenants").select("name, slug").eq("id", cert.tenant_id).limit(1).maybeSingle<TenantRow>(),
 
       cert.vehicle_id
         ? supabase
@@ -472,7 +465,6 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
       ? {
           name: tenant.name ?? tenant.slug ?? null,
           slug: tenant.slug ?? null,
-          custom_domain: tenant.custom_domain ?? null,
         }
       : null,
     manufacturer,

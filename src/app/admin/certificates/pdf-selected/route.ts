@@ -4,6 +4,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { renderCertificatePdf, type CertRow } from "@/lib/pdfCertificate";
 import { checkAdminFeature, billingDenyResponse } from "@/lib/billing/adminFeatureGate";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
+import { certificatePublicUrl } from "@/lib/url";
 
 export async function GET(req: Request) {
   // @holy-guard:pdf_zip
@@ -80,15 +81,11 @@ export async function GET(req: Request) {
     description: `一括PDF生成: ${pids.length}件`,
   });
 
-  const host = req.headers.get("host") ?? "localhost:3000";
-  const proto = req.headers.get("x-forwarded-proto") ?? "http";
-  const baseUrl = `${proto}://${host}`;
-
   const { default: JSZip } = await import("jszip");
   const zip = new JSZip();
 
   for (const r of rows ?? []) {
-    const publicUrl = `${baseUrl}/c/${r.public_id}`;
+    const publicUrl = certificatePublicUrl(r.public_id);
     const anchors = anchorsByCertId.get((r as { id: string }).id) ?? [];
     const pdf = await renderCertificatePdf(r as unknown as CertRow, publicUrl, anchors);
     zip.file(`certificate_${r.public_id}.pdf`, pdf);

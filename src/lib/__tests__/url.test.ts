@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { resolveBaseUrl } from "@/lib/url";
+import { certificatePublicUrl, resolveBaseUrl } from "@/lib/url";
 
 /**
  * resolveBaseUrl の `preferRequestOrigin` を検証する。
@@ -36,14 +36,25 @@ describe("resolveBaseUrl", () => {
   it("preferRequestOrigin falls back to APP_URL when no request is available", () => {
     expect(resolveBaseUrl({ preferRequestOrigin: true })).toBe("https://app.ledra.co.jp");
   });
+});
 
-  it("tenantCustomDomain still wins even with preferRequestOrigin", () => {
-    expect(
-      resolveBaseUrl({
-        req: reqOn("ledra-preview.vercel.app"),
-        preferRequestOrigin: true,
-        tenantCustomDomain: "cert.holy-auto.jp",
-      }),
-    ).toBe("https://cert.holy-auto.jp");
+describe("certificatePublicUrl [証明書 PDF の QR に刷る公開 URL]", () => {
+  const keys = ["NEXT_PUBLIC_APP_URL", "APP_URL", "NEXT_PUBLIC_BASE_URL", "VERCEL_URL"] as const;
+  const prev = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  beforeEach(() => keys.forEach((k) => delete process.env[k]));
+  afterEach(() =>
+    keys.forEach((k) => (prev[k] === undefined ? delete process.env[k] : (process.env[k] = prev[k] as string))),
+  );
+
+  it("正規ドメインの環境変数を順に使い、末尾スラッシュ・スキーム無しを正規化する", () => {
+    process.env.APP_URL = "https://app.ledra.co.jp/";
+    process.env.VERCEL_URL = "ledra-git-x.vercel.app";
+    expect(certificatePublicUrl("ABC-123")).toBe("https://app.ledra.co.jp/c/ABC-123");
+    process.env.NEXT_PUBLIC_APP_URL = "app.ledra.co.jp";
+    expect(certificatePublicUrl("ABC-123")).toBe("https://app.ledra.co.jp/c/ABC-123");
+  });
+
+  it("環境変数が無ければ localhost（リクエストのホストは受け取らない）", () => {
+    expect(certificatePublicUrl("ABC")).toBe("http://localhost:3000/c/ABC");
   });
 });

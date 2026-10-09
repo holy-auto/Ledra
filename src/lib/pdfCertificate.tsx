@@ -38,7 +38,6 @@ type TemplateSchema = {
 
 export type CertRow = {
   public_id: string;
-  tenant_custom_domain?: string | null;
   customer_name: string;
   /* eslint-disable @typescript-eslint/no-explicit-any -- DB JSON columns */
   vehicle_info_json: Record<string, any>;
@@ -625,12 +624,6 @@ function normValue(v: unknown): string | null {
   }
   const s = String(v).trim();
   return s ? s : null;
-}
-
-function buildPublicOrigin(cert: { tenant_custom_domain?: string | null }, fallbackOrigin?: string) {
-  if (cert.tenant_custom_domain) return `https://${cert.tenant_custom_domain}`;
-  if (fallbackOrigin) return fallbackOrigin;
-  return "http://localhost:3000";
 }
 
 async function makeQrDataUrl(publicUrl: string): Promise<string> {
