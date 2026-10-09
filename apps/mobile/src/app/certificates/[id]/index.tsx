@@ -39,18 +39,18 @@ import { publicCertUrl, certPdfUrl } from "@/lib/certificateLinks";
 import { StatusBadge, LedraButton } from "@/components/ui";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
-/** certificate_images row */
+/**
+ * 施工写真（GET /api/mobile/certificates/[id]/images）。URL は短命の署名 URL。
+ * 保存先を非公開にしても表示できるよう、公開 URL（getPublicUrl）は使わない。
+ */
 interface CertImage {
   id: string;
-  storage_path: string;
-  thumbnail_path: string | null;
-  medium_path: string | null;
   stage: string | null;
   authenticity_grade: string | null;
-}
-
-function assetUrl(path: string): string {
-  return supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
+  url: string | null;
+  thumbnail_url: string | null;
+  medium_url: string | null;
+  ext: string;
 }
 
 
@@ -138,17 +138,10 @@ export default function CertificateDetailScreen() {
 
   const { data: images = [] } = useQuery({
     queryKey: ["certificate-images", id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("certificate_images")
-        .select(
-          "id, storage_path, thumbnail_path, medium_path, stage, authenticity_grade"
-        )
-        .eq("certificate_id", id)
-        .order("sort_order", { ascending: true });
-      if (error) throw error;
-      return data as CertImage[];
-    },
+    queryFn: async () =>
+      (await mobileApi<{ images: CertImage[] }>(`/certificates/${id}/images`)).images,
+    // 署名 URL は 1 時間で切れるので、それより前に取り直す
+    staleTime: 30 * 60 * 1000,
     enabled: !!id && !!user?.tenantId,
   });
 
@@ -220,8 +213,9 @@ export default function CertificateDetailScreen() {
         Alert.alert("権限エラー", "写真を端末に保存する権限を許可してください");
         return;
       }
-      const url = assetUrl(img.storage_path);
-      const ext = img.storage_path.split(".").pop()?.split("?")[0] ?? "jpg";
+      const url = img.url;
+      if (!url) throw new Error("写真の URL を取得できませんでした");
+      const ext = img.ext;
       const dest = new File(Paths.cache, `cert-${img.id}.${ext}`);
       const dl = await File.downloadFileAsync(url, dest, { idempotent: true });
       await MediaLibrary.saveToLibraryAsync(dl.uri);
@@ -413,7 +407,7 @@ export default function CertificateDetailScreen() {
                     accessibilityRole="imagebutton"
                     accessibilityLabel={`証明書画像を拡大 (${img.stage ?? "未指定"})`}
                   >
-                    {brokenIds.includes(img.id) ? (
+                    {brokenIds.includes(img.id) || !img.thumbnail_url ? (
                       <View style={[styles.image, styles.imageBroken]}>
                         <Icon source="image-off" size={24} color={colors.textSecondary} />
                         <Text style={styles.imageBrokenText}>読み込めません</Text>
@@ -421,7 +415,7 @@ export default function CertificateDetailScreen() {
                     ) : (
                       <Image
                         source={{
-                          uri: assetUrl(img.thumbnail_path ?? img.storage_path),
+                          uri: img.thumbnail_url,
                         }}
                         style={styles.image}
                         resizeMode="cover"
@@ -546,7 +540,7 @@ export default function CertificateDetailScreen() {
             {preview && (
               <>
                 <Image
-                  source={{ uri: assetUrl(preview.medium_path ?? preview.storage_path) }}
+                  source={{ uri: preview.medium_url ?? undefined }}
                   style={styles.previewImage}
                   resizeMode="contain"
                   accessibilityLabel={`証明書画像 (${preview.stage ?? "未指定"})`}
