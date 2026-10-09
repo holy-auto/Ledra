@@ -131,8 +131,8 @@
     接続プールが立ち、**Edge にも移せなくなる**。`c2pa.ts` は後方互換で re-export。
   - `check:c2pa-binary` を `scripts/ci-parallel-checks.sh` に追加した。`ci.yml` の build は
     `npm run build || true` で終了コードを捨てるので、**ビルド前段だけでは CI の信号にならなかった**。
-  - 検査スクリプト自身のテストを追加（`scripts/__tests__/checkC2paBinary.test.ts`・**7件**。
-    `grep -cE '^  it\('` で数え直した。初版は4件で、2026-10-08 に3件足した）。
+  - 検査スクリプト自身のテストを追加（`scripts/__tests__/checkC2paBinary.test.ts`・**10件**。
+    `grep -cE '^  it\('` で数え直した。初版4件 → 10-08 に3件 → 10-09 に3件）。
     変異で当たりを取った: `.env` を読まない形に戻すと2件が赤、`NODE_ENV` を production に強制すると
     「`NODE_ENV=test` では `.env.local` を読まない」が赤、裸の指定子を `dist/` 基準で解くと1件が赤。
 - **`npm run build` の正確な挙動（2026-10-08 実測）**: 検査を前段に入れた状態で
@@ -145,17 +145,6 @@
   なお PR 本文・コメントに一度「手元で成功」と書いたが、**そのときは終了コードを見ておらず、
   `.next/build-manifest.json` の更新時刻から推定していた**
   （`M-20261008-called-the-build-successful-from-a-file-mtime`）。訂正済み。
-- **2026-10-09 追記（マージ後の修正）**: ready 化で起動していた Codex のレビューが、**マージの約4分後**に
-  P2 を1件出した（完了 13:09:36・`978aa08`）。**指摘が出た時点でコードは main に入っていた。**
-  内容は実測で確認できた: `C2PA_LIBRARY_PATH=""`（空文字）のとき、パッケージは
-  `require(C2PA_LIBRARY_PATH ?? "./index.node")` で **`??` なので空文字を残し** `require("")` が
-  `ERR_INVALID_ARG_VALUE` で落ちるのに、検査は真偽値で見て**既定の `index.node` に差し替えて exit 0**。
-  `C2PA_MODE=production` なら「**ビルドは緑・実行時は全件 503**」という偽の緑になる。
-  `override === undefined` で分岐するよう直し、空文字は裸の指定子として素通しして
-  あちらと同じ例外で落ちるようにした。回帰テストを追加（真偽値に戻すと赤）。
-  記録: `M-20261009-parity-test-covered-the-parser-and-missed-the-override`。
-  **運用の教訓: ready 化で Codex を起動した直後にマージすると、指摘は main 向けになる。**
-  待たないなら、マージ後に結果を見に行く段取りを先に用意しておく（今回は予約を入れてあった）。
 - **2026-10-09 `main` にマージ（squash `c4627a3d`・PR #1272）。** マージ時点で GitHub Actions は
   9 本すべて緑（E2E / CodeQL / Migrations Replay / Client Bundle Size / Count lines of code /
   Scan for secrets / Lint, Type Check & Unit Tests / Analyze / Vercel Preview Comments）。
@@ -169,6 +158,30 @@
   また `ci-parallel-checks.sh`（10本同時）の回で `providers.test.ts` の先頭テストが
   既定 5s のタイムアウトで落ちたので 30s を付けた
   （`M-20261009-extended-three-test-timeouts-and-missed-the-first-caller`）。
+- **2026-10-09 追記（マージ後の修正）**: ready 化で起動していた Codex のレビューが、**マージの約4分後**に
+  P2 を1件出した（完了 13:09:36・`978aa08`）。**指摘が出た時点でコードは main に入っていた。**
+  内容は実測で確認できた: `C2PA_LIBRARY_PATH=""`（空文字）のとき、パッケージは
+  `require(C2PA_LIBRARY_PATH ?? "./index.node")` で **`??` なので空文字を残し** `require("")` が
+  `ERR_INVALID_ARG_VALUE` で落ちるのに、検査は真偽値で見て**既定の `index.node` に差し替えて exit 0**。
+  `C2PA_MODE=production` なら「**ビルドは緑・実行時は全件 503**」という偽の緑になる。
+  `override === undefined` で分岐するよう直し、空文字は裸の指定子として素通しして
+  あちらと同じ例外で落ちるようにした。回帰テストを追加（真偽値に戻すと赤）。
+  記録: `M-20261009-parity-test-covered-the-parser-and-missed-the-override`。
+  **さらに `/code-review` が同じ形を2つ出した（9件、全件反映）。**
+  (a) `C2PA_MODE` が実 env にあると早期 return して `.env` を読まないので、
+  **`C2PA_LIBRARY_PATH` を `.env` に書いた構成では override が検査から見えず、
+  next とランタイムだけが拾う** —— 同じ `.env` が `C2PA_MODE` の出所だけで exit 0 / exit 1 に
+  分かれた（実測）。しかもそれは天井1が推奨している構成そのもの。`.env` を必ず読む形にした。
+  (b) パスの解決を自前の分岐でやっていたのをやめ、**`createRequire(path.join(distDir, "binary.js"))` で
+  `dist/binary.js` の1行をそのまま再現**した（6行 → 2行）。この式はこれで3回直しており、
+  **3つとも「Node の解決を自分で書き直した」ことの副作用**だった。入れ子 `node_modules` の差も消える。
+  (c) 空の override のとき見出しが「 をロードできない」になり原因候補4つが全部見当外れだったので、
+  専用の文言にした。エラーの `code` も出力に足した（`err.stack` には入らない）。
+  **テストを「両側を同じ入力で走らせて比べる」形に作り直した** —— 6入力で
+  ロード可否と**落ちる理由（`code`）まで**照合する。片側だけ見るテストは
+  「別の理由で落ちる実装」を通してしまう（変異3で実証）。
+  **運用の教訓: ready 化で Codex を起動した直後にマージすると、指摘は main 向けになる。**
+  待たないなら、マージ後に結果を見に行く段取りを先に用意しておく（今回は予約を入れてあった）。
 - **天井を2つ明記した**（`ponytail:`）: (a) `C2PA_MODE` がビルド時に見えること（Vercel で実行時専用の
   env だと発火しない）、(b) **見ているのは「ビルド機でロードできるか」で、「本番の関数バンドルに
   バイナリが入るか」ではない**。`serverExternalPackages` に入れてあるので 48MB の `index.node` は
