@@ -11,6 +11,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { CUSTOMER_COOKIE, getTenantIdBySlug, validateSession } from "@/lib/customerPortalServer";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -46,6 +47,15 @@ export async function POST(req: Request) {
       { onConflict: "tenant_id,customer_id" },
     );
     if (error) return apiInternalError(error, "customer/delivery-consent/revoke");
+    // 再承諾で行が上書きされても撤回の事実と接続元が残るように（G4 の証跡）。
+    void logTenantAuditEvent(admin, {
+      tenantId,
+      actorType: "system",
+      action: "delivery_consent_revoked_by_customer",
+      table: "delivery_consents",
+      recordId: session.customer_id,
+      req,
+    });
     return apiOk({ status: "revoked" });
   } catch (e) {
     return apiInternalError(e, "customer/delivery-consent/revoke");

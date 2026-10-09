@@ -13,7 +13,7 @@
  *     事前承諾をシステムで強制する opt-in）。
  */
 
-import { createHash } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DeliveryConsentState } from "@/lib/domain/states";
 import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
@@ -50,6 +50,72 @@ export function computeDeliveryConsentTextHash(): string {
   return createHash("sha256").update(deliveryConsentText(), "utf8").digest("hex");
 }
 
+/** 承諾依頼リンク（/consent/delivery/<token>）の有効日数。 */
+export const CONSENT_REQUEST_TTL_DAYS = 14;
+
+/** 承諾依頼リンクのトークンは平文で保存せず、sha256 だけを持つ（DB が漏れてもリンクを再現できない）。 */
+export function hashConsentRequestToken(token: string): string {
+  return createHash("sha256").update(`delivery-consent-request|${token}`, "utf8").digest("hex");
+}
+
+export function newConsentRequestToken(): { token: string; tokenHash: string } {
+  const token = randomBytes(32).toString("base64url");
+  return { token, tokenHash: hashConsentRequestToken(token) };
+}
+
+export type ConsentRequestLookup =
+  | { state: "ok"; id: string; tenantId: string; customerId: string; createdAt: string; sentVia: string }
+  | { state: "used" | "expired" | "not_found" }
+  | { state: "error"; error: unknown };
+
+/** 承諾依頼リンクのトークンから依頼を引く（公開ページと承諾 API の共通）。`db` は service-role。 */
+export async function findConsentRequest(
+  db: Pick<SupabaseClient, "from">,
+  token: string,
+  now: Date = new Date(),
+): Promise<ConsentRequestLookup> {
+  // 発行するトークンは 32 バイトの base64url（43 文字）。形の違うものは DB に問い合わせない。
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return { state: "not_found" };
+  const { data, error } = await db
+    .from("delivery_consent_requests")
+    .select("id, tenant_id, customer_id, sent_via, expires_at, used_at, created_at")
+    .eq("token_hash", hashConsentRequestToken(token))
+    .maybeSingle();
+  if (error) return { state: "error", error };
+  const r = data as {
+    id: string;
+    tenant_id: string;
+    customer_id: string;
+    sent_via: string;
+    expires_at: string;
+    used_at: string | null;
+    created_at: string;
+  } | null;
+  if (!r) return { state: "not_found" };
+  if (r.used_at) return { state: "used" };
+  if (new Date(r.expires_at).getTime() <= now.getTime()) return { state: "expired" };
+  return {
+    state: "ok",
+    id: r.id,
+    tenantId: r.tenant_id,
+    customerId: r.customer_id,
+    createdAt: r.created_at,
+    sentVia: r.sent_via,
+  };
+}
+
+/** 承諾依頼リンクの発行（createdAt）以降に撤回されたか。撤回後に古いリンクで承諾に戻さないための判定（規制(4)）。 */
+export function revokedSinceRequest(
+  consent: { status?: string | null; revoked_at?: string | null } | null | undefined,
+  requestCreatedAt: string,
+): boolean {
+  return (
+    consent?.status === "revoked" &&
+    !!consent.revoked_at &&
+    new Date(consent.revoked_at).getTime() >= new Date(requestCreatedAt).getTime()
+  );
+}
+
 /** 行（無ければ null）から現在の承諾状態を返す。 */
 export function deliveryConsentStatus(row: DeliveryConsentRow | null | undefined): DeliveryConsentStatus {
   if (!row) return "none";
@@ -67,7 +133,7 @@ export function isElectronicDeliveryBlocked(row: DeliveryConsentRow | null | und
 const BLOCKED_REVOKED =
   "この顧客は電子交付の承諾を撤回しています。電磁的方法での交付はできません（書面交付等に切り替えてください）。";
 const BLOCKED_NO_CONSENT =
-  "この顧客から電子交付の承諾を得ていません（店舗設定で事前承諾を必須にしています）。顧客詳細で承諾を記録するか、書面交付等に切り替えてください。";
+  "この顧客から電子交付の承諾を得ていません（店舗設定で事前承諾を必須にしています）。顧客詳細の「電子交付の承諾」から承諾のお願いを送るか承諾を記録するか、書面交付等に切り替えてください。";
 const BLOCKED_NO_CUSTOMER =
   "顧客が紐付いていない証明書は承諾を確認できません（店舗設定で事前承諾を必須にしています）。顧客を紐付けて承諾を記録するか、書面交付等に切り替えてください。";
 /** 承諾状態を確認できなかった（DB 一時障害）ときの理由。呼び出し側が「再試行で直る」ものとして扱えるよう公開する。 */
@@ -165,4 +231,90 @@ export async function customerFacingDeliveryBlock(
     req: ctx.req,
   });
   return block;
+}
+
+/**
+ * 使用者本人の承諾を記録する（顧客ポータル・承諾依頼リンクの共通処理）。 [G3 / 第２ ４（３）]
+ * 既に承諾済みなら何もしない（店舗が記録した承諾＝誰がいつ取ったかを上書きしない）。
+ * 本人の承諾は granted_by=null で表す（店舗の記録は必ず granted_by=操作者）。method は「示した交付方法」の列なので
+ * 入れず、示した文言は consent_version / consent_text_hash で特定する。撤回後の再承諾は同じ行を上書きするので、
+ * 撤回の記録と経路（via）・接続元（IP/UA）は監査ログに残す（G4 の証跡）。
+ */
+export async function grantDeliveryConsentAsCustomer(
+  db: Pick<SupabaseClient, "from">,
+  p: {
+    tenantId: string;
+    customerId: string;
+    via: "portal" | "link";
+    /** 承諾依頼リンク経由のとき: 依頼 ID・発行日時・渡し方。発行後に撤回されていたら記録しない。 */
+    request?: { id: string; createdAt: string; sentVia: string };
+    req?: Request;
+  },
+): Promise<
+  { ok: true; alreadyGranted: boolean } | { ok: false; error: unknown } | { ok: false; revokedAfterRequest: true }
+> {
+  const { data: current, error: readErr } = await db
+    .from("delivery_consents")
+    .select("status, revoked_at, revoked_via")
+    .eq("tenant_id", p.tenantId)
+    .eq("customer_id", p.customerId)
+    .maybeSingle();
+  if (readErr) return { ok: false, error: readErr };
+  const prev = current as { status: string; revoked_at: string | null; revoked_via: string | null } | null;
+  if (prev?.status === "granted") return { ok: true, alreadyGranted: true };
+  // リンクを渡した後に撤回された（お客様が断った）なら、その古いリンクで承諾に戻さない（規制(4)）。
+  if (p.request && revokedSinceRequest(prev, p.request.createdAt)) return { ok: false, revokedAfterRequest: true };
+
+  const now = new Date().toISOString();
+  const row = {
+    tenant_id: p.tenantId,
+    customer_id: p.customerId,
+    status: "granted",
+    method: null,
+    note: null,
+    consent_version: DELIVERY_CONSENT_VERSION,
+    consent_text_hash: computeDeliveryConsentTextHash(),
+    granted_at: now,
+    granted_by: null,
+    revoked_at: null,
+    revoked_by: null,
+    revoked_via: null,
+    updated_at: now,
+  };
+  // 「承諾済みは上書きしない」を書き込み側の条件にも持たせる（読んでから書くまでに店舗の記録や二重送信が
+  // 割り込んでも、店舗の記録を本人承諾で上書きしない・監査ログを2回書かない）。
+  // ponytail: 読んでから書くまでの間の「撤回」は拾わない（同じ顧客で撤回と承諾がミリ秒単位で重なる場合だけ）。
+  if (prev) {
+    const { data: updated, error } = await db
+      .from("delivery_consents")
+      .update(row)
+      .eq("tenant_id", p.tenantId)
+      .eq("customer_id", p.customerId)
+      .neq("status", "granted")
+      .select("customer_id");
+    if (error) return { ok: false, error };
+    if (!Array.isArray(updated) || updated.length === 0) return { ok: true, alreadyGranted: true };
+  } else {
+    const { error } = await db.from("delivery_consents").insert(row);
+    if ((error as { code?: string } | null)?.code === "23505") return { ok: true, alreadyGranted: true };
+    if (error) return { ok: false, error };
+  }
+  void logTenantAuditEvent(db, {
+    tenantId: p.tenantId,
+    actorType: "system",
+    action: "delivery_consent_granted_by_customer",
+    table: "delivery_consents",
+    recordId: p.customerId,
+    extra: {
+      via: p.via,
+      // 渡し方が link（リンク・QR を店舗が手元に持っている）のときは、店舗の端末から押された可能性を排除できない。
+      ...(p.request ? { request_id: p.request.id, sent_via: p.request.sentVia } : {}),
+      consent_version: DELIVERY_CONSENT_VERSION,
+      previous_status: prev?.status ?? "none",
+      previous_revoked_at: prev?.revoked_at ?? null,
+      previous_revoked_via: prev?.revoked_via ?? null,
+    },
+    req: p.req,
+  });
+  return { ok: true, alreadyGranted: false };
 }
