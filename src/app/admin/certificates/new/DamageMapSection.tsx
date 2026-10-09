@@ -3,6 +3,9 @@
 import { useRef, useState } from "react";
 import {
   DAMAGE_KINDS,
+  DAMAGE_DIAGRAM,
+  DAMAGE_KIND_COLOR as KIND_COLOR,
+  damageKindLabel as kindLabel,
   toNormalized,
   serializeDamageMap,
   type DamageKind,
@@ -18,18 +21,6 @@ import HelpTooltip from "@/components/ui/HelpTooltip";
  * FormData で吸い上げる（body_repair_json / film_thickness_json と同じパターン）。
  * 実写真注釈と違い車両模式図に落とすので、保険査定等で位置が一目で伝わる。
  */
-
-const KIND_COLOR: Record<DamageKind, string> = {
-  scratch: "#f59e0b",
-  dent: "#ef4444",
-  paint: "#8b5cf6",
-  rust: "#a16207",
-  other: "#6b7280",
-};
-
-function kindLabel(kind: DamageKind): string {
-  return DAMAGE_KINDS.find((k) => k.key === kind)?.label ?? kind;
-}
 
 export default function DamageMapSection() {
   const [markers, setMarkers] = useState<DamageMarker[]>([]);
@@ -100,14 +91,9 @@ export default function DamageMapSection() {
           onClick={(e) => addMarkerAt(e.clientX, e.clientY)}
         >
           {/* 車体アウトライン（FilmThicknessSection と同じトップダウン図） */}
-          <path
-            d="M100,20 Q90,20 85,30 L80,60 Q75,80 75,100 L75,260 Q75,280 85,290 L95,305 Q100,310 110,310 L190,310 Q200,310 205,305 L215,290 Q225,280 225,260 L225,100 Q225,80 220,60 L215,30 Q210,20 200,20 Z"
-            fill="#f5f5f5"
-            stroke="#d4d4d4"
-            strokeWidth="1.5"
-          />
-          <path d="M105,45 L195,45 L210,85 L90,85 Z" fill="#e0e7ff" stroke="#c7d2fe" strokeWidth="1" />
-          <path d="M95,240 L205,240 L200,270 L100,270 Z" fill="#e0e7ff" stroke="#c7d2fe" strokeWidth="1" />
+          <path d={DAMAGE_DIAGRAM.body} fill="#f5f5f5" stroke="#d4d4d4" strokeWidth="1.5" />
+          <path d={DAMAGE_DIAGRAM.windshield} fill="#e0e7ff" stroke="#c7d2fe" strokeWidth="1" />
+          <path d={DAMAGE_DIAGRAM.rearWindow} fill="#e0e7ff" stroke="#c7d2fe" strokeWidth="1" />
           <line x1="75" y1="165" x2="225" y2="165" stroke="#d4d4d4" strokeWidth="0.8" strokeDasharray="4,2" />
           <line x1="150" y1="20" x2="150" y2="310" stroke="#e5e5e5" strokeWidth="0.5" strokeDasharray="2,3" />
           <ellipse cx="68" cy="90" rx="8" ry="5" fill="#d4d4d4" stroke="#a3a3a3" strokeWidth="0.8" />

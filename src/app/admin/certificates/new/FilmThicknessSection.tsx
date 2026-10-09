@@ -4,6 +4,7 @@ import { useState } from "react";
 import HelpTooltip from "@/components/ui/HelpTooltip";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { THICKNESS_LOCATION_PRESETS } from "@/lib/certificates/thicknessPanels";
+import { DAMAGE_DIAGRAM } from "@/lib/certificates/damageMap";
 
 type Row = {
   id: number;
@@ -57,16 +58,11 @@ function CarDiagramSvg({ rows }: { rows: Row[] }) {
       <p className="text-xs font-semibold text-muted mb-2">膜厚マップ（施工後 μm）</p>
       <svg viewBox="0 0 300 330" className="w-full max-w-[360px] mx-auto" aria-label="車両膜厚マップ">
         {/* 車体アウトライン（トップダウン） */}
-        <path
-          d="M100,20 Q90,20 85,30 L80,60 Q75,80 75,100 L75,260 Q75,280 85,290 L95,305 Q100,310 110,310 L190,310 Q200,310 205,305 L215,290 Q225,280 225,260 L225,100 Q225,80 220,60 L215,30 Q210,20 200,20 Z"
-          fill="#f5f5f5"
-          stroke="#d4d4d4"
-          strokeWidth="1.5"
-        />
+        <path d={DAMAGE_DIAGRAM.body} fill="#f5f5f5" stroke="#d4d4d4" strokeWidth="1.5" />
         {/* フロントガラス */}
-        <path d="M105,45 L195,45 L210,85 L90,85 Z" fill="#e0e7ff" stroke="#c7d2fe" strokeWidth="1" />
+        <path d={DAMAGE_DIAGRAM.windshield} fill="#e0e7ff" stroke="#c7d2fe" strokeWidth="1" />
         {/* リアガラス */}
-        <path d="M95,240 L205,240 L200,270 L100,270 Z" fill="#e0e7ff" stroke="#c7d2fe" strokeWidth="1" />
+        <path d={DAMAGE_DIAGRAM.rearWindow} fill="#e0e7ff" stroke="#c7d2fe" strokeWidth="1" />
         {/* ドア分割線 */}
         <line x1="75" y1="165" x2="225" y2="165" stroke="#d4d4d4" strokeWidth="0.8" strokeDasharray="4,2" />
         {/* 左右分割線 */}
