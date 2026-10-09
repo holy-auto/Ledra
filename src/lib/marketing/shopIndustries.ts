@@ -28,9 +28,9 @@ const warrantyFeature = {
 };
 
 const followUpFeature = {
-  title: "施工後のフォローメール",
+  title: "施工後のフォロー連絡",
   description:
-    "施工後のフォロー、メンテナンスの時期、季節の提案、保証が終わる前のお知らせを、設定した日数・月数で自動送信します。",
+    "施工後のフォロー、メンテナンスの時期、季節の提案、保証が終わる前のお知らせを、設定した日数・月数で自動で送ります（LINE 連携済みのお客様には LINE、それ以外はメール）。",
 };
 
 export const SHOP_INDUSTRIES: ShopIndustry[] = [
