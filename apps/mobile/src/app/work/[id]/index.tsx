@@ -6,6 +6,7 @@ import { useLocalSearchParams, router, Stack } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { mobileApi } from "@/lib/api";
 import { parseMenuItems } from "@/lib/reservationItems";
 import { confirmationState } from "@/lib/confirmationState";
 import { useMenuItems } from "@/hooks/useMenuItems";
@@ -55,10 +56,10 @@ interface WorkOrder {
 
 type WorkflowStep = { order: number; label?: string; estimated_min?: number };
 
+/** 施工写真（GET /api/mobile/certificates/[id]/images。URL は短命の署名 URL） */
 interface WorkPhoto {
   id: string;
-  storage_path: string;
-  thumbnail_path: string | null;
+  thumbnail_url: string | null;
 }
 
 const STATUS_SEVERITY: Record<string, "warning" | "info" | "success" | "neutral"> = {
@@ -199,15 +200,12 @@ export default function WorkDetailScreen() {
 
   const { data: photos = [] } = useQuery<WorkPhoto[]>({
     queryKey: ["work-photos", certId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("certificate_images")
-        .select("id, storage_path, thumbnail_path")
-        .eq("certificate_id", certId)
-        .order("sort_order", { ascending: true });
-      if (error) throw error;
-      return (data ?? []) as WorkPhoto[];
-    },
+    // 一覧だけなのでサムネイルだけ署名させる
+    queryFn: async () =>
+      (await mobileApi<{ images: WorkPhoto[] }>(`/certificates/${certId}/images?variant=thumbnail`)).images,
+    // 署名 URL は 1 時間で切れる。画面を開いたままでも切れる前に取り直す
+    staleTime: 30 * 60 * 1000,
+    refetchInterval: 30 * 60 * 1000,
     enabled: !!certId,
   });
 
@@ -540,16 +538,16 @@ export default function WorkDetailScreen() {
             </View>
             {photos.length > 0 ? (
               <View style={styles.photoGrid}>
-                {photos.map((photo) => (
-                  <Image
-                    key={photo.id}
-                    source={{
-                      uri: supabase.storage.from("assets").getPublicUrl(photo.thumbnail_path ?? photo.storage_path).data
-                        .publicUrl,
-                    }}
-                    style={styles.photoThumb}
-                  />
-                ))}
+                {photos.map((photo) =>
+                  photo.thumbnail_url ? (
+                    <Image key={photo.id} source={{ uri: photo.thumbnail_url }} style={styles.photoThumb} />
+                  ) : (
+                    // URL を取れなかった写真も枠は出す（写真が有るのか無いのか分からなくならないように）
+                    <View key={photo.id} style={[styles.photoThumb, styles.photoBroken]}>
+                      <Text style={styles.emptyText}>読み込めません</Text>
+                    </View>
+                  ),
+                )}
               </View>
             ) : (
               <Text style={styles.emptyText}>まだ写真がありません</Text>
@@ -876,6 +874,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     backgroundColor: colors.surfaceVariant,
   },
+  photoBroken: { alignItems: "center", justifyContent: "center" },
 
   // Docs
   docRow: {
