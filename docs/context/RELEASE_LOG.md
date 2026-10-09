@@ -36,9 +36,10 @@
   重複行 1件赤・行数の床 1件赤・死んだ ID 3件赤・`[A-I]` 16件赤。
   `M-20261009-carried-a-mutation-count-past-the-change-that-invalidated-it`）
 - **2026-10-09 追記（この PR で分かったこと: 衝突している PR には CI が走らない）**:
-  この PR は4回 push しても GitHub Actions の `pull_request` 実行が**1件も作られなかった**。
+  この PR は**5つの head で GitHub Actions の `pull_request` 実行が0件**だった（フル SHA で実測）。
   原因は PR が作成時点から `mergeable_state=dirty` だったことで、**`main` を取り込んで衝突を解いた
-  直後の push で4本（CI・CodeQL・Gitleaks・Lines of Code）が即座に作られた**。
+  2つの head では4本（CI・CodeQL・Gitleaks・Lines of Code）が即座に作られた**。
+  解消（4本）→ 再び dirty（0本）→ 解消（4本）と**往復している**ので、Actions 側の一時的な停止では説明できない。
   別セッションの #1292 でも同じ（`dirty`・`refs/pull/1292/merge` が無い・実行0件）。
   **衝突している PR は「CI がまだ」と見分けが付かない** —— チェック欄には Vercel と Supabase の
   2本だけが並び、緑に見える。詳細と運用は DECISION_LOG 2026-10-09。

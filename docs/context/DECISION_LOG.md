@@ -7,11 +7,15 @@
 ## 2026-10-09 衝突している PR には CI が走らない。「CI 待ち」より先に衝突を解く
 
 1. 日付: 2026-10-09（`date -u` で確認・16:01 UTC）
-2. 起きたこと: #1289 で4回 push しても GitHub Actions の `pull_request` 実行が**1件も作られなかった**
-   （`actions/runs?head_sha=…` が total 0。Vercel・Supabase の App は同じ push で動いていた）。
+2. 起きたこと: #1289 の**5つの head で GitHub Actions の `pull_request` 実行が0件**だった
+   （`f4c88655` / `68ef0d8e` / `eff12daa` / `06c3123a` / `c8f86ce6`。`actions/runs?head_sha=…` を
+   フル SHA で引いて実測。Vercel・Supabase の App は同じ push で動いていた）。
    この PR は作成時点（15:05:26 UTC）から `mergeable_state=dirty` で、base の `main` が
-   14:59:18 と 15:03:33 に `docs/context/` を触るコミットを入れていた。**`main` を取り込んで衝突を
-   解いた直後の push で、CI・CodeQL・Gitleaks・Lines of Code の4本が即座に作られた。**
+   14:59:18 と 15:03:33 に `docs/context/` を触るコミットを入れていた。
+   **`main` を取り込んで衝突を解いた2つの head（`2fe81222` / `53b2ef85`）では、
+   CI・CodeQL・Gitleaks・Lines of Code の4本が即座に作られた。**
+   しかも `2fe81222`（解消・4本）→ `c8f86ce6`（その間に `main` が動いて再び dirty・0本）→
+   `53b2ef85`（解消・4本）と**往復している**ので、「時間が経って Actions が復活した」では説明できない。
    別セッションの #1292 でも同じ形を確認した（`dirty`・`refs/pull/1292/merge` が存在しない・
    `pull_request` の実行0件）。同じブランチの #1272 / #1278 / #1282 / #1287 は dirty ではなく、
    いずれも実行が作られている。
