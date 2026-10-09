@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import QRCode from "qrcode";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
 /**
@@ -93,12 +92,18 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
         body: JSON.stringify({ send }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok || typeof j?.url !== "string") throw new Error(j?.message ?? "リンクを作成できませんでした。");
-      setRequest({
-        url: j.url,
-        qr: await QRCode.toDataURL(j.url, { margin: 1, width: 200 }),
-        expiresAt: String(j.expires_at),
-      });
+      if (!res.ok) throw new Error(j?.message ?? "リンクを作成できませんでした。");
+      // メール・LINE で届いたときは URL が返らない（店舗の画面にリンクを残さない）。
+      if (typeof j?.url === "string") {
+        const QRCode = (await import("qrcode")).default;
+        setRequest({
+          url: j.url,
+          qr: await QRCode.toDataURL(j.url, { margin: 1, width: 200 }),
+          expiresAt: String(j.expires_at),
+        });
+      } else {
+        setRequest(null);
+      }
       if (send !== "link") {
         setMsg(
           j.delivered

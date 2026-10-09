@@ -146,6 +146,15 @@ describe("releasePortalLoginToken", () => {
   });
 });
 
+describe("maskPortalLoginToken — 電子交付の承諾依頼リンク", () => {
+  it("/consent/delivery/<token> のトークンを伏せる", () => {
+    const token = "A".repeat(20) + "-_" + "b".repeat(21);
+    const masked = maskPortalLoginToken(`ご承諾のお願い\nhttps://app.example.com/consent/delivery/${token}\n以上`);
+    expect(masked).toContain("https://app.example.com/consent/delivery/***");
+    expect(masked).not.toContain(token);
+  });
+});
+
 describe("maskPortalLoginToken", () => {
   // 受信箱 (customer_messages) に生トークンが残ると、店舗スタッフがコピーして
   // 顧客本人としてログインできてしまう。記録前に必ず伏せる。

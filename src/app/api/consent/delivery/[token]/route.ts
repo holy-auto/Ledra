@@ -10,6 +10,8 @@ import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiError, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import {
   DELIVERY_CONSENT_VERSION,
   findConsentRequest,
@@ -47,13 +49,32 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     if (found.state !== "ok")
       return apiNotFound("このリンクは無効か、有効期限が切れています。発行した店舗にお問い合わせください。");
 
+    // 発行した店舗のアカウントでログインしたままの端末からは記録しない（店舗がお客様の代わりに押すと、
+    // 本人承諾として残ってしまう）。別の端末で押されることまでは防げない（渡し方 sent_via を監査ログに残す）。
+    const caller = await resolveCallerWithRole(await createSupabaseServerClient()).catch(() => null);
+    if (caller?.tenantId === found.tenantId) {
+      return apiError({
+        code: "forbidden",
+        message: "店舗のアカウントでログイン中の端末からは承諾できません。お客様ご自身の端末で開いてください。",
+        status: 403,
+      });
+    }
+
     const r = await grantDeliveryConsentAsCustomer(admin, {
       tenantId: found.tenantId,
       customerId: found.customerId,
       via: "link",
-      requestId: found.id,
+      request: { id: found.id, createdAt: found.createdAt, sentVia: found.sentVia },
       req,
     });
+    if (!r.ok && "revokedAfterRequest" in r) {
+      return apiError({
+        code: "conflict",
+        message:
+          "このリンクを発行した後に承諾が撤回されているため、このリンクは使えません。発行した店舗にお問い合わせください。",
+        status: 409,
+      });
+    }
     if (!r.ok) return apiInternalError(r.error, "consent/delivery grant");
     // 承諾を記録してから使用済みにする（逆だと、記録に失敗したリンクが使えなくなる）。二重送信は上の
     // grant が「既に承諾済み」で何もしないので、ここが2回走っても害は無い。

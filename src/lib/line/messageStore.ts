@@ -274,7 +274,12 @@ export async function recordInboundEmailMessage(input: InboundEmailMessage): Pro
  * 送信する本文はそのまま・記録する本文だけ伏せる。
  */
 export function maskPortalLoginToken(body: string): string {
-  return body.replace(/([?&]t=)[0-9a-f]{64}\b/gi, "$1***");
+  return (
+    body
+      .replace(/([?&]t=)[0-9a-f]{64}\b/gi, "$1***")
+      // 電子交付の承諾依頼リンク（/consent/delivery/<43字の base64url>）も、持っていれば本人として承諾できる資格情報。
+      .replace(/(\/consent\/delivery\/)[A-Za-z0-9_-]{43}/g, "$1***")
+  );
 }
 
 export async function recordOutboundLineMessage(input: OutboundLineMessage): Promise<{ ok: boolean; id?: string }> {

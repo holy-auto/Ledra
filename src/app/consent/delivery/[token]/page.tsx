@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { DELIVERY_CONSENT_VERSION, deliveryConsentText, findConsentRequest } from "@/lib/delivery/deliveryConsent";
+import {
+  DELIVERY_CONSENT_VERSION,
+  deliveryConsentText,
+  findConsentRequest,
+  revokedSinceRequest,
+} from "@/lib/delivery/deliveryConsent";
 import ConsentForm from "./ConsentForm";
 
 export const dynamic = "force-dynamic";
@@ -21,30 +26,37 @@ export default async function DeliveryConsentPage({ params }: { params: Promise<
 
   let shopName: string | null = null;
   let alreadyGranted = false;
+  let revokedAfterRequest = false;
   if (found.state === "ok") {
     const [{ data: tenant }, { data: consent }] = await Promise.all([
       admin.from("tenants").select("name").eq("id", found.tenantId).maybeSingle(),
       admin
         .from("delivery_consents")
-        .select("status")
+        .select("status, revoked_at")
         .eq("tenant_id", found.tenantId)
         .eq("customer_id", found.customerId)
         .maybeSingle(),
     ]);
     shopName = (tenant as { name?: string | null } | null)?.name ?? null;
-    alreadyGranted = (consent as { status?: string } | null)?.status === "granted";
+    const c = consent as { status?: string; revoked_at?: string | null } | null;
+    alreadyGranted = c?.status === "granted";
+    // リンク発行後に撤回されていたら、このリンクでは承諾に戻さない（API と同じ判定）。
+    revokedAfterRequest = revokedSinceRequest(c, found.createdAt);
   }
 
-  const notice =
-    found.state === "used" || alreadyGranted
-      ? "ご承諾は記録済みです。ありがとうございました。"
-      : found.state === "expired"
-        ? "このリンクは有効期限が切れています。お手数ですが、発行した店舗にお問い合わせください。"
-        : found.state === "not_found"
-          ? "このリンクは無効です。お手数ですが、発行した店舗にお問い合わせください。"
-          : found.state === "error"
-            ? "現在このリンクを確認できません。時間をおいて再度お試しください。"
-            : null;
+  const notice = alreadyGranted
+    ? "ご承諾は記録済みです。ありがとうございました。"
+    : revokedAfterRequest
+      ? "このリンクを発行した後に承諾が撤回されているため、このリンクは使えません。発行した店舗にお問い合わせください。"
+      : found.state === "used"
+        ? "このリンクは使用済みです。"
+        : found.state === "expired"
+          ? "このリンクは有効期限が切れています。お手数ですが、発行した店舗にお問い合わせください。"
+          : found.state === "not_found"
+            ? "このリンクは無効です。お手数ですが、発行した店舗にお問い合わせください。"
+            : found.state === "error"
+              ? "現在このリンクを確認できません。時間をおいて再度お試しください。"
+              : null;
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-start py-8 px-4">

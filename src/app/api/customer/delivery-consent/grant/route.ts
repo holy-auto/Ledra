@@ -56,7 +56,7 @@ export async function POST(req: Request) {
       via: "portal",
       req,
     });
-    if (!r.ok) return apiInternalError(r.error, "customer/delivery-consent/grant");
+    if (!r.ok) return apiInternalError("error" in r ? r.error : r, "customer/delivery-consent/grant");
     return apiOk({ status: "granted" });
   } catch (e) {
     return apiInternalError(e, "customer/delivery-consent/grant");

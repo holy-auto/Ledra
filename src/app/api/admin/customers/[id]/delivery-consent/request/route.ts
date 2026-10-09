@@ -80,17 +80,20 @@ export const POST = withCaller<{ id: string }>(
       const url = `${resolveBaseUrl({ req })}/consent/delivery/${token}`;
       const shop = (tenant as { name?: string | null } | null)?.name || "施工店";
       const name = c.name || "お客様";
-      const expires = new Date(expiresAt).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo" });
+      // 失効は発行の 14×24 時間後ちょうど。日付だけ書くと、その日の夜に開いて切れていることがあるので時刻まで書く。
+      const expires = new Date(expiresAt).toLocaleString("ja-JP", {
+        timeZone: "Asia/Tokyo",
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
 
       let delivered: boolean | null = null;
       if (send === "email") {
-        const from = process.env.RESEND_FROM;
-        if (from) {
-          const r = await sendEmail({
-            from,
-            to: c.email as string,
-            subject: `[${shop}] 記録簿の写しの電子交付についてのお願い`,
-            html: `
+        // 差出人は sendEmail が RESEND_FROM を既定で使う（未設定なら ok:false）。
+        const r = await sendEmail({
+          to: c.email as string,
+          subject: `[${shop}] 記録簿の写しの電子交付についてのお願い`,
+          html: `
               <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:24px;">
                 <p style="color:#1d1d1f;font-size:14px;">${escapeHtml(name)} 様<br><br>
                   ${escapeHtml(shop)} です。点検整備記録簿などの写しを、メール・LINE・ダウンロードでお渡しするために、
@@ -100,11 +103,8 @@ export const POST = withCaller<{ id: string }>(
                 </div>
                 <p style="font-size:13px;color:#86868b;">有効期限: ${escapeHtml(expires)}<br>ご承諾いただかない場合は、書面でお渡しします。</p>
               </div>`,
-          });
-          delivered = r.ok;
-        } else {
-          delivered = false;
-        }
+        });
+        delivered = r.ok;
       } else if (send === "line") {
         delivered = await sendCustomerLineText({
           tenantId: caller.tenantId,
@@ -133,7 +133,8 @@ export const POST = withCaller<{ id: string }>(
         extra: { customer_id: customerId, sent_via: send, delivered },
         req,
       });
-      return apiJson({ url, expires_at: expiresAt, sent_via: send, delivered });
+      // メール・LINE で届いたときは URL を返さない（店舗の画面にリンクを残さない。届かなかったときは手渡し用に返す）。
+      return apiJson({ url: delivered ? null : url, expires_at: expiresAt, sent_via: send, delivered });
     } catch (e) {
       return apiInternalError(e, "delivery-consent request");
     }

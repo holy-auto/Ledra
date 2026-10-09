@@ -3,6 +3,11 @@ import { DELIVERY_CONSENT_VERSION, newConsentRequestToken } from "@/lib/delivery
 
 /** 承諾依頼リンク: トークンで引いた顧客に本人承諾を記録し、リンクを使用済みにする。 */
 vi.mock("@/lib/api/rateLimit", () => ({ checkRateLimit: async () => null }));
+let staffTenant: string | null = null;
+vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({}) }));
+vi.mock("@/lib/auth/checkRole", () => ({
+  resolveCallerWithRole: async () => (staffTenant ? { tenantId: staffTenant } : null),
+}));
 let request: Record<string, unknown> | null;
 let consent: unknown;
 let lookedUpHash: unknown;
@@ -15,11 +20,22 @@ vi.mock("@/lib/supabase/admin", () => ({
       const q: Record<string, unknown> = {
         select: () => q,
         eq: (col: string, v: unknown) => (col === "token_hash" && (lookedUpHash = v), q),
-        is: async () => ({ error: null }),
         maybeSingle: async () => ({ data: table === "delivery_consent_requests" ? request : consent, error: null }),
-        upsert: async (row: unknown) => (upserts.push(row), { error: null }),
-        update: (row: unknown) => (updates.push(row), q),
-        insert: async (row: Record<string, unknown>) => (table === "audit_logs" && audits.push(row), { error: null }),
+        // delivery_consents: 条件付き update / insert（upserts に積む）。delivery_consent_requests: 使用済みにする update。
+        update: (row: unknown) => {
+          (table === "delivery_consents" ? upserts : updates).push(row);
+          const u: Record<string, unknown> = {
+            eq: () => u,
+            neq: () => u,
+            is: async () => ({ error: null }),
+            select: async () => ({ data: [{}], error: null }),
+          };
+          return u;
+        },
+        insert: async (row: Record<string, unknown>) => (
+          (table === "audit_logs" ? audits : upserts).push(row),
+          { error: null }
+        ),
       };
       return q;
     },
@@ -37,7 +53,16 @@ const future = () => new Date(Date.now() + 86_400_000).toISOString();
 
 describe("POST /api/consent/delivery/[token]", () => {
   beforeEach(() => {
-    request = { id: "req1", tenant_id: "t1", customer_id: "cust1", expires_at: future(), used_at: null };
+    request = {
+      id: "req1",
+      tenant_id: "t1",
+      customer_id: "cust1",
+      sent_via: "email",
+      expires_at: future(),
+      used_at: null,
+      created_at: "2026-10-09T00:00:00Z",
+    };
+    staffTenant = null;
     consent = null;
     lookedUpHash = undefined;
     upserts.length = 0;
@@ -55,7 +80,7 @@ describe("POST /api/consent/delivery/[token]", () => {
     expect(updates).toEqual([expect.objectContaining({ used_at: expect.any(String) })]);
     expect(audits[0]).toMatchObject({
       action: "delivery_consent_granted_by_customer",
-      query_json: expect.objectContaining({ via: "link", request_id: "req1" }),
+      query_json: expect.objectContaining({ via: "link", request_id: "req1", sent_via: "email" }),
     });
   });
 
@@ -81,5 +106,23 @@ describe("POST /api/consent/delivery/[token]", () => {
     expect((await call(OK_BODY)).status).toBe(200);
     expect(upserts).toEqual([]);
     expect(updates).toHaveLength(1);
+  });
+
+  it("リンク発行後に撤回されていたら、古いリンクで承諾に戻さない", async () => {
+    consent = { status: "revoked", revoked_at: "2026-10-10T00:00:00Z", revoked_via: "admin" };
+    expect((await call(OK_BODY)).status).toBe(409);
+    expect(upserts).toEqual([]);
+    // 発行前の撤回なら、お客様の再承諾として記録する
+    consent = { status: "revoked", revoked_at: "2026-10-01T00:00:00Z", revoked_via: "customer" };
+    expect((await call(OK_BODY)).status).toBe(200);
+    expect(upserts).toHaveLength(1);
+  });
+
+  it("発行した店舗のアカウントでログイン中の端末からは記録しない", async () => {
+    staffTenant = "t1";
+    expect((await call(OK_BODY)).status).toBe(403);
+    expect(upserts).toEqual([]);
+    staffTenant = "other-tenant";
+    expect((await call(OK_BODY)).status).toBe(200);
   });
 });
