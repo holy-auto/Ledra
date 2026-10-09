@@ -37,9 +37,11 @@ describe("documents status ⊆ DB CHECK constraint", () => {
     }
   });
 
-  it("誤キャンセルは全 doc_type で送付済に戻せる", () => {
+  it("誤キャンセルは全 doc_type で送付済に戻せる（合算請求書を除く）", () => {
     for (const dt of DOC_TYPE_LIST) {
-      expect(nextStatusesFor(dt.value, "cancelled"), dt.value).toEqual(["sent"]);
+      // 取消した合算請求書は戻さない（取消の間に元の請求書が別の合算へまとめ直されうる。consolidatedSupersede.ts）
+      const expected = dt.value === "consolidated_invoice" ? [] : ["sent"];
+      expect(nextStatusesFor(dt.value, "cancelled"), dt.value).toEqual(expected);
     }
   });
 });

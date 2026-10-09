@@ -8,6 +8,7 @@ import { sendDocumentEmail } from "@/lib/documents/share-email";
 import { sendDocumentLink } from "@/lib/line/client";
 import { sendSMS } from "@/lib/sms/client";
 import { sealDocumentById } from "@/lib/documents/documentSeal";
+import { syncConsolidatedSources } from "@/lib/documents/consolidatedSupersede";
 import { renderAndStoreDocumentPdf } from "@/lib/documents/pdfShare";
 import { afterOrInline } from "@/lib/http/afterOrInline";
 
@@ -251,6 +252,18 @@ export const POST = withCaller(
           .select(
             "id, tenant_id, customer_id, recipient_name, doc_type, doc_number, status, total, created_at, updated_at",
           );
+        // 合算請求書を送ったら元の請求書を取消扱いにする（作成時に済んでいれば何もしない。
+        // マイグレーションで揃えなかった既存の下書きはここで揃う）
+        for (const u of updated ?? []) {
+          if (u.doc_type !== "consolidated_invoice") continue;
+          const { data: full } = await adminForUpdate
+            .from("documents")
+            .select("id, doc_type, status, meta_json")
+            .eq("id", u.id)
+            .eq("tenant_id", caller.tenantId)
+            .maybeSingle();
+          if (full) await syncConsolidatedSources(adminForUpdate, caller.tenantId, full);
+        }
         const updatedPrimary = updated?.find((d) => d.id === documentId);
         if (updatedPrimary) updatedDoc = updatedPrimary;
 
