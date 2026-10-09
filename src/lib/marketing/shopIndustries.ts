@@ -54,13 +54,14 @@ export const SHOP_INDUSTRIES: ShopIndustry[] = [
         href: "/features/digital-certificate",
       },
       {
-        title: "有効期限と有効条件",
-        description: "証明書の有効期限と、保証が有効であるための条件を証明書に記載します。",
+        title: "保証期間と、保証の対象外",
+        description:
+          "保証の終了日と保証の対象外を、証明書の PDF（標準デザイン）と公開ページに記載します。対象外の文面は店舗の既定文として使い回せます。",
       },
       {
         title: "膜厚の記録",
         description:
-          "膜厚の測定値を施工の記録として入力できます。NexPTG の計測データを取り込み、車台番号で車両に自動で紐付けて管理画面で確認することもできます。",
+          "施工前・施工後の膜厚を、証明書の PDF（標準デザイン）と公開ページに載せられます。NexPTG の計測データを取り込み、車台番号で車両に自動で紐付けて管理画面で確認することもできます。",
         href: "/features/thickness",
       },
       followUpFeature,
@@ -131,7 +132,8 @@ export const SHOP_INDUSTRIES: ShopIndustry[] = [
       followUpFeature,
       {
         title: "膜厚の記録",
-        description: "膜厚の測定値を施工の記録として入力できます。NexPTG の計測データの取り込みにも対応しています。",
+        description:
+          "施工前・施工後の膜厚を、証明書の PDF（標準デザイン）と公開ページに載せられます。NexPTG の計測データの取り込みにも対応しています。",
         href: "/features/thickness",
       },
     ],

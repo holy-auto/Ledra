@@ -157,12 +157,26 @@ describe("redactCertificateDetails [匿名向けに個人情報を落とす]", (
       maintenance_json: { work_types: ["oil"], mileage: 1000, mechanic_name: "佐藤", findings: "顧客宅で", extra: 1 },
       body_repair_json: { repair_type: "dent", before_notes: "メモ", warranty_info: "保証" },
       accessory_json: { product_name: "X", installer_name: "鈴木", install_notes: "メモ" },
+      damage_map_json: { version: 1, markers: [{ id: "a", x: 0.5, y: 0.5, kind: "dent", note: "右ドア" }] },
     });
     expect(r).toEqual({
       craftsman_name: null,
       maintenance_json: { work_types: ["oil"], mileage: 1000 },
       body_repair_json: { repair_type: "dent" },
       accessory_json: { product_name: "X" },
+      damage_map_json: null,
+    });
+  });
+  it("膜厚は値を残してメモだけ落とす。他のプリセット項目は触らない", () => {
+    const r = redactCertificateDetails({
+      content_preset_json: {
+        film_thickness: [{ location: "ボンネット", after_um: 95, notes: "山田様宅で測定" }],
+        gloss: "A",
+      },
+    });
+    expect(r.content_preset_json).toEqual({
+      film_thickness: [{ location: "ボンネット", after_um: 95, notes: "" }],
+      gloss: "A",
     });
   });
   it("JSON が無い・配列なら null", () => {
