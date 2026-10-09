@@ -111,6 +111,8 @@ const INVOICE_LIKE_DOC_TYPES = new Set(["invoice", "consolidated_invoice", "staf
 
 /** doc_type に応じた次のステータス遷移候補を返す。 */
 export function nextStatusesFor(docType: string, status: string): string[] {
+  // 取消した合算請求書は戻さない（元の請求書は取消時に戻り、別の合算請求書へまとめ直されうる）。作り直す
+  if (docType === "consolidated_invoice" && status === "cancelled") return [];
   const map = INVOICE_LIKE_DOC_TYPES.has(docType) ? INVOICE_STATUS_TRANSITIONS : STATUS_TRANSITIONS;
   return map[status] ?? [];
 }
@@ -142,10 +144,34 @@ export function isDocumentEditable(docType: string, status: string): boolean {
  * - 下書きはいつでも削除可能（証跡として確定していないため）
  * - 領収書（receipt）は POS 等で status='paid' 固定のまま発行され下書きを経由しないため、
  *   ステータスを問わず削除可能とする（誤発行の取り消し用途）
+ * - 合算請求書（consolidated_invoice）は元帳票をまとめ直しただけの帳票で、元帳票が証跡として残るため、
+ *   入金済以外は送付後でも削除できる（作り直し用途）。入金記録がある場合は API 側で削除を拒否する。
  * - それ以外の送付済み帳票（見積書・請求書等）は証跡保持のため下書きのみ削除可
  */
 export function isDocumentDeletable(docType: string, status: string): boolean {
-  return status === "draft" || docType === "receipt";
+  return status === "draft" || docType === "receipt" || (docType === "consolidated_invoice" && status !== "paid");
+}
+
+/**
+ * 合算請求書の明細そのものが元帳票の明細（車両ごとの見出し＋明細行＋小計）で組まれているか。
+ * このとき内訳は1枚目に載っているので、PDF の別紙（合算内訳ページ）は出さない。
+ */
+export function hasInlineConsolidatedItems(metaJson: unknown): boolean {
+  return (metaJson as { consolidated_items?: unknown } | null)?.consolidated_items === "inline";
+}
+
+/**
+ * 合算請求書にまとめたため取消扱いになっている請求書なら、まとめ先の合算請求書 ID を返す
+ * （src/lib/documents/consolidatedSupersede.ts が付け外しする）。
+ */
+export function consolidatedInto(metaJson: unknown): string | null {
+  const v = (metaJson as { consolidated_into?: unknown } | null)?.consolidated_into;
+  return typeof v === "string" ? v : null;
+}
+
+/** 合算請求書の PDF・送付・詳細画面に元帳票ごとの内訳を載せるか（未設定は表示）。 */
+export function showsConsolidatedBreakdown(metaJson: unknown): boolean {
+  return (metaJson as { show_consolidated_breakdown?: unknown } | null)?.show_consolidated_breakdown !== false;
 }
 
 /**
@@ -200,6 +226,8 @@ export type DocumentRow = {
   tenant_id: string;
   customer_id: string | null;
   customer_name?: string | null;
+  /** 一覧 API が付ける削除可否（DELETE API と同じ判定）。無ければ種別・ステータスだけで判定する。 */
+  deletable?: boolean;
   /** 外注請求書 (doc_type=staff_invoice) の宛先となる外注職人。顧客向け帳票では常に null。 */
   staff_member_id?: string | null;
   doc_type: DocType;
