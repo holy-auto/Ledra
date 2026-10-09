@@ -3,6 +3,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { requireMinRole } from "@/lib/auth/checkRole";
 import {
   DOC_TYPES,
+  consolidatedInto,
   hasInlineConsolidatedItems,
   isDocumentDeletable,
   isDocumentEditable,
@@ -11,6 +12,7 @@ import {
 import { consolidatedSourceIds, loadConsolidatedSources } from "@/lib/documents/consolidatedSources";
 import { isConsolidatableDoc } from "@/lib/documents/consolidateEligibility";
 import { buildConsolidatedItems } from "@/lib/documents/consolidatedItems";
+import { keepConsolidationKeys, syncConsolidatedSources } from "@/lib/documents/consolidatedSupersede";
 import { filterDeletableDocuments } from "@/lib/documents/deleteEligibility";
 import { logger } from "@/lib/logger";
 import { parsePagination } from "@/lib/api/pagination";
@@ -239,7 +241,7 @@ export const POST = withCaller(
     let isTaxInclusive = !!input.is_tax_inclusive;
     const metaJson: Record<string, unknown> = {
       // 封印キーはサーバのみが書く。クライアント入力からは剥がして偽装封印を防ぐ。
-      ...stripClientIntegritySeal(input.meta_json as Record<string, unknown> | undefined),
+      ...keepConsolidationKeys(stripClientIntegritySeal(input.meta_json as Record<string, unknown> | undefined)),
       is_tax_inclusive: isTaxInclusive,
     };
 
@@ -376,6 +378,16 @@ export const POST = withCaller(
       });
     }
 
+    // 合算請求書にまとめた元の請求書は取消扱いにする（両方が未入金に乗る二重計上を防ぐ）
+    if (data?.id) {
+      await syncConsolidatedSources(admin, caller.tenantId, {
+        id: data.id as string,
+        doc_type: data.doc_type as string,
+        status: data.status as string,
+        meta_json: data.meta_json,
+      });
+    }
+
     // 品目マスタに無い明細は自動登録する（保存自体は失敗させない fire-and-forget）。
     // staff_invoice の明細は cost_price/margin_rate が「案件金額/レス率」という別意味
     // なので、通常の原価/利益率として品目マスタへ登録してしまわないよう除外する。
@@ -467,6 +479,23 @@ export const PUT = withCaller(
       return apiForbidden("外注請求書の更新は管理者ロールのみ可能です。");
     }
 
+    // 合算請求書にまとめて取消扱いになった請求書を戻すと、合算請求書と両方が未入金に乗る。
+    // 戻すのは合算請求書の取消・削除で行う（そのとき元のステータスへ自動で戻る）。
+    if (body.status !== undefined && body.status !== existing?.status && consolidatedInto(existing?.meta_json)) {
+      return apiValidationError(
+        "合算請求書にまとめた請求書はステータスを変更できません。合算請求書を取消・削除すると元に戻ります。",
+      );
+    }
+    // 取消した合算請求書は戻さない（nextStatusesFor と同じ。取消の間に元の請求書が別の合算へまとめ直されうる）
+    if (
+      body.status !== undefined &&
+      body.status !== "cancelled" &&
+      existing?.doc_type === "consolidated_invoice" &&
+      existing.status === "cancelled"
+    ) {
+      return apiValidationError("取消した合算請求書は戻せません。元の帳票から作り直してください。");
+    }
+
     // 「確定 (draft→sent)」を検出するため、ステータス更新時は変更前の状態を控える。
     const priorStatus: string | null = body.status !== undefined ? (existing?.status ?? null) : null;
 
@@ -524,7 +553,10 @@ export const PUT = withCaller(
     if (body.delivery_date !== undefined) updates.delivery_date = body.delivery_date;
     if (body.template_id !== undefined) updates.template_id = body.template_id || null;
     if (body.meta_json !== undefined)
-      updates.meta_json = stripClientIntegritySeal(body.meta_json as Record<string, unknown> | undefined);
+      updates.meta_json = keepConsolidationKeys(
+        stripClientIntegritySeal(body.meta_json as Record<string, unknown> | undefined),
+        existing?.meta_json,
+      );
 
     if (body.items !== undefined) {
       const taxRate = body.tax_rate ?? 10;
@@ -541,7 +573,10 @@ export const PUT = withCaller(
       // しないと下書き編集で合算内訳が消え、送付 PDF に内訳が出なくなる。
       // 封印は内容が変わると無効になるので、既存値・クライアント入力の双方から剥がす。
       const existingMeta = stripClientIntegritySeal(existing?.meta_json as Record<string, unknown> | null);
-      const baseMeta = stripClientIntegritySeal(body.meta_json as Record<string, unknown> | undefined);
+      const baseMeta = keepConsolidationKeys(
+        stripClientIntegritySeal(body.meta_json as Record<string, unknown> | undefined),
+        existing?.meta_json,
+      );
       updates.meta_json = { ...existingMeta, ...baseMeta, is_tax_inclusive: isTaxInclusive };
     }
 
@@ -588,6 +623,15 @@ export const PUT = withCaller(
         } catch {
           // 自動登録の失敗は握り潰す（帳票保存自体は既に成功済み）
         }
+      });
+    }
+
+    if (priorStatus !== null && priorStatus !== data?.status && data) {
+      await syncConsolidatedSources(admin, caller.tenantId, {
+        id: data.id as string,
+        doc_type: data.doc_type as string,
+        status: data.status as string,
+        meta_json: data.meta_json,
       });
     }
 
@@ -695,6 +739,11 @@ export const DELETE = withCaller(
         message: "帳票の状態が変わったため削除できませんでした。再読み込みしてください。",
         status: 409,
       });
+    }
+
+    // 削除した合算請求書にまとめていた元の請求書を、元のステータスへ戻す
+    for (const d of deleted) {
+      await syncConsolidatedSources(admin, caller.tenantId, d, { deleted: true });
     }
 
     // 削除の日時・作業者を監査ログに残す（第２ ２（３）/ G2）。実際に消えた行だけを記録する。
