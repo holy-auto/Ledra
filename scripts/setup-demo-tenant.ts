@@ -17,13 +17,20 @@
  *
  * クリーンアップ:
  *   npx tsx scripts/setup-demo-tenant.ts --reset
+ *
+ * 撮影用（社内撮影・非公開の紹介動画のための特例。DECISION_LOG 2026-10-07）:
+ *   npx tsx scripts/setup-demo-tenant.ts --filming          # ヒーロー車両にアンカー表示・パスポート・購入済みレポートを足す
+ *   npx tsx scripts/setup-demo-tenant.ts --filming-cleanup  # 上記と、撮影中に作った証明書を消す
  */
 
+import { createHash, randomBytes } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import { generateDemoPlaceholderJpeg } from "./demoPlaceholderImage";
 // 書き込み先バケットは公開ページの読み取り (publicData.ts の getPublicUrl) と
 // 同じ定数を使い、writer/reader がドリフトしないようにする。
-import { CERTIFICATE_IMAGE_BUCKET } from "../src/lib/certificateImages";
+import { CERTIFICATE_IMAGE_BUCKET } from "../src/lib/certificateImages/constants";
+import { computeCertDigest } from "../src/lib/anchoring/certificateHashing";
+import { buildCertMerkle } from "../src/lib/anchoring/certificateMerkle";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -89,6 +96,7 @@ const CUSTOMERS: Customer[] = [
   { idn: 6, name: "渡辺 美咲",  name_kana: "ワタナベ ミサキ", email: "watanabe@example.com", phone: "090-1000-0006", postal_code: "102-0093", address: "東京都千代田区平河町 6-6-6" },
   { idn: 7, name: "伊藤 裕介",  name_kana: "イトウ ユウスケ", email: "ito@example.com",     phone: "090-1000-0007", postal_code: "141-0022", address: "東京都品川区東五反田 7-7-7" },
   { idn: 8, name: "小林 あかね", name_kana: "コバヤシ アカネ", email: "kobayashi@example.com", phone: "090-1000-0008", postal_code: "158-0094", address: "東京都世田谷区玉川 8-8-8" },
+  { idn: 9, name: "中村 翔太", name_kana: "ナカムラ ショウタ", email: "nakamura@example.com", phone: "090-1000-0009", postal_code: "145-0071", address: "東京都大田区田園調布 9-9-9", note: "新車から全記録を当店で管理（撮影用ヒーロー車両）" },
 ];
 
 type Vehicle = {
@@ -98,6 +106,7 @@ type Vehicle = {
   model: string;
   year: number;
   plate_display: string;
+  vin_code?: string;
   notes?: string;
 };
 
@@ -112,6 +121,9 @@ const VEHICLES: Vehicle[] = [
   { idn: 8,  customerIdn: 6, maker: "TOYOTA",  model: "プリウス 2.0 Z",        year: 2023, plate_display: "品川 500 さ 66-77" },
   { idn: 9,  customerIdn: 7, maker: "MERCEDES", model: "GLA 200d",            year: 2022, plate_display: "港 300 さ 99-00" },
   { idn: 10, customerIdn: 8, maker: "LEXUS",   model: "NX 350h Version L",     year: 2024, plate_display: "品川 500 さ 88-99", notes: "セラミックコーティングご希望" },
+  // 撮影用ヒーロー車両: 新車から3年半の施工・整備を1台に集約する (下の CERTS 17〜27)。
+  // 車体番号は実在しない型式 "LDM80" にして、他テナントの実車と突合しないようにする。
+  { idn: 11, customerIdn: 9, maker: "TOYOTA", model: "ハリアー ハイブリッド Z Leather Package", year: 2023, plate_display: "品川 300 な 20-23", vin_code: "LDM80-0012345", notes: "新車から全記録を当店で管理" },
 ];
 
 type Cert = {
@@ -121,9 +133,14 @@ type Cert = {
   service_type: string;
   preset_title: string;
   preset_products?: string[];
-  certificate_no: string;
+  /** 省略時は施工日の年から `YYYY-LDM-<idn>` を作る */
+  certificate_no?: string;
   status?: "active" | "void";
   daysAgo: number;
+  /** 省略時は「〜を施工しました」の定型文 */
+  free_text?: string;
+  maintenance_json?: Record<string, unknown>;
+  body_repair_json?: Record<string, unknown>;
 };
 
 const CERTS: Cert[] = [
@@ -143,7 +160,37 @@ const CERTS: Cert[] = [
   { idn: 14, vehicleIdn: 3,  public_id: "LEDRA-DEMO-0014", service_type: "interior-care",    preset_title: "ファブリックシートクリーニング", preset_products: ["Fabric Guard Pro"],                              certificate_no: "2026-LDM-0014", daysAgo: 6 },
   { idn: 15, vehicleIdn: 10, public_id: "LEDRA-DEMO-0015", service_type: "ceramic-coating",  preset_title: "ホイールセラミックコーティング", preset_products: ["Wheel Ceramic Pro"],                             certificate_no: "2026-LDM-0015", daysAgo: 2 },
   { idn: 16, vehicleIdn: 8,  public_id: "LEDRA-DEMO-0016", service_type: "glass-coating",    preset_title: "新車同時施工 ガラスコート",      preset_products: ["9H Premium", "Maintenance Kit"],                 certificate_no: "2026-LDM-0016", daysAgo: 1 },
+
+  // ─── 撮影用ヒーロー車両 (vehicle 11) の履歴: 施工と整備を時系列で交互に ───
+  { idn: 17, vehicleIdn: 11, public_id: "LEDRA-DEMO-0017", service_type: "coating",     preset_title: "新車ガラスコーティング",           preset_products: ["9H Premium", "ホイールガラスコート"], daysAgo: 1280 },
+  { idn: 18, vehicleIdn: 11, public_id: "LEDRA-DEMO-0018", service_type: "ppf",         preset_title: "フロントプロテクションフィルム（PPF）", preset_products: ["XPEL Ultimate Plus"],                daysAgo: 1279 },
+  { idn: 19, vehicleIdn: 11, public_id: "LEDRA-DEMO-0019", service_type: "maintenance", preset_title: "6ヶ月点検",                       preset_products: [], daysAgo: 1100,
+    free_text: "6ヶ月点検を実施しました。異常なし。",
+    maintenance_json: { work_types: ["periodic_inspection"], mileage: 4800, findings: "全項目異常なし。" } },
+  { idn: 20, vehicleIdn: 11, public_id: "LEDRA-DEMO-0020", service_type: "maintenance", preset_title: "12ヶ月法定点検・オイル交換",       preset_products: ["エンジンオイル", "オイルフィルター"], daysAgo: 915,
+    free_text: "12ヶ月法定点検とオイル交換を実施しました。",
+    maintenance_json: { work_types: ["periodic_inspection", "oil_change"], mileage: 10900, parts_replaced: "エンジンオイル 0W-16 4.2L\nオイルフィルター", findings: "ブレーキパッド残量 フロント8mm / リア8mm。" } },
+  { idn: 21, vehicleIdn: 11, public_id: "LEDRA-DEMO-0021", service_type: "coating",     preset_title: "ガラスコーティング 1年メンテナンス", preset_products: ["9H Maintenance"], daysAgo: 914 },
+  { idn: 22, vehicleIdn: 11, public_id: "LEDRA-DEMO-0022", service_type: "body_repair", preset_title: "リアバンパー鈑金塗装",             preset_products: [], daysAgo: 700,
+    free_text: "駐車場での接触によるリアバンパーの擦り傷を修理しました。",
+    body_repair_json: { repair_type: "bankin_paint", affected_panels: ["rear_bumper"], repair_methods: ["filler_repair", "blend_paint"], paint_color_code: "218（アティチュードブラックマイカ）", paint_type: "pearl", before_notes: "右後方に約15cmの擦り傷と軽微な凹み。", after_notes: "パテ修正後ボカシ塗装。色差なし。" } },
+  { idn: 23, vehicleIdn: 11, public_id: "LEDRA-DEMO-0023", service_type: "maintenance", preset_title: "24ヶ月法定点検",                   preset_products: ["ブレーキフルード", "ワイパーブレード"], daysAgo: 550,
+    free_text: "24ヶ月法定点検を実施しました。",
+    maintenance_json: { work_types: ["periodic_inspection", "wiper_replacement"], mileage: 21300, parts_replaced: "ブレーキフルード\nワイパーブレード（前）", findings: "ブレーキパッド残量 フロント6mm。次回車検時に交換を推奨。" } },
+  { idn: 24, vehicleIdn: 11, public_id: "LEDRA-DEMO-0024", service_type: "coating",     preset_title: "ホイールセラミックコーティング",   preset_products: ["Wheel Ceramic Pro"], daysAgo: 400 },
+  { idn: 25, vehicleIdn: 11, public_id: "LEDRA-DEMO-0025", service_type: "maintenance", preset_title: "初回車検（新車3年）",              preset_products: ["エンジンオイル", "ブレーキパッド", "補機バッテリー"], daysAgo: 185,
+    free_text: "初回車検整備を実施しました。前回点検で推奨したブレーキパッドを交換。",
+    maintenance_json: { work_types: ["vehicle_inspection", "oil_change", "brake_service", "battery_replacement"], mileage: 31800, parts_replaced: "エンジンオイル 0W-16 4.2L\nオイルフィルター\nブレーキパッド（フロント）\n補機バッテリー", findings: "ブレーキパッド フロント3mm → 新品交換。その他異常なし。" } },
+  { idn: 26, vehicleIdn: 11, public_id: "LEDRA-DEMO-0026", service_type: "coating",     preset_title: "ガラスコーティング 3年目再施工",   preset_products: ["9H Premium"], daysAgo: 30 },
+  { idn: 27, vehicleIdn: 11, public_id: "LEDRA-DEMO-0027", service_type: "maintenance", preset_title: "オイル交換・タイヤローテーション", preset_products: ["エンジンオイル"], daysAgo: 2,
+    free_text: "オイル交換とタイヤローテーションを実施しました。",
+    maintenance_json: { work_types: ["oil_change", "tire_change"], mileage: 34200, parts_replaced: "エンジンオイル 0W-16 4.2L", findings: "タイヤ残溝 5.5mm。偏摩耗なし。" } },
 ];
+
+// ヒーロー車両の NFC タグ。最新の記録 (CERTS 27) に貼付済みとして紐づけ、
+// /c/LEDRA-DEMO-0027 の「NFC情報」と管理画面タイムラインの「NFC書込」に出す。
+// 実タグには https://app.ledra.co.jp/c/LEDRA-DEMO-0027 を書き込む。
+const HERO_NFC = { idn: 1, vehicleIdn: 11, certIdn: 27, tag_code: "LDM-NFC-0001", uid: "04DE0000000001", daysAgo: 2 };
 
 // ─── Reservations (予約 → 請求 導線デモ用) ───────────────────
 // プレゼンで「予約 → 受付 → 作業 → 完了 → 請求」を一通り見せられるよう、各
@@ -318,6 +365,10 @@ async function main(): Promise<void> {
     await reset();
     return;
   }
+  if (args.has("--filming-cleanup")) {
+    await filmingCleanup();
+    return;
+  }
 
   console.log("🚀 デモテナント `Ledra Motors` をセットアップします...\n");
 
@@ -354,6 +405,7 @@ async function main(): Promise<void> {
       model: v.model,
       year: v.year,
       plate_display: v.plate_display,
+      vin_code: v.vin_code ?? null,
       customer_name: customer.name,
       customer_email: customer.email,
       customer_phone_masked: customer.phone.slice(-4),
@@ -379,7 +431,8 @@ async function main(): Promise<void> {
       customer_id: uuid("c001", vehicle.customerIdn),
       status: ct.status ?? "active",
       customer_name: customer.name,
-      certificate_no: ct.certificate_no,
+      certificate_no:
+        ct.certificate_no ?? `${dateDaysAgo(ct.daysAgo).slice(0, 4)}-LDM-${String(ct.idn).padStart(4, "0")}`,
       service_type: ct.service_type,
       vehicle_info_json: {
         maker: vehicle.maker,
@@ -391,7 +444,11 @@ async function main(): Promise<void> {
         title: ct.preset_title,
         products: ct.preset_products ?? [],
       },
-      content_free_text: `${vehicle.maker} ${vehicle.model} に ${ct.preset_title} を施工しました。詳細は別紙作業報告書をご確認ください。`,
+      content_free_text:
+        ct.free_text ??
+        `${vehicle.maker} ${vehicle.model} に ${ct.preset_title} を施工しました。詳細は別紙作業報告書をご確認ください。`,
+      maintenance_json: ct.maintenance_json ?? {},
+      body_repair_json: ct.body_repair_json ?? {},
       current_version: 1,
       created_at: dateDaysAgo(ct.daysAgo),
       updated_at: dateDaysAgo(ct.daysAgo),
@@ -479,7 +536,7 @@ async function main(): Promise<void> {
       vehicle_id: uuid("v001", cert.vehicleIdn),
       certificate_id: uuid("ce01", cert.idn),
       type: "certificate_issued",
-      title: `${cert.preset_title} 施工`,
+      title: cert.service_type === "maintenance" ? cert.preset_title : `${cert.preset_title} 施工`,
       description: (cert.preset_products ?? []).join(" / ") || "施工完了",
       performed_at: dateDaysAgo(cert.daysAgo),
     });
@@ -503,6 +560,27 @@ async function main(): Promise<void> {
   }
   await upsert("vehicle_histories", historyRows, "id", { typeColumn: "type" });
   console.log(`  ✓ 投入完了（不許可の type は自動スキップ済み）`);
+
+  // 6b) NFC tag (撮影用ヒーロー車両)
+  console.log("─ NFC tags");
+  await upsert(
+    "nfc_tags",
+    [
+      {
+        id: uuid("nf01", HERO_NFC.idn),
+        tenant_id: TENANT_ID,
+        tag_code: HERO_NFC.tag_code,
+        uid: HERO_NFC.uid,
+        vehicle_id: uuid("v001", HERO_NFC.vehicleIdn),
+        certificate_id: uuid("ce01", HERO_NFC.certIdn),
+        status: "attached",
+        written_at: dateDaysAgo(HERO_NFC.daysAgo),
+        attached_at: dateDaysAgo(HERO_NFC.daysAgo),
+      },
+    ],
+    "id",
+  );
+  console.log(`  ✓ ${HERO_NFC.tag_code} → LEDRA-DEMO-${String(HERO_NFC.certIdn).padStart(4, "0")}`);
 
   // 7) Reservations (予約 → 請求 導線)
   console.log("─ Reservations");
@@ -588,6 +666,8 @@ async function main(): Promise<void> {
   await upsert("documents", invoiceRows, "id", { typeColumn: "doc_type" });
   console.log(`  ✓ ${invoiceRows.length} 件`);
 
+  if (args.has("--filming")) await filmingSetup();
+
   // 9) Report
   console.log("\n🎉 セットアップ完了\n");
   console.log("  Tenant ID :", TENANT_ID);
@@ -599,6 +679,8 @@ async function main(): Promise<void> {
   console.log("  Histories :", historyRows.length);
   console.log("  Reservations:", reservationRows.length);
   console.log("  Invoices  :", invoiceRows.length);
+  console.log("\n  撮影用ヒーロー車両 (NFC タグに書き込む URL):");
+  console.log(`    https://app.ledra.co.jp/c/LEDRA-DEMO-${String(HERO_NFC.certIdn).padStart(4, "0")}`);
   console.log("\n  公開証明書の例:");
   CERTS.slice(0, 3).forEach((c) => {
     console.log(`    https://app.ledra.co.jp/c/${c.public_id}`);
@@ -613,6 +695,212 @@ async function main(): Promise<void> {
         `公開証明書ページの該当画像は Storage 400 のままです。`,
     );
   }
+}
+
+// ─── 撮影用（--filming / --filming-cleanup）──────────────────
+// 社内撮影・非公開の紹介動画のための特例（DECISION_LOG 2026-10-07）。本番では
+// Polygon アンカーがまだ動いていないので、ヒーロー車両の記録に「アンカー済み」の
+// 行を作って /c のブロックチェーン表示と /v/[vin] を撮れるようにする。
+// cert_digest と Merkle root は本番と同じ関数で正しく計算するが、tx はチェーンに
+// 送っていない（tx hash は root から作った値で、Polygonscan では見つからない）。
+// デモテナントは公開されているので、撮影が終わったら --filming-cleanup で消すこと。
+
+const HERO_VEHICLE_IDN = 11;
+const HERO_VIN_NORMALIZED = "LDM800012345";
+const FILMING_BATCH_ID = uuid("ab01", 1);
+const FILMING_ORDER_ID = uuid("0d01", 1);
+
+function heroCertIds(): string[] {
+  return CERTS.filter((c) => c.vehicleIdn === HERO_VEHICLE_IDN).map((c) => uuid("ce01", c.idn));
+}
+
+async function filmingSetup(): Promise<void> {
+  console.log("─ Filming: anchors / passport / report order");
+  const placeholder = await generateDemoPlaceholderJpeg();
+  const imageSha = createHash("sha256").update(placeholder).digest("hex");
+  const heroIds = heroCertIds();
+
+  // 1) 証明書ごとにアンカー済みの写真を 1 枚足す。既存の写真行は発行済み証明書の
+  //    証跡列（sha256 / authenticity_grade）が凍結されていて更新できないので、新しい行で足す。
+  const anchoredImages = heroIds.map((certId, i) => {
+    const publicId = `LEDRA-DEMO-${certId.slice(-4)}`;
+    return {
+      id: uuid("cf02", i + 1),
+      tenant_id: TENANT_ID,
+      certificate_id: certId,
+      storage_path: `demo/${publicId}/anchored.jpg`,
+      file_name: `${publicId}-anchored.jpg`,
+      content_type: "image/jpeg",
+      file_size: placeholder.length,
+      sort_order: 0,
+      sha256: imageSha,
+      authenticity_grade: "verified",
+      polygon_network: "amoy",
+      polygon_tx_hash: `0x${createHash("sha256").update(`ledra-demo-filming-image:${certId}`).digest("hex")}`,
+    };
+  });
+  await upsert("certificate_images", anchoredImages, "id");
+  await Promise.all(
+    anchoredImages.map((img) =>
+      admin.storage
+        .from(CERTIFICATE_IMAGE_BUCKET)
+        .upload(img.storage_path, placeholder, { contentType: "image/jpeg", upsert: true }),
+    ),
+  );
+
+  // 2) 証明書記録のアンカー（cert_digest → Merkle → バッチ）
+  const { data: certs, error: certErr } = await admin
+    .from("certificates")
+    .select(
+      "id, public_id, tenant_id, status, created_at, updated_at, vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value",
+    )
+    .in("id", heroIds);
+  if (certErr) throw certErr;
+  const digests = (certs ?? []).map((c) => ({
+    certId: c.id as string,
+    ...computeCertDigest({
+      publicId: c.public_id,
+      tenantId: c.tenant_id,
+      issuedAt: c.created_at,
+      versionAt: c.updated_at ?? c.created_at,
+      status: c.status === "void" ? "void" : "active",
+      vehicleInfo: c.vehicle_info_json ?? null,
+      contentFreeText: c.content_free_text,
+      contentPreset: c.content_preset_json ?? null,
+      expiryType: c.expiry_type ?? null,
+      expiryValue: c.expiry_value ?? null,
+      imageSha256s: [imageSha],
+    }),
+  }));
+  const merkle = buildCertMerkle(digests.map((d) => d.digest));
+  const anchoredAt = dateDaysAgo(1);
+  // 再実行で root が変わる（updated_at が動く）ので、固定 id の行を上書きする
+  await upsert(
+    "certificate_anchor_batches",
+    [
+      {
+        id: FILMING_BATCH_ID,
+        merkle_root: merkle.root,
+        leaf_count: merkle.leafCount,
+        contract_address: "0x0000000000000000000000000000000000000000",
+        network: "amoy",
+        tx_hash: `0x${createHash("sha256").update(`ledra-demo-filming-batch:${merkle.root}`).digest("hex")}`,
+        anchored_at: anchoredAt,
+      },
+    ],
+    "id",
+  );
+  const anchorRows = digests.map((d, i) => ({
+    id: uuid("ac01", i + 1),
+    tenant_id: TENANT_ID,
+    certificate_id: d.certId,
+    cert_digest: d.digest,
+    canonical_json: d.canonical,
+    status: "anchored",
+    anchor_route: "batch",
+    batch_id: FILMING_BATCH_ID,
+    merkle_proof: merkle.proofByDigest.get(d.digest) ?? [],
+    polygon_network: "amoy",
+    anchored_at: anchoredAt,
+  }));
+  await upsert("certificate_anchors", anchorRows, "id");
+  for (const a of anchorRows) {
+    const { error } = await admin.from("certificates").update({ latest_anchor_id: a.id }).eq("id", a.certificate_id);
+    if (error) throw error;
+  }
+
+  // 3) 車両パスポート（/v/[vin]。本番は PASSPORT_PATENT_HOLD で 404 なのでローカルで撮る）
+  const hero = VEHICLES.find((v) => v.idn === HERO_VEHICLE_IDN)!;
+  const firstCert = CERTS.filter((c) => c.vehicleIdn === HERO_VEHICLE_IDN).sort((a, b) => b.daysAgo - a.daysAgo)[0];
+  const { error: passErr } = await admin.from("vehicle_passports").upsert(
+    {
+      vin_code_normalized: HERO_VIN_NORMALIZED,
+      display_maker: hero.maker,
+      display_model: hero.model,
+      display_year: hero.year,
+      anchored_cert_count: heroIds.length,
+      tenant_count: 1,
+      first_seen_at: dateDaysAgo(firstCert.daysAgo),
+      last_activity_at: anchoredAt,
+    },
+    { onConflict: "vin_code_normalized" },
+  );
+  if (passErr) throw passErr;
+
+  // 4) 購入済みレポート（第三者視点で /v/[vin] の全履歴を開くため）。Stripe を通していない
+  //    ので収益分配（vehicle_report_revenue_shares）は作られない。
+  const token = randomBytes(32).toString("hex");
+  const { error: orderErr } = await admin.from("vehicle_report_orders").upsert(
+    {
+      id: FILMING_ORDER_ID,
+      vin_code_normalized: HERO_VIN_NORMALIZED,
+      source_public_id: "LEDRA-DEMO-0027",
+      access_token: token,
+      status: "paid",
+      amount_jpy: 3000,
+      scope_type: "full",
+      paid_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30 * 86400_000).toISOString(),
+      created_at: new Date().toISOString(),
+    },
+    { onConflict: "id" },
+  );
+  if (orderErr) throw orderErr;
+
+  console.log(`  ✓ アンカー ${anchorRows.length} 件（tx はチェーン未送信）/ パスポート / 購入済みレポート`);
+  // cookie 名は src/lib/vehicleReport/access.ts の reportCookieName と同じ規則（import すると Supabase admin の env 読みが走る）
+  console.log(`  /v/${HERO_VIN_NORMALIZED} を第三者として開く（ブラウザのコンソールで実行）:`);
+  console.log(`    document.cookie = "vrt_${createHash("sha256").update(HERO_VIN_NORMALIZED).digest("hex").slice(0, 16)}=${token}; path=/; max-age=2592000"`);
+}
+
+async function filmingCleanup(): Promise<void> {
+  console.log("🧹 撮影用データを削除します...");
+  const seedIds = new Set(CERTS.map((c) => uuid("ce01", c.idn)));
+  const { data: onHero, error: listErr } = await admin
+    .from("certificates")
+    .select("id")
+    .eq("vehicle_id", uuid("v001", HERO_VEHICLE_IDN));
+  if (listErr) throw listErr;
+  const filmedIds = (onHero ?? []).map((c) => c.id as string).filter((id) => !seedIds.has(id));
+  const heroIds = heroCertIds();
+
+  const del = async (table: string, col: string, vals: string[]) => {
+    if (vals.length === 0) return;
+    const { error } = await admin.from(table).delete().in(col, vals);
+    if (error) throw error;
+  };
+  await del("vehicle_report_orders", "id", [FILMING_ORDER_ID]);
+  await del("vehicle_passports", "vin_code_normalized", [HERO_VIN_NORMALIZED]);
+  const { error: unlinkErr } = await admin
+    .from("certificates")
+    .update({ latest_anchor_id: null })
+    .in("id", [...heroIds, ...filmedIds]);
+  if (unlinkErr) throw unlinkErr;
+  await del("certificate_anchors", "certificate_id", [...heroIds, ...filmedIds]);
+  await del("certificate_anchor_batches", "id", [FILMING_BATCH_ID]);
+
+  // 発行済み証明書の写真は削除ガード（20260820000000）で消せないので、一時的に
+  // draft に戻して消し、元の status に戻す。
+  const { data: statuses, error: stErr } = await admin
+    .from("certificates")
+    .select("id, status")
+    .in("id", [...heroIds, ...filmedIds]);
+  if (stErr) throw stErr;
+  const touched = (statuses ?? []).filter((c) => c.status !== "draft");
+  for (const c of touched) {
+    const { error } = await admin.from("certificates").update({ status: "draft" }).eq("id", c.id);
+    if (error) throw error;
+  }
+  const anchoredImageIds = heroIds.map((_, i) => uuid("cf02", i + 1));
+  await del("certificate_images", "id", anchoredImageIds);
+  await del("certificate_images", "certificate_id", filmedIds);
+  await del("vehicle_histories", "certificate_id", filmedIds);
+  await del("certificates", "id", filmedIds);
+  for (const c of touched.filter((t) => !filmedIds.includes(t.id))) {
+    const { error } = await admin.from("certificates").update({ status: c.status }).eq("id", c.id);
+    if (error) throw error;
+  }
+  console.log(`✅ 削除完了（撮影中に作った証明書 ${filmedIds.length} 件を含む）。書き込み窓の CLOSE も忘れずに。`);
 }
 
 main().catch((err) => {
