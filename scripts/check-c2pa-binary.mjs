@@ -169,13 +169,20 @@ try {
 // **裸の指定子（`@scope/pkg`）はそのまま渡す。** あちらの `require` も node_modules から解くので、
 // `dist/` 基準で解くと存在しないパスになり、**パッケージは読めるのにこの検査だけが落ちる**
 // （`./index.node` で一度やった退行の鏡像。/code-review 指摘）。
+// **`undefined` と空文字を区別する。** あちらは `C2PA_LIBRARY_PATH ?? "./index.node"` で、
+// `??` は空文字を**置き換えない** —— `require("")` は `ERR_INVALID_ARG_VALUE` で落ちる（実測）。
+// ここで真偽値で見ると、空の override を既定の `index.node` に差し替えて**緑にしてしまう**。
+// `C2PA_MODE=production` なら、ビルドは通るのに実行時は署名器が作れず全件 503 になる
+// —— このスクリプトが止めるはずの偽の緑そのもの（/code-review 指摘・2026-10-09）。
+// 空文字は裸の指定子として素通しし、あちらと同じ例外で落ちるようにする。
 const override = process.env.C2PA_LIBRARY_PATH;
 const isPathLike = (v) => v.startsWith(".") || v.startsWith("/") || path.isAbsolute(v);
-const target = override
-  ? isPathLike(override)
-    ? path.resolve(distDir, override)
-    : override
-  : path.join(distDir, "index.node");
+const target =
+  override === undefined
+    ? path.join(distDir, "index.node")
+    : isPathLike(override)
+      ? path.resolve(distDir, override)
+      : override;
 
 try {
   const neon = require(target);

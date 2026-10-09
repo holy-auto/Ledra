@@ -145,6 +145,17 @@
   なお PR 本文・コメントに一度「手元で成功」と書いたが、**そのときは終了コードを見ておらず、
   `.next/build-manifest.json` の更新時刻から推定していた**
   （`M-20261008-called-the-build-successful-from-a-file-mtime`）。訂正済み。
+- **2026-10-09 追記（マージ後の修正）**: ready 化で起動していた Codex のレビューが、**マージの約4分後**に
+  P2 を1件出した（完了 13:09:36・`978aa08`）。**指摘が出た時点でコードは main に入っていた。**
+  内容は実測で確認できた: `C2PA_LIBRARY_PATH=""`（空文字）のとき、パッケージは
+  `require(C2PA_LIBRARY_PATH ?? "./index.node")` で **`??` なので空文字を残し** `require("")` が
+  `ERR_INVALID_ARG_VALUE` で落ちるのに、検査は真偽値で見て**既定の `index.node` に差し替えて exit 0**。
+  `C2PA_MODE=production` なら「**ビルドは緑・実行時は全件 503**」という偽の緑になる。
+  `override === undefined` で分岐するよう直し、空文字は裸の指定子として素通しして
+  あちらと同じ例外で落ちるようにした。回帰テストを追加（真偽値に戻すと赤）。
+  記録: `M-20261009-parity-test-covered-the-parser-and-missed-the-override`。
+  **運用の教訓: ready 化で Codex を起動した直後にマージすると、指摘は main 向けになる。**
+  待たないなら、マージ後に結果を見に行く段取りを先に用意しておく（今回は予約を入れてあった）。
 - **2026-10-09 `main` にマージ（squash `c4627a3d`・PR #1272）。** マージ時点で GitHub Actions は
   9 本すべて緑（E2E / CodeQL / Migrations Replay / Client Bundle Size / Count lines of code /
   Scan for secrets / Lint, Type Check & Unit Tests / Analyze / Vercel Preview Comments）。

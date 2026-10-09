@@ -176,6 +176,16 @@ describe("check-c2pa-binary.mjs", () => {
     }
   });
 
+  it("空の C2PA_LIBRARY_PATH を既定に差し替えない（パッケージは ?? なので空文字を残す）", () => {
+    // `dist/binary.js:22` は `require(C2PA_LIBRARY_PATH ?? "./index.node")`。**`??` は空文字を
+    // 置き換えない**ので `require("")` が `ERR_INVALID_ARG_VALUE` で落ちる（実測）。
+    // ここで真偽値で見ると空の override を既定の `index.node` に差し替えて**緑にしてしまい**、
+    // production では「ビルドは通るのに実行時は全件 503」になる —— 偽の緑そのもの。
+    const { code, out } = run({ C2PA_MODE: "production", C2PA_LIBRARY_PATH: "" });
+    expect(code, `空の override で緑になった。これは偽の緑: ${out}`).toBe(1);
+    expect(out).toMatch(/全件 503/);
+  });
+
   it("裸の指定子の C2PA_LIBRARY_PATH は dist/ 基準で解かない（node_modules から解く側に合わせる）", () => {
     // `@scope/pkg` のような指定子は、パッケージ側の `require` も node_modules から解く。
     // `dist/` 基準で解くと存在しないパスになり、**パッケージは読めるのに検査だけ落ちる**。
