@@ -20,8 +20,17 @@ vi.mock("@/lib/supabase/admin", () => ({
         select: () => q,
         eq: () => q,
         maybeSingle: async () => ({ data: current, error: null }),
-        upsert: async (row: unknown) => (upserts.push(row), { error: null }),
-        insert: async (row: unknown) => (table === "audit_logs" && audits.push(row), { error: null }),
+        // 承諾の書き込みは、行が無ければ insert・あれば「承諾済みでない」条件付きの update。どちらも upserts に積む。
+        update: (row: unknown) => {
+          upserts.push(row);
+          const u: Record<string, unknown> = {
+            eq: () => u,
+            neq: () => u,
+            select: async () => ({ data: [{}], error: null }),
+          };
+          return u;
+        },
+        insert: async (row: unknown) => ((table === "audit_logs" ? audits : upserts).push(row), { error: null }),
       };
       return q;
     },

@@ -20,6 +20,8 @@ import {
 } from "@/lib/bodyRepair/constants";
 import { getAccessoryTypeLabel, getInstallLocationLabel } from "@/lib/accessory/constants";
 import type { ResolvedCertificateMedia } from "@/lib/certificateMedia";
+import { parseFilmThickness, formatThickness } from "@/lib/certificates/filmThickness";
+import { parseDamageMap, damageKindLabel, DAMAGE_DIAGRAM, DAMAGE_KIND_COLOR } from "@/lib/certificates/damageMap";
 
 type PageProps = {
   params: Promise<{ public_id: string }>;
@@ -54,6 +56,7 @@ type PublicStatusResponse = {
     maintenance_json?: Record<string, any> | null;
     body_repair_json?: Record<string, any> | null;
     accessory_json?: Record<string, any> | null;
+    damage_map_json?: unknown;
     /* eslint-enable @typescript-eslint/no-explicit-any */
     craftsman_name?: string | null;
   };
@@ -88,6 +91,7 @@ type PublicStatusResponse = {
     file_size?: number | null;
     sort_order?: number | null;
     created_at?: string | null;
+    storage_path?: string | null;
     url?: string | null;
     rendered_url?: string | null;
     annotations?: unknown;
@@ -204,8 +208,11 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
   const images = allImages.filter((img) => !!img?.url);
   const media = !isVoidCertificate ? (data.media ?? []) : [];
   const detailHidden = data.detail_visible === false && !isVoidCertificate;
-  // 写真を見せない閲覧者（URL 無し）にも件数と認証グレードは出す。見せる閲覧者は従来どおり表示できる写真で数える。
-  const heroImages = detailHidden ? allImages : images;
+  const thickness = parseFilmThickness(data.certificate.content_preset_json);
+  const damageMap = parseDamageMap(data.certificate.damage_map_json);
+  // 件数と認証グレードは、写真を見せない閲覧者（URL 無し）にも出す。見せる閲覧者は保存パスのある写真で数える
+  // （署名 URL の発行に一時的に失敗しても、件数・グレード・アンカーが落ちないように）。
+  const heroImages = detailHidden ? allImages : allImages.filter((img) => !!img.storage_path);
   const heroGrade: AuthenticityGrade = highestGrade(
     heroImages.map((img) => img.authenticity_grade as AuthenticityGrade | null | undefined),
   );
@@ -479,8 +486,99 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
                     <span className="ml-2 text-xs text-muted">({getFilmTypeLabel(cp.film_type)})</span>
                   ) : null}
                   {cp.location ? <div className="text-xs text-muted mt-0.5">{cp.location}</div> : null}
+                  {cp.lot_number ? <div className="text-xs text-muted mt-0.5">ロット番号: {cp.lot_number}</div> : null}
                 </div>
               ))}
+            </div>
+          </section>
+        ) : null}
+
+        {/* 保証（全施工種別共通。期限・免責は記録されているときだけ） */}
+        {data.certificate.warranty_period_end || data.certificate.warranty_exclusions ? (
+          <section className="glass-card p-4">
+            <div className="mb-3 font-bold text-primary">保証</div>
+            <div className="grid grid-cols-1 gap-2">
+              {data.certificate.warranty_period_end ? (
+                <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+                  保証期限: <span className="text-primary">{formatDate(data.certificate.warranty_period_end)}</span>
+                  {!isVoidCertificate ? (
+                    <span className={`ml-2 text-xs ${data.warranty_active ? "text-emerald-400" : "text-muted"}`}>
+                      {data.warranty_active ? "保証期間内" : "保証期間外"}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+              {data.certificate.warranty_exclusions ? (
+                <div className="rounded-lg bg-base px-3 py-2 text-secondary">
+                  <div className="mb-1 text-xs text-muted">保証の対象外</div>
+                  <div className="whitespace-pre-wrap">{data.certificate.warranty_exclusions}</div>
+                </div>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        {/* 膜厚の測定値 */}
+        {thickness.length > 0 ? (
+          <section className="glass-card p-4">
+            <div className="mb-3 font-bold text-primary">膜厚の測定値</div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {thickness.map((r, idx) => (
+                <div key={idx} className="rounded-lg bg-base px-3 py-2 text-secondary">
+                  {r.location || "-"}: <span className="font-medium text-primary">{formatThickness(r)}</span>
+                  {r.notes ? <div className="text-xs text-muted mt-0.5">{r.notes}</div> : null}
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {/* 傷・損傷の位置（匿名閲覧では redactCertificateDetails で落ちる） */}
+        {damageMap ? (
+          <section className="glass-card p-4">
+            <div className="mb-3 font-bold text-primary">傷・損傷の位置</div>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+              <svg
+                viewBox={`0 0 ${DAMAGE_DIAGRAM.width} ${DAMAGE_DIAGRAM.height}`}
+                className="w-full max-w-[220px] shrink-0"
+                role="img"
+                aria-label="車両を上から見た図と傷の位置"
+              >
+                <path d={DAMAGE_DIAGRAM.body} fill="none" stroke="currentColor" strokeOpacity={0.4} strokeWidth={2} />
+                <path d={DAMAGE_DIAGRAM.windshield} fill="currentColor" fillOpacity={0.08} />
+                <path d={DAMAGE_DIAGRAM.rearWindow} fill="currentColor" fillOpacity={0.08} />
+                {damageMap.markers.map((m, i) => (
+                  <g key={i}>
+                    <circle
+                      cx={m.x * DAMAGE_DIAGRAM.width}
+                      cy={m.y * DAMAGE_DIAGRAM.height}
+                      r={11}
+                      fill={DAMAGE_KIND_COLOR[m.kind]}
+                    />
+                    <text
+                      x={m.x * DAMAGE_DIAGRAM.width}
+                      y={m.y * DAMAGE_DIAGRAM.height + 4}
+                      textAnchor="middle"
+                      fontSize={11}
+                      fontWeight={700}
+                      fill="#fff"
+                    >
+                      {i + 1}
+                    </text>
+                  </g>
+                ))}
+              </svg>
+              <ol className="grid flex-1 gap-1 text-sm text-secondary">
+                {damageMap.markers.map((m, i) => (
+                  <li key={i}>
+                    <span className="font-medium text-primary">
+                      {i + 1}. {damageKindLabel(m.kind)}
+                    </span>
+                    {m.note ? ` — ${m.note}` : ""}
+                  </li>
+                ))}
+                <li className="mt-1 text-xs text-muted">図は車両を上から見たもの（上が前方）。番号は記録した順。</li>
+              </ol>
             </div>
           </section>
         ) : null}
@@ -683,9 +781,9 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
 
         {detailHidden ? (
           <section className="glass-card p-4 text-sm leading-6 text-secondary">
-            <div className="mb-1 font-bold text-primary">写真・担当者名・作業メモについて</div>
+            <div className="mb-1 font-bold text-primary">写真・担当者名・作業メモ・傷の位置について</div>
             個人情報保護のため、施工写真{allImages.length > 0 ? `（${allImages.length}枚）` : ""}
-            ・担当者名・作業メモは、車両の所有者（マイページにログイン中）、施工した店舗、
+            ・担当者名・作業メモ・傷の位置は、車両の所有者（マイページにログイン中）、施工した店舗、
             この車両の履歴レポートをご購入の方にだけ表示しています。
           </section>
         ) : null}
