@@ -81,9 +81,36 @@
 | **F. 確認できる事実を確認しない** | 環境から1コマンドで確かめられる事実（今日の日付・件数・バージョン・設定ファイルの中身・**2つの出来事の時刻差**・**CI が実際に走ったか**・**同じ問題を直している PR が既に開いていないか**）を、確かめずに書く。**自分がこれから追記しようとしているログファイル自身に、既に矛盾する記述が無いか確認しない**のも同じ。**本番の実データをそのまま調査ログ・事業ログに転記する**のも同じ（PIIのマスクを確認事実として扱わない） | M-011, M-014, M-015, M-016, **M-018**, **M-021**, **M-026**, **M-027**, M-034, M-037, **M-045**, **M-049**, **M-053**, **M-059**, **M-070**, **M-071**, **M-073**, **M-080**, **M-081**, **M-082**, **M-086**, **M-088**, **M-090**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-called-it-untraceable-without-checking-open-prs**, **M-20260919-said-no-open-pr-has-it-again**, **M-20260919-hand-applied-ahead-of-a-pending-migration**, **M-20260919-skipped-the-check-i-had-just-written**, **M-20260919-green-ci-read-as-production-applied**, **M-20260919-credited-my-own-dirty-tree-to-another-session**, **M-20260919-wrote-a-replay-count-i-never-read**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-counted-12-as-11-again**, **M-20260921-reported-a-subtraction-as-a-measurement**, **M-20260921-two-samples-read-as-all**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-said-typegen-red-on-every-merge**, **M-20260922-said-ten-checks-without-listing-them**, **M-20260923-git-add-all-swept-a-formatted-generated-file**, **M-20260925-migration-timestamp-collided-with-parallel-pr**, **M-20260927-anon-customer-names-read-as-by-design**, **M-20261001-cited-sources-i-never-opened-in-decision-log**, **M-20261001-wrote-not-observed-over-my-own-vercel-font-record**, **M-20261001-said-fix-reaches-production-before-deploy-checked**, **M-20261001-reported-applied-migrations-as-not-applied**, **M-20261002-asserted-conformance-impact-from-our-own-gpsa**, **M-20261002-said-no-mechanism-without-reading-the-workflow-that-exists**, **M-20261001-acted-on-dependabot-pr-without-checking-it-was-closed**, **M-20261001-duplicated-an-open-pr-for-four-days**, **M-20260929-logged-the-wrong-zip-as-sent**, **M-20261003-fixed-the-pr-body-and-left-the-business-logs-wrong**, **M-20261005-called-ci-green-from-check-runs-only**, **M-20261005-blamed-migrations-for-a-stale-clone**, **M-20261005-handed-user-cli-commands-i-never-ran**, **M-20261005-diagnosed-device-from-origin-not-users-checkout**, **M-20261005-took-sharps-limit-as-the-limit-of-what-i-could-verify**, **M-20261006-built-on-a-not-null-premise-from-my-own-log**, **M-20261007-read-elastic-build-machine-as-fixed-16gb**, **M-20261007-claimed-env-vars-apply-only-to-new-session**, **M-20261007-posted-rerun-done-before-result**, **M-20261007-claimed-single-source-without-grepping-the-siblings**, **M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing**, **M-20261007-read-an-empty-tool-result-as-no-problem-found**, **M-20261008-bisected-a-flaky-oom-as-deterministic**, **M-20261008-claimed-terms-absent-without-grep**, **M-20261009-read-one-codex-limit-message-as-an-ongoing-state**, **M-20261009-used-an-arrow-the-pdf-font-lacks**, **M-20261009-wrote-an-interval-without-subtracting-two-timestamps** |
 | **G. 構造テストを振る舞いの証明として扱う** | ソースを grep して「その語が書かれている」を確かめただけで、**値が通るか**を確かめていない。テストは緑、機能は壊れている。**ファイルに在ること**を、**その経路が実際に動く/覆われている**ことの証拠として扱うのも同じ | **M-033**, **M-20260921-file-content-read-as-behavior**, **M-20261002-closed-open-question-on-settings-screen-not-build-log**, **M-20261002-checked-one-side-effect-and-called-it-no-orphans**, **M-20261008-called-the-build-successful-from-a-file-mtime** |
 | **H. 未確定の前提の上に作る** | 依頼者しか決められない前提を確認しないまま、その前提が変われば丸ごと消える実装を先に作る | **M-043** |
-| **I. 前提が途中で変わったのに読み直さない** | 判断したときは正しかった観察が、その後の `main` 取り込みなどで無効になっているのに、変更を見直さない。**衝突しなかったファイルにこそ潜む**。**自分が書いた実測値が、自分のマージで古くなる**のも同じ | **M-047**, **M-051**, **M-20260925-my-own-merge-staled-the-replay-count**, **M-20260929-merged-main-without-migration-order-lint**, **M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing** |
+| **I. 前提が途中で変わったのに読み直さない** | 判断したときは正しかった観察が、その後の `main` 取り込みなどで無効になっているのに、変更を見直さない。**衝突しなかったファイルにこそ潜む**。**自分が書いた実測値が、自分のマージで古くなる**のも同じ | **M-047**, **M-051**, **M-20260925-my-own-merge-staled-the-replay-count**, **M-20260929-merged-main-without-migration-order-lint**, **M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing**, **M-20261009-carried-a-mutation-count-past-the-change-that-invalidated-it** |
 
 ---
+
+## M-20261009-carried-a-mutation-count-past-the-change-that-invalidated-it テストを20→23件に増やしたのに、変異で赤になる件数を測り直さずに持ち越した（2026-10-09・型 I）
+
+**Before**: `check:ledger-ids` の変異テスト（検査を1つずつ外す／範囲を `[A-I]` に狭める）で赤になる件数を
+「13件赤」と測り、RELEASE_LOG と PR 本文に書いた。**その測定はテスト20件の版（`f4c88655`）のもの。**
+その後 `/code-review` の指摘を反映してテストを**23件**に増やしたとき（`68ef0d8e`）、
+本文の「13件赤」はそのまま残した。**測定の母数を自分で変えたのに、測定値を据え置いた。**
+
+**After**: PR 本文を書き直すために測り直したら、同じ変異が **16件赤（23件中）**だった。
+内訳も変わっており、「死んだ ID の検査を外す」は 1件赤 → **3件赤**。
+`/code-review` 反映で足した陰性対照が、同じ変異に重ねて当たるようになったため
+（赤が増えたのは検査が強くなった方向なので、結論は変わらない。**数字だけが古かった**）。
+
+**なぜ気づけなかったか**: **「測った」という記憶が、測定の前提と切り離されて残った。**
+13 は実測値だったので「自分で確かめた数字」として扱い続けたが、**その後の自分の変更が母数を変えた**。
+件数を数え直す習慣は「書く前に数える」までで、**一度数えた数字が後の変更で無効になる経路を見ていない**。
+テストを増やしたコミットの中で、同じコミットが抱える「13件赤」を読み直していない。
+
+**型 I の再発防止が効かなかった理由**: 型 I の対策は「`main` を取り込んだら、取り込み前に出した
+観察を読み直す」。**無効化したのが他人の変更（`main`）ではなく自分の変更だった**ため、
+「読み直しが要る契機」として認識していない。契機は「他から来た変更」ではなく
+**「測定の母数が変わったこと」**である。
+
+**再発を止める仕組み**: 仕組み無し（判断に依存）。
+- 習慣: **測定値には母数を添えて書く**（「16件赤（23件中）」）。母数が書いてあれば、
+  テスト件数を変えたときに**同じ文の中で矛盾が見える**。「13件赤」だけなら矛盾が見えない。
+- 習慣: **テストを足した／消したコミットでは、同じ PR 内の「◯件赤」を全部引き直す**（`grep "件赤"`）。
 
 ## M-20261009-wrote-an-interval-without-subtracting-two-timestamps 2つのコメントの時刻が引ける状態で、間隔を「約20分」と体感で書いた（2026-10-09・型 F）
 
