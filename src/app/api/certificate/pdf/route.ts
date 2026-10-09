@@ -47,14 +47,13 @@ type CertPublic = {
   created_at: string | null;
   tenant_name: string | null;
   tenant_slug: string | null;
-  tenant_custom_domain?: string | null;
   craftsman_name?: string | null;
 };
 
-function buildOriginFromCert(cert: { tenant_custom_domain?: string | null }, fallbackOrigin: string) {
-  if (cert.tenant_custom_domain) return `https://${cert.tenant_custom_domain}`;
-  if (process.env.APP_URL) return process.env.APP_URL;
-  return fallbackOrigin;
+// QR・本文の公開 URL は常に本ドメイン。テナントの独自ドメイン（tenants.custom_domain）はアプリ側に配線されておらず
+// （proxy.ts は resolveTenantByHost を呼ばない）、QR が開けないページを指していた。ログイン・購入の cookie も本ドメインにしか無い。
+function buildOrigin(fallbackOrigin: string) {
+  return process.env.APP_URL || fallbackOrigin;
 }
 
 async function getFallbackOrigin(): Promise<string> {
@@ -181,7 +180,7 @@ export async function GET(req: Request) {
   const detailVisible = byStaff || (await canViewCertificateDetails(fullCert));
 
   const fallbackOrigin = await getFallbackOrigin();
-  const origin = buildOriginFromCert(cert, fallbackOrigin);
+  const origin = buildOrigin(fallbackOrigin);
   const publicUrl = `${origin}/c/${cert.public_id}`;
 
   let anchors: AnchorInfo[] = [];
@@ -257,7 +256,6 @@ export async function GET(req: Request) {
     warranty_exclusions: fullCert?.warranty_exclusions ?? null,
     logo_asset_path: cert.logo_asset_path ?? null,
     created_at: cert.created_at ?? new Date().toISOString(),
-    tenant_custom_domain: cert.tenant_custom_domain,
     current_version: fullCert?.current_version ?? null,
     // ⑦ 施工担当（職人）。certificates_public ビューが公開する craftsman_name をそのまま渡す。
     craftsman_name: cert.craftsman_name ?? null,

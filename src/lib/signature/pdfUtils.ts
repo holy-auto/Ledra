@@ -43,7 +43,6 @@ type CertSelectRow = {
   logo_asset_path: string | null;
   current_version: number | null;
   created_at: string | null;
-  tenant: { custom_domain: string | null } | null;
 };
 
 /**
@@ -81,8 +80,7 @@ export async function generateCertificatePdfBytes(certificateId: string): Promis
       warranty_exclusions,
       logo_asset_path,
       current_version,
-      created_at,
-      tenant:tenants(custom_domain)
+      created_at
     `,
     )
     .eq("id", certificateId)
@@ -92,16 +90,14 @@ export async function generateCertificatePdfBytes(certificateId: string): Promis
     throw new Error(`[pdfUtils] Certificate not found: ${certificateId}`);
   }
 
-  const tenantDomain = cert.tenant?.custom_domain ?? null;
-  const origin = tenantDomain ? `https://${tenantDomain}` : BASE_URL;
-  const publicUrl = `${origin}/c/${cert.public_id}`;
+  // 公開 URL は常に本ドメイン（独自ドメインは未配線。certificate/pdf/route.ts の buildOrigin と同じ理由）
+  const publicUrl = `${BASE_URL}/c/${cert.public_id}`;
 
   // CertRow は Record<string, any> を許容するので Record<string, unknown>
   // からは直接代入できない。ここだけ一度 any 経由で橋渡しする。将来
   // CertRow 自体を unknown ベースに絞る PR を別に切る想定。
   const row: CertRow = {
     public_id: cert.public_id,
-    tenant_custom_domain: tenantDomain,
     customer_name: cert.customer_name ?? "",
     vehicle_info_json: (cert.vehicle_info_json ?? {}) as Record<string, unknown>,
     content_free_text: cert.content_free_text ?? null,
