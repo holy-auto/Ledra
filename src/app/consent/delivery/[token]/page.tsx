@@ -32,14 +32,15 @@ export default async function DeliveryConsentPage({ params }: { params: Promise<
       admin.from("tenants").select("name").eq("id", found.tenantId).maybeSingle(),
       admin
         .from("delivery_consents")
-        .select("status, revoked_at")
+        .select("status, granted_by, revoked_at")
         .eq("tenant_id", found.tenantId)
         .eq("customer_id", found.customerId)
         .maybeSingle(),
     ]);
     shopName = (tenant as { name?: string | null } | null)?.name ?? null;
-    const c = consent as { status?: string; revoked_at?: string | null } | null;
-    alreadyGranted = c?.status === "granted";
+    const c = consent as { status?: string; granted_by?: string | null; revoked_at?: string | null } | null;
+    // 店舗が記録しただけの承諾なら、本人の承諾で置き換えられるようにフォームを出す（API と同じ判定）。
+    alreadyGranted = c?.status === "granted" && !c.granted_by;
     // リンク発行後に撤回されていたら、このリンクでは承諾に戻さない（API と同じ判定）。
     revokedAfterRequest = revokedSinceRequest(c, found.createdAt);
   }

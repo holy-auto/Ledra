@@ -27,6 +27,30 @@ const LABEL: Record<ConsentState, string> = {
   revoked: "撤回済み（電子交付不可）",
 };
 
+// 店舗の記録・撤回・記録の取り消しは、押し間違えると承諾の状態がそのまま変わるので必ず確認を挟む。
+const ACTIONS = {
+  record: {
+    method: "POST",
+    query: "",
+    confirm:
+      "お客様から書面・口頭で承諾を得ましたか？\n「店舗が記録した承諾」として保存します（お客様ご自身の操作の記録にはなりません）。\nお客様に承諾していただく場合は「お客様に承諾をお願いする」を使ってください。",
+    done: "承諾を記録しました。",
+  },
+  revoke: {
+    method: "DELETE",
+    query: "",
+    confirm: "お客様から撤回の申し出がありましたか？\n撤回すると、電子交付（受領サイン依頼など）はできなくなります。",
+    done: "撤回を記録しました。",
+  },
+  cancelRecord: {
+    method: "DELETE",
+    query: "?mode=cancel_record",
+    confirm:
+      "店舗が記録した承諾を取り消して、押す前の状態（未承諾、または以前の撤回）に戻します。取り消した事実は操作ログに残ります。よろしいですか？",
+    done: "店舗の記録を取り消し、押す前の状態に戻しました。",
+  },
+} as const;
+
 export default function DeliveryConsentPanel({ customerId }: { customerId: string }) {
   const [state, setState] = useState<ConsentState>("none");
   const [row, setRow] = useState<ConsentRow>(null);
@@ -59,30 +83,6 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
     void load();
   }, [load]);
 
-  // 店舗の記録・撤回・記録の取り消しは、押し間違えると承諾の状態がそのまま変わるので必ず確認を挟む。
-  const ACTIONS = {
-    record: {
-      method: "POST",
-      query: "",
-      confirm:
-        "お客様から書面・口頭で承諾を得ましたか？\n「店舗が記録した承諾」として保存します（お客様ご自身の操作の記録にはなりません）。\nお客様に承諾していただく場合は「承諾のお願い」を使ってください。",
-      done: "承諾を記録しました。",
-    },
-    revoke: {
-      method: "DELETE",
-      query: "",
-      confirm: "お客様から撤回の申し出がありましたか？\n撤回すると、電子交付（受領サイン依頼など）はできなくなります。",
-      done: "撤回を記録しました。",
-    },
-    cancelRecord: {
-      method: "DELETE",
-      query: "?mode=cancel_record",
-      confirm:
-        "店舗が記録した承諾を取り消して「未承諾」に戻します。取り消した事実は操作ログに残ります。よろしいですか？",
-      done: "店舗の記録を取り消しました（未承諾に戻りました）。",
-    },
-  } as const;
-
   async function act(kind: keyof typeof ACTIONS) {
     const a = ACTIONS[kind];
     if (!window.confirm(a.confirm)) return;
@@ -92,7 +92,7 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
       const res = await fetch(`/api/admin/customers/${customerId}/delivery-consent${a.query}`, {
         method: a.method,
         headers: { "content-type": "application/json" },
-        body: kind === "record" ? JSON.stringify({ method: "メール/LINE/SMS/ダウンロード" }) : undefined,
+        body: a.method === "POST" ? JSON.stringify({ method: "メール/LINE/SMS/ダウンロード" }) : undefined,
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? "処理に失敗しました。");
@@ -172,7 +172,7 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
           {row.granted_by ? "店舗が記録" : "お客様本人"}）
         </p>
       )}
-      {row?.revoked_at && (
+      {row?.status === "revoked" && row.revoked_at && (
         <p className="mt-1 text-[11px] text-danger-text">
           撤回: {new Date(row.revoked_at).toLocaleString("ja-JP")}（
           {row.revoked_via === "customer" ? "お客様本人" : "店舗"}）
@@ -256,7 +256,7 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
                 disabled={busy}
                 className="underline disabled:opacity-50"
               >
-                店舗の記録を取り消す（未承諾に戻す）
+                店舗の記録を取り消す（押す前に戻す）
               </button>
             )}
             {state !== "revoked" && (

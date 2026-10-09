@@ -38,7 +38,7 @@ describe("DeliveryConsentPanel", () => {
     const calls = mockFetch({ status: "granted", granted_by: "u1", granted_at: "2026-10-09T15:40:00Z" });
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<DeliveryConsentPanel customerId="c1" />);
-    fireEvent.click(await screen.findByText("店舗の記録を取り消す（未承諾に戻す）"));
+    fireEvent.click(await screen.findByText("店舗の記録を取り消す（押す前に戻す）"));
     await waitFor(() =>
       expect(calls).toContainEqual({
         url: "/api/admin/customers/c1/delivery-consent?mode=cancel_record",
@@ -51,6 +51,6 @@ describe("DeliveryConsentPanel", () => {
     mockFetch({ status: "granted", granted_by: null, granted_at: "2026-10-09T15:40:00Z" });
     render(<DeliveryConsentPanel customerId="c1" />);
     await screen.findByText(/お客様本人/);
-    expect(screen.queryByText("店舗の記録を取り消す（未承諾に戻す）")).toBeNull();
+    expect(screen.queryByText("店舗の記録を取り消す（押す前に戻す）")).toBeNull();
   });
 });

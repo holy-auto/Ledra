@@ -26,7 +26,7 @@ vi.mock("@/lib/supabase/admin", () => ({
           (table === "delivery_consents" ? upserts : updates).push(row);
           const u: Record<string, unknown> = {
             eq: () => u,
-            neq: () => u,
+            or: () => u,
             is: async () => ({ error: null }),
             select: async () => ({ data: [{}], error: null }),
           };
@@ -124,5 +124,12 @@ describe("POST /api/consent/delivery/[token]", () => {
     expect(upserts).toEqual([]);
     staffTenant = "other-tenant";
     expect((await call(OK_BODY)).status).toBe(200);
+  });
+
+  it("店舗が記録しただけの承諾は、本人の承諾で置き換える（誰が記録していたかは監査ログに残す）", async () => {
+    consent = { status: "granted", granted_by: "staff1", revoked_at: null, revoked_via: null };
+    expect((await call(OK_BODY)).status).toBe(200);
+    expect(upserts).toEqual([expect.objectContaining({ status: "granted", granted_by: null })]);
+    expect(audits[0]).toMatchObject({ query_json: expect.objectContaining({ previous_granted_by: "staff1" }) });
   });
 });
