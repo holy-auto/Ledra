@@ -4,6 +4,31 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-09 Next を上げた後に残る古いビルドキャッシュを消す
+
+- 内容: Vercel のビルドキャッシュが大きすぎて捨てられ、全部ビルド（手元実測でピーク約 7.2 GB）になって 8 GB 機で OOM になるのを減らす。
+  Next を上げると、Turbopack の古い版のキャッシュ（約 0.9 GB）が消えずに残り、キャッシュがほぼ倍になっていた。
+- 実装: `scripts/prune-build-cache.mjs`。`npm run build` を `next build && node scripts/prune-build-cache.mjs` にし、
+  `.next/cache/turbopack/` のうち今の Next の版（`v<版>-`）以外のディレクトリを消す。今の版に当たるものが無いときは何も消さない。
+  `.next/cache`・turbopack・node_modules の大きさを `[build-cache]` でビルドログに出す。失敗してもビルドは落とさない。
+- 検証: テスト 5 件（古い版だけ消す／当たる版が無ければ消さない／16.3.8 と 16.3.80 を取り違えない／実ディレクトリでの削除と
+  ログ／初回ビルドで落ちない）。削除処理を外すと 3 件落ちることを確認。手元で古い版を置いてビルドし、Turbopack 自身は消さないこと、
+  このスクリプトで 909 MB 消えることを確認。計測の詳細は OPEN_QUESTIONS「Vercel のビルド機（Elastic）…」。
+
+## 2026-10-08 ロゴ・印影を Storage API から直接書き換えられるポリシーを外す
+
+- 内容: 本番の `assets` バケットに、マイグレーションには一度も現れない本番だけの RLS ポリシーが 2 本あった。
+  - `assets_write_tenant`（ALL / authenticated / `name LIKE 'tenants/%'`）: ログインしている誰でも**他テナントのロゴ・印影を上書き・削除・一覧**できる。
+  - `assets_tenant_rw`（ALL / authenticated / `tenants/<current_tenant_id()>/%`）: 自テナントのメンバーなら、ロゴ管理の権限（`logo:manage`）や
+    プランの判定を通さずに、自テナントのロゴ・印影を直接差し替えられる。
+  2 本とも外すマイグレーション `20261009091905_drop_cross_tenant_assets_policy.sql` を追加した。名前違いで空振りしないよう、`assets` を参照するポリシーが
+  残っていたら失敗する検査を入れた。
+- 影響: 無し（の見込み）。アプリの `assets` への書き込み・削除はすべて service-role 経由で、ユーザーロールでは読み書きしない（全アップロード・削除経路を確認）。
+  公開 URL での読み取りは RLS を通らない。
+- 検証: 手元の使い捨て Postgres 16 で、(1) 本番と同じ 2 本がある状態 → 2 本とも消え、`market` のポリシーは残る、(2) 再実行・マイグレーションだけの状態 → 何もしない、
+  (3) 別名の `assets` ポリシーが残る状態 → 検査で失敗、の 3 通りを確認。本番の `pg_policies` で、`assets` を参照するポリシーがこの 2 本だけであることも確認。
+- 本番への適用: マージ後、いつもの手順でマイグレーションを適用する（【要確認】適用の実施）。
+
 ## 2026-10-09 合算請求書を作ったら元の請求書を取消扱いにし、二重計上を止める
 
 - 内容: 合算請求書を作ると、元の請求書（送付済・期限超過）をキャンセルにし、まとめ先と元のステータスを `meta_json` に残すようにした
@@ -15,6 +40,7 @@
 - 検証: tsc、eslint、prettier、帳票まわりのテスト（`src/lib/documents`・`src/app/api/admin/documents` ほか）。
   同期の中身は偽 DB のテストで、作成・取消・取消の取り消し・削除の往復と、入金済・納品書・他テナントを触らないことを確かめた。
   ロジックを外すとテストが落ちることも確かめた。マイグレーションはローカルの Postgres 16 に最小の表を作って流し、対象だけが変わること・2回流しても変わらないことを確認。
+
 
 ## 2026-10-08 トップ整理の残り: 未使用コンポーネントを消し、メタ情報を本文に合わせる
 
@@ -57,6 +83,83 @@
 - 確認: 再集計で、紐付け済み 59/59・テナントをまたいだ紐付け 0 件。同じ時間帯に別の操作で同じテナントに顧客が 1 人増えていたが、
   作成した顧客と氏名が一致しない（重複ではない）ことを確認した。
 - コードの変更は無し（本番 SQL を 1 トランザクションで実行。対象が 2 件のため、汎用のバックフィル処理は作っていない）。
+## 2026-10-07 C2PA ネイティブバイナリの不在をビルドで落とす＋`C2PA_MODE` の読み口を1つに戻した
+
+- 内容: `scripts/check-c2pa-binary.mjs` を追加し `build` の前段に置いた（`npm run check:c2pa-binary` 単体でも走る）。
+  **`C2PA_MODE=production` のときだけ**ネイティブバイナリのロードを要求し、できなければビルドを落とす。
+- 根: `postinstall` は プリビルド DL → Rust ビルドの順に試し、**両方駄目でも exit 0 で終わる**（実測）。
+  Vercel に Rust は無いので、DL が失敗すると**バイナリ無しでデプロイが成功**し、#1209 の先行検査により
+  **全アップロードが 503** になる。`optionalDependencies` → `dependencies` に移しても、
+  npm が区分で変えるのは「失敗したインストール」なので**この沈黙は直らない**。
+- **最初に書いた検査は無効だった。** `await import("@contentauth/c2pa-node")` して `Builder`/`Reader` が
+  関数かを見る形にしたが、**バイナリを消しても通った** —— `dist/binary.js` の `getNeonBinary()` は
+  初回アクセス時の遅延ロードで、import と型確認ではネイティブを一度も踏まない。
+  パッケージと同じ `require(C2PA_LIBRARY_PATH ?? "./index.node")` を自分で実行する形に書き直した。
+- 4条件で実測: (1) `C2PA_MODE` 未設定 → skip・exit 0、(2) production ＋ バイナリあり → OK
+  （ネイティブ関数 55 個）、(3) **production ＋ バイナリ無し → exit 1**（原因の候補と対処を出す）、
+  (4) バイナリ無し ＋ 未設定 → exit 0（**今日の本番は `C2PA_MODE` 未設定なのでデプロイを壊さない**）。
+- あわせて `C2PA_MODE` の読み口を `getMode()` 1つに戻した。#1209 で「`getMode()` が唯一の正規化源」と
+  書いたのに、**本番コードの3箇所が生の env を読んでいた**（`photo-tampering/route.ts` /
+  `polygon-backfill/route.ts` / `photoTamperingAuto.ts`。うち1つは
+  `as "disabled" | "dev-signed" | "production"` の素のキャスト）。3箇所を `getMode()` に通し、
+  未使用になった `C2paKind` の import を削除。
+  - **等級への実害は無かった。** 綴り違いで差が出るか検算したところ、`authenticityGrade.ts:52` が見るのは
+    `c2paKind !== "dev-signed"` の一点で、`"dev-signed"` を返す条件は両経路で完全に一致する。
+    **バグだと思って調べ、違うと分かった**ので、そう書いておく。直したのは型の嘘と重複。
+- `c2paModeSingleSource.test.ts` を追加（構造テスト。走査が壊れていても緑に見えないよう、
+  **唯一の正当な読み手を見つけられること**を陰性対照にしてある）。変異で当たりを取った:
+  直接読みを1つ戻すとファイル名と行番号を出して赤。
+- **本番への影響は今日はゼロ**（`C2PA_MODE` 未設定）。
+- **`/code-review` が13件出し、全件反映した。** 自分で入れた退行が4つあった。
+  1. **相対の `C2PA_LIBRARY_PATH` を `scripts/` 基準で解いていた。** パッケージ側は `dist/` 基準なので、
+     `C2PA_LIBRARY_PATH=./index.node`（あちらの既定値そのもの）で**パッケージは読めるのに検査だけが落ち、
+     ビルドが通らなくなる**。実測で再現 → `path.resolve(distDir, override)` に直した。
+  2. **`.env` 系を読んでいなかった。** 運用手順書は「`.env` に `C2PA_MODE=production`」と書いており、
+     `next build` は読むが素の `node` は読まない。**手順書どおり設定した人のところで黙ってスキップ**していた。
+     `@next/env` の `loadEnvConfig` を通して next と同じ読み方に揃え、手順書にも検査の存在を明記した。
+     **2026-10-08 追記: ここは一度自前パーサに差し替え、また戻した。** 「`@next/env` は宣言外の依存で、
+     それが Vercel のプレビューを落としている」と見て `f09301f9` で外したが、**赤の原因は OOM で
+     依存とは無関係だった**（`M-20261008-bisected-a-flaky-oom-as-deterministic`）。自前パーサは
+     next と3点ずれており（同キー2行の優先・行内コメント・引用符＋コメント）、**3つとも「黙ってスキップ」**。
+     宣言外という問題は `createRequire(require.resolve("next"))("@next/env")`、つまり**`next` 経由で掴む**ことで消える。
+  3. **`Object.keys(neon)` が 0 本なら落とす**ようにしていた。napi/neon は `module.exports` が関数のことも
+     非列挙 getter のこともあるので、**正常なバイナリでビルドを殺しうる**。ロードが例外を投げないこと自体を
+     信号とし、本数は参考表示に落とした。
+  4. **構造テストが生ソースの文字列照合**だった。`process.env["C2PA_MODE"]` と分割代入は素通りし、
+     逆に**コメントで言及するだけで CI が赤**になる。リポジトリが既に持つ `stripComments()`
+     （ヘッダに「構造テストは必ずこれを通してから照合すること」）と AST 走査、`walkSource()` に寄せた
+     （walk の4本目の複製を作っていた）。`src/` だけでなく `scripts/` も走査し、**検査スクリプト自身が
+     4人目の生の読み手**なので許可一覧に明記。陰性対照も「走査が両ディレクトリに届いているか」
+     「候補絞りが許可ファイルを落としていないか」に強化し、下限を実数規模（1500）に上げた。
+     **2026-10-08 追記: 走査範囲がまだ狭かった。** `src/` と `scripts/` だけでは
+     `next.config.ts` / `instrumentation*.ts` / `sentry.*.config.ts` / `apps/mobile/src` を見ておらず、
+     **この検査の前提（ビルド時に env が見える）からすると、いちばん生の読みが入りそうな場所**だった。
+     `apps/` `e2e/` `supabase/` と直下の設定ファイルを足し、`next.config.ts`・`instrumentation.ts`・
+     `apps/mobile/src` に生の読みを1つ植えて**3箇所とも赤になることを実測**した。
+  - ほかに: `getMode()` を葉のモジュール `providers/c2paMode.ts` に切り出した。これを使いたいだけの
+    読み取り専用の経路（`photo-tampering` の集計・`photoTamperingAuto`）が `c2pa.ts` を import すると、
+    `tls13Fetch` が**モジュール評価時に undici の Agent を作る**ので、署名しない経路のコールドスタートで
+    接続プールが立ち、**Edge にも移せなくなる**。`c2pa.ts` は後方互換で re-export。
+  - `check:c2pa-binary` を `scripts/ci-parallel-checks.sh` に追加した。`ci.yml` の build は
+    `npm run build || true` で終了コードを捨てるので、**ビルド前段だけでは CI の信号にならなかった**。
+  - 検査スクリプト自身のテストを追加（`scripts/__tests__/checkC2paBinary.test.ts`・**7件**。
+    `grep -cE '^  it\('` で数え直した。初版は4件で、2026-10-08 に3件足した）。
+    変異で当たりを取った: `.env` を読まない形に戻すと2件が赤、`NODE_ENV` を production に強制すると
+    「`NODE_ENV=test` では `.env.local` を読まない」が赤、裸の指定子を `dist/` 基準で解くと1件が赤。
+- **`npm run build` の正確な挙動（2026-10-08 実測）**: 検査を前段に入れた状態で
+  `rm -rf .next` から回すと、**コンパイルは成功**（Turbopack 約2.1〜2.2分）し
+  `.next/build-manifest.json` が出る。**素の `npm run build` は終了コード 1** ——
+  `/blog/[slug]` の page data 収集が `Missing NEXT_PUBLIC_SUPABASE_URL or
+  NEXT_PUBLIC_SUPABASE_ANON_KEY` で落ちる（`ci.yml` が warning で許容している既知の経路で、
+  この差分とは無関係）。**CI と同じ env**（`SKIP_ENV_VALIDATION=true` ＋ ダミーの
+  Supabase URL/key）**なら終了コード 0**。
+  なお PR 本文・コメントに一度「手元で成功」と書いたが、**そのときは終了コードを見ておらず、
+  `.next/build-manifest.json` の更新時刻から推定していた**
+  （`M-20261008-called-the-build-successful-from-a-file-mtime`）。訂正済み。
+- **天井を2つ明記した**（`ponytail:`）: (a) `C2PA_MODE` がビルド時に見えること（Vercel で実行時専用の
+  env だと発火しない）、(b) **見ているのは「ビルド機でロードできるか」で、「本番の関数バンドルに
+  バイナリが入るか」ではない**。`serverExternalPackages` に入れてあるので 48MB の `index.node` は
+  output file tracing 経由でしか入らず、DL 成功（検査は緑）でも tracing が拾わなければ実行時は 503 になる。
 
 ## 2026-10-07 公開証明書の写真と個人情報は、作業店舗・所有者・履歴レポート購入者にだけ出す
 
@@ -77,17 +180,6 @@
   新しく見せないことで実害は止まる。バケットを非公開にする（署名 URL 化）のは他の用途にも影響するので別件。
   また、独自ドメイン（`custom_domain`）で開いた場合は、ログイン・購入の cookie が本ドメインにしか無いので、スタッフ・所有者・購入者のいずれも
   匿名扱いになる（PDF の QR は独自ドメインを指す）。
-
-## 2026-10-09 Next を上げた後に残る古いビルドキャッシュを消す
-
-- 内容: Vercel のビルドキャッシュが大きすぎて捨てられ、全部ビルド（手元実測でピーク約 7.2 GB）になって 8 GB 機で OOM になるのを減らす。
-  Next を上げると、Turbopack の古い版のキャッシュ（約 0.9 GB）が消えずに残り、キャッシュがほぼ倍になっていた。
-- 実装: `scripts/prune-build-cache.mjs`。`npm run build` を `next build && node scripts/prune-build-cache.mjs` にし、
-  `.next/cache/turbopack/` のうち今の Next の版（`v<版>-`）以外のディレクトリを消す。今の版に当たるものが無いときは何も消さない。
-  `.next/cache`・turbopack・node_modules の大きさを `[build-cache]` でビルドログに出す。失敗してもビルドは落とさない。
-- 検証: テスト 5 件（古い版だけ消す／当たる版が無ければ消さない／16.3.8 と 16.3.80 を取り違えない／実ディレクトリでの削除と
-  ログ／初回ビルドで落ちない）。削除処理を外すと 3 件落ちることを確認。手元で古い版を置いてビルドし、Turbopack 自身は消さないこと、
-  このスクリプトで 909 MB 消えることを確認。計測の詳細は OPEN_QUESTIONS「Vercel のビルド機（Elastic）…」。
 
 ## 2026-10-07 本番デプロイの失敗を Slack に通知する
 

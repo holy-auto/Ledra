@@ -59,6 +59,24 @@ C2PA Trust List の CA から署名証明書を得るには、Ledra を「Confor
 
 ## 3. 証明書が用意できたら（env 投入）
 
+> **`C2PA_MODE=production` を入れたら、ビルドがネイティブバイナリの実在を要求するようになる。**
+> `npm run build` の前段で `scripts/check-c2pa-binary.mjs` が走り、
+> `@contentauth/c2pa-node` のバイナリをロードできなければ**ビルドを落とす**。
+> バイナリが無いまま本番に出ると、#1209 の先行検査で**写真アップロードが全件 503** になるため。
+> 単体でも確かめられる: `C2PA_MODE=production npm run check:c2pa-binary`。
+>
+> この検査は `.env` 系も読む。**読み方は next 本体のもの**（`next` 経由で `@next/env` の
+> `loadEnvConfig` を呼ぶ）なので、同じキーが2行あるとき後の行が勝つ・行内の `#` 以降はコメント、
+> といった細かいところまで `next build` と一致する。`NODE_ENV` の既定も next の CLI と同じ
+> （未設定なら `production`。`NODE_ENV=test` のときは next 同様 `.env.local` を読まない）。
+>
+> 自前のパーサで読んでいた時期（2026-10-07〜08）は**この3点が next とずれており、
+> ずれた結果はどれも「黙ってスキップ」**だった（`.env.example` に `C2PA_MODE=disabled` が
+> 入っているので、手順書どおり末尾に `production` を足すと踏む）。`/code-review` の実測で判明。
+>
+> ただし **Vercel で実行時専用の env として設定した場合は、ビルド時に見えないので発火しない。**
+> 確実にしたいなら Vercel 側で Build にも露出させること。
+
 `.env` に以下を設定（詳細は `.env.example` の C2PA セクション）:
 
 - `C2PA_MODE=production`
