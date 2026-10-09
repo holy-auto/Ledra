@@ -1,7 +1,6 @@
 import { enforceBilling, isNavigation, redirectToPublic } from "@/lib/billing/guard";
 import { electronicDeliveryBlockMessage, BLOCKED_UNVERIFIED } from "@/lib/delivery/deliveryConsent";
 import { isValidStaffPdfToken } from "@/lib/certificates/staffPdfLink";
-import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
@@ -16,6 +15,7 @@ import {
 } from "@/lib/pdfCertificate";
 import { loadPublicCertificateMedia } from "@/lib/certificateMedia/loadPublic";
 import { omitPlate } from "@/lib/certificates/publicData";
+import { certificatePublicUrl } from "@/lib/url";
 import {
   canViewCertificateDetails,
   DETAIL_ACCESS_COLUMNS,
@@ -47,24 +47,8 @@ type CertPublic = {
   created_at: string | null;
   tenant_name: string | null;
   tenant_slug: string | null;
-  tenant_custom_domain?: string | null;
   craftsman_name?: string | null;
 };
-
-function buildOriginFromCert(cert: { tenant_custom_domain?: string | null }, fallbackOrigin: string) {
-  if (cert.tenant_custom_domain) return `https://${cert.tenant_custom_domain}`;
-  if (process.env.APP_URL) return process.env.APP_URL;
-  return fallbackOrigin;
-}
-
-async function getFallbackOrigin(): Promise<string> {
-  const h = await headers(); // Next.js 16: Promise
-  const xfProto = h.get("x-forwarded-proto");
-  const xfHost = h.get("x-forwarded-host");
-  const host = xfHost ?? h.get("host") ?? "localhost:3000";
-  const proto = xfProto ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
-}
 
 // 公開ビュー certificates_public（customer_name / content_free_text を NULL 化済み）をサーバー側で読む。
 // 以前は anon キーで REST を叩いていたため、anon に certificates の SELECT（active 全件）を
@@ -180,9 +164,8 @@ export async function GET(req: Request) {
   // スタッフ署名（st）での出力は店舗が書面交付用に出すものなので載せる。
   const detailVisible = byStaff || (await canViewCertificateDetails(fullCert));
 
-  const fallbackOrigin = await getFallbackOrigin();
-  const origin = buildOriginFromCert(cert, fallbackOrigin);
-  const publicUrl = `${origin}/c/${cert.public_id}`;
+  // QR・本文の公開 URL は本ドメイン固定（リクエストのホスト・テナントの独自ドメインは使わない。url.ts）
+  const publicUrl = certificatePublicUrl(cert.public_id);
 
   let anchors: AnchorInfo[] = [];
   let photos: PdfPhoto[] = [];
@@ -257,7 +240,6 @@ export async function GET(req: Request) {
     warranty_exclusions: fullCert?.warranty_exclusions ?? null,
     logo_asset_path: cert.logo_asset_path ?? null,
     created_at: cert.created_at ?? new Date().toISOString(),
-    tenant_custom_domain: cert.tenant_custom_domain,
     current_version: fullCert?.current_version ?? null,
     // ⑦ 施工担当（職人）。certificates_public ビューが公開する craftsman_name をそのまま渡す。
     craftsman_name: cert.craftsman_name ?? null,

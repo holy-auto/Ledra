@@ -6,12 +6,6 @@
   req?: Request;
 
   /**
-   * 将来: tenant_custom_domain を渡す（例: "https://cert.holy-auto.jp" or "cert.holy-auto.jp"）
-   * 指定されていれば最優先
-   */
-  tenantCustomDomain?: string | null;
-
-  /**
    * リクエスト自身のオリジンを APP_URL より優先する。
    *
    * Supabase の PKCE メール認証（マジックリンク / サインアップ確認 / SAML）
@@ -48,28 +42,12 @@ function requestOrigin(req: Request | undefined): string | null {
 /**
  * Base URL を決定（末尾スラッシュなし）
  * 優先順位:
- * 1) tenantCustomDomain（将来）
- * 2) preferRequestOrigin=true の場合: リクエストオリジン → APP_URL
+ * 1) preferRequestOrigin=true の場合: リクエストオリジン → APP_URL
  *    それ以外（既定）: APP_URL → リクエストオリジン
- * 3) http://localhost:3000
+ * 2) http://localhost:3000
  */
 export function resolveBaseUrl(opts: ResolveBaseUrlOptions = {}): string {
   const envAppUrl = (process.env.APP_URL ?? "").trim();
-  const tenant = (opts.tenantCustomDomain ?? "").trim();
-
-  const normalize = (u: string) => {
-    let s = u.trim();
-    if (!s) return "";
-    if (!/^https?:\/\//i.test(s)) s = "https://" + s;
-    s = s.replace(/\/+$/, "");
-    return s;
-  };
-
-  if (tenant) {
-    const n = normalize(tenant);
-    if (n) return n;
-  }
-
   const appUrl = envAppUrl ? normalize(envAppUrl) : "";
   const origin = requestOrigin(opts.req);
 
@@ -83,6 +61,27 @@ export function resolveBaseUrl(opts: ResolveBaseUrlOptions = {}): string {
   if (origin) return origin;
 
   return "http://localhost:3000";
+}
+
+function normalize(u: string): string {
+  let s = u.trim();
+  if (!s) return "";
+  if (!/^https?:\/\//i.test(s)) s = "https://" + s;
+  return s.replace(/\/+$/, "");
+}
+
+/**
+ * 証明書の公開ページ（/c/<公開ID>）の絶対 URL。証明書 PDF の QR・本文に刷る。
+ * **リクエストのヘッダ（host / x-forwarded-host）は使わない**: 匿名で叩ける公開 PDF でヘッダを信じると、偽の
+ * ホストを QR に刷った本物そっくりの証明書が作れる。テナントの独自ドメインも使わない（アプリ側に配線されていない）。
+ * 環境変数の順は QStash の一括 PDF（batch-pdf）が使っていた順を踏襲。どれも無ければ手元開発用の localhost。
+ */
+export function certificatePublicUrl(publicId: string): string {
+  const base =
+    [process.env.NEXT_PUBLIC_APP_URL, process.env.APP_URL, process.env.NEXT_PUBLIC_BASE_URL, process.env.VERCEL_URL]
+      .map((v) => normalize(v ?? ""))
+      .find(Boolean) ?? "http://localhost:3000";
+  return `${base}/c/${encodeURIComponent(publicId)}`;
 }
 
 export function joinUrl(baseUrl: string, path: string): string {
