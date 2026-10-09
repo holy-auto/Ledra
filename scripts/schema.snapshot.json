@@ -1252,6 +1252,17 @@
 "updated_at",
 "visit_count"
 ],
+"delivery_consent_requests": [
+"created_at",
+"created_by",
+"customer_id",
+"expires_at",
+"id",
+"sent_via",
+"tenant_id",
+"token_hash",
+"used_at"
+],
 "delivery_consents": [
 "consent_text_hash",
 "consent_version",

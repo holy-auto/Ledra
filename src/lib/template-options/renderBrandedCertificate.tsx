@@ -359,7 +359,12 @@ export async function renderBrandedCertificatePdf(row: CertRow, publicUrl: strin
               <View key={idx} style={s.itemRow}>
                 <Text style={s.itemLabel}>{cp.location || "-"}</Text>
                 <Text style={s.itemValue}>
-                  {[cp.brand_name, cp.product_name, cp.film_type ? getFilmTypeLabel(cp.film_type) : null]
+                  {[
+                    cp.brand_name,
+                    cp.product_name,
+                    cp.film_type ? getFilmTypeLabel(cp.film_type) : null,
+                    cp.lot_number ? `ロット ${cp.lot_number}` : null,
+                  ]
                     .filter(Boolean)
                     .join(" / ") || "-"}
                 </Text>
@@ -391,7 +396,11 @@ export async function renderBrandedCertificatePdf(row: CertRow, publicUrl: strin
             {row.coating_products_json.map((cp: any, idx: number) => (
               <View key={idx} style={s.itemRow}>
                 <Text style={s.itemLabel}>{cp.location || "-"}</Text>
-                <Text style={s.itemValue}>{[cp.brand_name, cp.product_name].filter(Boolean).join(" / ") || "-"}</Text>
+                <Text style={s.itemValue}>
+                  {[cp.brand_name, cp.product_name, cp.lot_number ? `ロット ${cp.lot_number}` : null]
+                    .filter(Boolean)
+                    .join(" / ") || "-"}
+                </Text>
               </View>
             ))}
           </View>

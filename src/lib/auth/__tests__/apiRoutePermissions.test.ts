@@ -335,6 +335,11 @@ describe("未登録の変更系ハンドラ", () => {
     "mobile/auth/otp/request [POST]",
     "mobile/auth/otp/verify [POST]",
 
+    // ── お客様がリンクのトークンで操作する公開経路（店舗のロール権限は無関係）──
+    //    電子交付の承諾リンク。認証はトークン（sha256 照合・1回限り・期限付き）。caller を解決するのは
+    //    **発行した店舗のアカウントでログイン中の端末を弾くため**だけで、認可ではない（2026-10-09）。
+    "consent/delivery/[token] [POST]",
+
     // ── 読み取りのみ（POST だが書き込まない）──
     "certificates/pdf-one [POST]", // PDF 出力。テナント所有チェックはある
     // パッケージ展開。GET と同じ結果を返す副作用なしの読み取りで、POST は RPC 的な

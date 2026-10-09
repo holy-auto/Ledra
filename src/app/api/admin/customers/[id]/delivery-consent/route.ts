@@ -1,6 +1,7 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { withCaller } from "@/lib/api/withCaller";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 import {
   DELIVERY_CONSENT_VERSION,
   computeDeliveryConsentTextHash,
@@ -92,6 +93,16 @@ export const POST = withCaller<{ id: string }>(
         { onConflict: "tenant_id,customer_id" },
       );
       if (error) return apiInternalError(error, "delivery-consent POST");
+      // 店舗の記録は行を上書きするので、誰がいつ記録したかの履歴は監査ログに残す。
+      void logTenantAuditEvent(admin, {
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        action: "delivery_consent_recorded_by_shop",
+        table: "delivery_consents",
+        recordId: customerId,
+        extra: { method, consent_version: DELIVERY_CONSENT_VERSION },
+        req,
+      });
       return apiOk({ status: "granted" });
     } catch (e) {
       return apiInternalError(e, "delivery-consent POST");
@@ -101,7 +112,7 @@ export const POST = withCaller<{ id: string }>(
 );
 
 export const DELETE = withCaller<{ id: string }>(
-  async (_req, { caller, params }) => {
+  async (req, { caller, params }) => {
     try {
       const customerId = params.id;
       if (!UUID_RE.test(customerId)) return apiValidationError("顧客 ID が不正です。");
@@ -124,6 +135,14 @@ export const DELETE = withCaller<{ id: string }>(
         { onConflict: "tenant_id,customer_id" },
       );
       if (error) return apiInternalError(error, "delivery-consent DELETE");
+      void logTenantAuditEvent(admin, {
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        action: "delivery_consent_revoked_by_shop",
+        table: "delivery_consents",
+        recordId: customerId,
+        req,
+      });
       return apiOk({ status: "revoked" });
     } catch (e) {
       return apiInternalError(e, "delivery-consent DELETE");
