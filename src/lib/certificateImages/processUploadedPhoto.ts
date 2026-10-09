@@ -20,7 +20,7 @@ import { checkPhotoLocation } from "@/lib/geo/photoLocationCheck";
 import { verifyExternalC2pa } from "@/lib/anchoring/providers/c2paVerify";
 import { computeAuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
 import { invokeAllUploadProviders } from "@/lib/anchoring/providers";
-import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2pa";
+import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2paMode";
 import type { DeviceAttestationResult } from "@/lib/anchoring/providers/types";
 import { requestPhotoTimestamp } from "@/lib/anchoring/providers/photoTsa";
 import { deriveCaptureBindingReason } from "@/lib/anchoring/captureBindingReason";

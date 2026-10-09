@@ -128,7 +128,10 @@ jobs:
             npm run build || true
           fi
           if [ ! -f .next/build-manifest.json ]; then
-            echo "::error::.next/build-manifest.json missing — client compilation failed (not a secrets issue)"
+            # Do not assert the cause here: `npm run build` also runs
+            # scripts/check-c2pa-binary.mjs first, and a gate failure stops the
+            # build before next ever compiles. Point at the log instead.
+            echo "::error::.next/build-manifest.json missing — the build produced no client manifest. Check the log above: a check:c2pa-binary failure exits before next build runs; otherwise client compilation failed (not a secrets issue)"
             exit 1
           fi
       - name: Check client bundle size
