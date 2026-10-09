@@ -81,9 +81,14 @@ const require = createRequire(import.meta.url);
  * 取れない場合（next が無い等）は `process.env` だけで判断し、**その旨を出力に書く**。
  * 黙って判断基準を変えない。
  */
-function resolveMode() {
-  // 本物の環境変数が最優先（next も既に process.env にある値を上書きしない。実測）。
-  if (process.env.C2PA_MODE !== undefined) return { mode: process.env.C2PA_MODE, via: "process.env" };
+function loadEnvFiles() {
+  // **`C2PA_MODE` が実 env にあっても必ず読む。** 早期 return にしていたら、
+  // `C2PA_MODE` を実 env で渡し `C2PA_LIBRARY_PATH` を `.env` に書いた構成で
+  // **override がこの検査から見えず、next とランタイムだけが拾う**状態になっていた
+  // （同じ `.env` が、`C2PA_MODE` の出所だけで exit 0 と exit 1 に分かれた。実測）。
+  // しかもそれは上の天井 1 が推奨している構成（env を Build にも露出）そのもの。
+  // 実 env の優先は `@next/env` 側が守る（`processEnv` は既に process.env にある値を
+  // 上書きしない。実測で確認済みで、下のテストも見張っている）。
   try {
     const viaNext = createRequire(require.resolve("next"));
     // **next の CLI と同じ既定を踏む。** `next/dist/bin/next` は
@@ -96,16 +101,15 @@ function resolveMode() {
     // dev=false＝`next build`（dev 以外）と同じ。logger は黙らせる
     // （この検査の出力に next の "Environments:" を混ぜない）。
     viaNext("@next/env").loadEnvConfig(process.cwd(), false, { info() {}, error: console.error });
-    return { mode: process.env.C2PA_MODE, via: `@next/env（next 経由・NODE_ENV=${process.env.NODE_ENV}）` };
+    return `@next/env（next 経由・NODE_ENV=${process.env.NODE_ENV}）`;
   } catch (err) {
-    return {
-      mode: process.env.C2PA_MODE,
-      via: `process.env のみ —— @next/env を next 経由で取れなかった（${err instanceof Error ? err.message : String(err)}）`,
-    };
+    return `process.env のみ —— @next/env を next 経由で取れなかった（${err instanceof Error ? err.message : String(err)}）`;
   }
 }
 
-const { mode, via } = resolveMode();
+// **`C2PA_MODE` と `C2PA_LIBRARY_PATH` の両方を、同じ土台の上で読む。**
+const via = loadEnvFiles();
+const mode = process.env.C2PA_MODE;
 
 if (mode !== "production") {
   console.log(
@@ -161,24 +165,23 @@ try {
   );
 }
 
-// `dist/binary.js` と同じ読み込み。`C2PA_LIBRARY_PATH` の上書きも尊重する。
-// **相対パスは `dist/` 基準で解く。** あちらの `require` は `dist/binary.js` から呼ばれるので
-// 相対の基準が `dist/` になる。ここで `scripts/` 基準のまま解くと、パッケージは読めるのに
-// この検査だけが落ちて**ビルドが通らなくなる**（/code-review 指摘。`C2PA_LIBRARY_PATH=./index.node`
-// で実際に再現した）。絶対パスはそのまま使う。
-// **裸の指定子（`@scope/pkg`）はそのまま渡す。** あちらの `require` も node_modules から解くので、
-// `dist/` 基準で解くと存在しないパスになり、**パッケージは読めるのにこの検査だけが落ちる**
-// （`./index.node` で一度やった退行の鏡像。/code-review 指摘）。
+// **`dist/binary.js` の1行をそのまま再現する。**
+//
+// あちらは `createRequire(import.meta.url)` を `dist/binary.js` の位置で作り、
+// `require(C2PA_LIBRARY_PATH ?? "./index.node")` を呼ぶだけ。だから**同じ位置に
+// `createRequire` を置けば、解決規則は Node が持っている**（CLAUDE.md の梯子3段目）。
+//
+// ここは自前の分岐で3回直している —— 相対パスの基準、裸の指定子の基準、`??` と真偽値の違い。
+// **3つとも「Node の解決を自分で書き直した」ことの副作用**だった（/code-review 指摘・2026-10-09）。
+// 自前の分岐では、`node_modules/@contentauth/c2pa-node/node_modules/<name>`（npm が版の衝突で
+// 作る入れ子）に置かれた指定子を、パッケージは読めてこの検査だけが落とす差も残っていた。
+// `??` を使うので空文字はそのまま渡り、あちらと同じ `ERR_INVALID_ARG_VALUE` で落ちる。
 const override = process.env.C2PA_LIBRARY_PATH;
-const isPathLike = (v) => v.startsWith(".") || v.startsWith("/") || path.isAbsolute(v);
-const target = override
-  ? isPathLike(override)
-    ? path.resolve(distDir, override)
-    : override
-  : path.join(distDir, "index.node");
+const requirePkg = createRequire(path.join(distDir, "binary.js"));
+const target = override ?? "./index.node";
 
 try {
-  const neon = require(target);
+  const neon = requirePkg(target);
   // **ロードが例外を投げなかったこと自体が、欲しい信号のほぼ全部である。**
   // 関数の本数は参考情報として出すだけで、0 本でも落とさない —— napi/neon の
   // モジュールは `module.exports` が関数のこともあり、メンバが非列挙の getter の
@@ -190,13 +193,28 @@ try {
   if (neon === null || neon === undefined) {
     fail(`${target} をロードできたが export が空（壊れたバイナリの疑い）`);
   }
-  // cwd の外にあるときは相対表示が `../../..` の羅列になって読めない。絶対のまま出す。
-  const rel = path.relative(process.cwd(), target);
-  const shown = !rel || rel.startsWith("..") ? target : rel;
-  console.log(`[check:c2pa-binary] OK — ${shown} をロードした（${shape}）`);
+  // 何を実際に読んだかを出す（`target` は指定子なので、解決後のパスの方が役に立つ）。
+  console.log(
+    `[check:c2pa-binary] OK — ${requirePkg.resolve(target)} をロードした（${shape}）`,
+  );
 } catch (err) {
+  // **空の override は専用の文言にする。** `${target}` がそのまま空文字になり、
+  // 「 をロードできない」という読めない見出し＋見当外れの原因候補4つになっていた
+  // （この場合バイナリは健在なので、「dist/index.node の実在を確認」は空振りする。
+  //  /code-review 指摘・2026-10-09）。
   fail(
-    `${target} をロードできない`,
-    err instanceof Error ? (err.stack ?? err.message) : String(err),
+    override === ""
+      ? "`C2PA_LIBRARY_PATH` が**空文字**で設定されている（未設定とは違う）。" +
+          "パッケージ側は `C2PA_LIBRARY_PATH ?? \"./index.node\"` で読むので、" +
+          "空文字はそのまま `require(\"\")` に渡り `ERR_INVALID_ARG_VALUE` で落ちる。" +
+          "**この変数を未設定にするか、実在するパスを入れること**（バイナリ自体は無関係）"
+      : `${target} をロードできない`,
+    // **エラーの `code` も出す。** `err.stack` には入らないが、これが原因の当たりになる
+    // （`MODULE_NOT_FOUND` なら場所の問題、`ERR_INVALID_ARG_VALUE` なら値の問題、
+    //  リンカのエラーならアーキテクチャ／共有ライブラリの問題）。
+    // パッケージ側と同じ `code` で落ちているかを、テストがこれで照合する。
+    err instanceof Error
+      ? `${err.code ? `code: ${err.code}\n` : ""}${err.stack ?? err.message}`
+      : String(err),
   );
 }

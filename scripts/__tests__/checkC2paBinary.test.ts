@@ -176,6 +176,74 @@ describe("check-c2pa-binary.mjs", () => {
     }
   });
 
+  /**
+   * **両側を同じ入力で走らせて比べる。** これが parity テストの本体である。
+   *
+   * 片側（ゲートが落ちるか）だけを見るテストは、**間違った理由で落ちている実装も通す**
+   * （例: 空文字を `path.resolve(distDir, "")` と解くと dist ディレクトリ自体になり、
+   * `require(dir)` が別の例外で落ちて exit 1 になる —— 片側テストは緑のまま）。
+   * `M-20261008-swapped-a-parity-having-impl-for-my-own-parser` の再発防止として
+   * 「両方を同じ入力で走らせて出力を比べる」と決めたのに、`C2PA_LIBRARY_PATH` 側は
+   * 片側しか見ていなかった（`M-20261009-parity-test-covered-the-parser-and-missed-the-override`）。
+   */
+  it("C2PA_LIBRARY_PATH の扱いがパッケージ側と一致する（両側を同じ入力で走らせる）", () => {
+    const dist = path.dirname(require_.resolve("@contentauth/c2pa-node"));
+    // あちら（`dist/binary.js:22`）と同じ位置・同じ式を再現する。
+    const requirePkg = createRequire(path.join(dist, "binary.js"));
+    const pkgSide = (override: string | undefined): string | null => {
+      try {
+        requirePkg(override ?? "./index.node");
+        return null; // ロードできた
+      } catch (e) {
+        return (e as { code?: string }).code ?? "UNKNOWN";
+      }
+    };
+
+    const inputs: Array<string | undefined> = [
+      undefined,
+      "", // `??` は空文字を置き換えない → require("") が ERR_INVALID_ARG_VALUE
+      "./index.node", // あちらの既定値そのもの（dist/ 基準の相対）
+      "index.node", // 裸の指定子。node_modules から解かれるので見つからない
+      "/nonexistent/nope.node",
+      "@nonexistent-scope/c2pa-binary",
+    ];
+
+    for (const override of inputs) {
+      const pkgErr = pkgSide(override);
+      const { code, out } = run({ C2PA_MODE: "production", C2PA_LIBRARY_PATH: override });
+      const label = `C2PA_LIBRARY_PATH=${override === undefined ? "(未設定)" : JSON.stringify(override)}`;
+      // ロードできる入力ではゲートも緑、落ちる入力ではゲートも赤であること。
+      expect(code, `${label}: パッケージは ${pkgErr ?? "ロード成功"} なのにゲートは exit ${code}\n${out}`).toBe(
+        pkgErr === null ? 0 : 1,
+      );
+      // **落ちる理由まで一致していること。** 別の例外で落ちているなら parity ではない。
+      if (pkgErr !== null) {
+        expect(out, `${label}: 落ちた理由が違う（あちらは ${pkgErr}）`).toContain(pkgErr);
+      }
+    }
+  });
+
+  it("C2PA_MODE が実 env でも .env の C2PA_LIBRARY_PATH を読む", () => {
+    // 早期 return にしていたら、`C2PA_MODE` を実 env で渡し override を `.env` に書いた構成で
+    // **override がゲートから見えず、next とランタイムだけが拾う**状態になっていた。
+    // 同じ `.env` が `C2PA_MODE` の出所だけで exit 0 と exit 1 に分かれていた（/code-review 指摘）。
+    // しかもそれは手順書と ponytail が推奨している構成（env を Build にも露出）そのもの。
+    const broken = { ".env": "C2PA_LIBRARY_PATH=/nonexistent/nope.node\n" };
+    const viaRealEnv = runWithEnvFile(broken, { C2PA_MODE: "production" });
+    expect(viaRealEnv.code, `実 env の C2PA_MODE だと .env の override を見ていない: ${viaRealEnv.out}`).toBe(1);
+    // 両方 .env に書いた場合も同じ結果（出所で結果が変わらないこと）。
+    const viaEnvFile = runWithEnvFile({
+      ".env": `C2PA_MODE=production\n${broken[".env"]}`,
+    });
+    expect(viaEnvFile.code, `両方 .env の場合: ${viaEnvFile.out}`).toBe(1);
+  });
+
+  it("実 env の C2PA_MODE は .env より強い（.env を読んでも優先順は変わらない）", () => {
+    // 修正1で `.env` を必ず読むようにしたが、**実 env の優先は崩していない**ことを見張る。
+    const { out } = runWithEnvFile({ ".env": "C2PA_MODE=production\n" }, { C2PA_MODE: "disabled" });
+    expect(out, "process.env が .env に負けている").toMatch(/skip/);
+  });
+
   it("裸の指定子の C2PA_LIBRARY_PATH は dist/ 基準で解かない（node_modules から解く側に合わせる）", () => {
     // `@scope/pkg` のような指定子は、パッケージ側の `require` も node_modules から解く。
     // `dist/` 基準で解くと存在しないパスになり、**パッケージは読めるのに検査だけ落ちる**。
