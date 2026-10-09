@@ -39,10 +39,10 @@ export const SHOP_INDUSTRIES: ShopIndustry[] = [
     name: "コーティング施工店",
     title: "コーティング施工店向けの施工証明書・保証管理",
     description:
-      "ガラス・セラミックコーティングの施工内容、使った製品とロット番号、保証期間を施工証明書に。膜厚の記録、施工後のメンテナンス案内まで Ledra ひとつで。",
+      "ガラス・セラミックコーティングの施工内容、使った製品、保証期間を施工証明書に。膜厚の記録、施工後のメンテナンス案内まで Ledra ひとつで。",
     heroTitle: "コーティングの仕上がりと保証を、証明書で残す。",
     heroSubtitle:
-      "施工内容、使った製品とロット番号、保証期間を施工証明書に。施工後のメンテナンス案内まで、ひとつの記録から回せます。",
+      "施工内容、使った製品、保証期間を施工証明書に。施工後のメンテナンス案内まで、ひとつの記録から回せます。",
     pains: [
       { title: "紙の保証書は失くされる", desc: "再発行の電話が鳴るたびに、記録を探して作り直している。" },
       {
@@ -53,16 +53,16 @@ export const SHOP_INDUSTRIES: ShopIndustry[] = [
     ],
     features: [
       {
-        title: "製品とロット番号まで残る施工証明書",
+        title: "使った製品まで載る施工証明書",
         description:
-          "ブランド・製品・ロット番号を製品ごとに記録。下地とトップなど、複数の製品を重ねた施工もそのまま残せます。",
+          "ブランドと製品名を製品ごとに証明書へ記載。下地とトップなど、複数の製品を重ねた施工もそのまま残せます。",
         href: "/features/digital-certificate",
       },
       warrantyFeature,
       {
         title: "膜厚の記録",
         description:
-          "膜厚の測定値を入力して証明書に残せます。NexPTG の計測データを取り込み、車台番号で車両に自動で紐付けることもできます。",
+          "膜厚の測定値を施工の記録として入力できます。NexPTG の計測データを取り込み、車台番号で車両に自動で紐付けて管理画面で確認することもできます。",
         href: "/features/thickness",
       },
       followUpFeature,
@@ -101,15 +101,15 @@ export const SHOP_INDUSTRIES: ShopIndustry[] = [
     name: "PPF施工店",
     title: "PPF施工店向けの施工証明書・施工範囲の記録",
     description:
-      "PPF（ペイントプロテクションフィルム）の施工範囲をパネル単位で、フィルムの銘柄・ロット・種類とあわせて施工証明書に。保証とメンテナンス案内まで Ledra ひとつで。",
+      "PPF（ペイントプロテクションフィルム）の施工範囲をパネル単位で、フィルムの銘柄・種類とあわせて施工証明書に。保証とメンテナンス案内まで Ledra ひとつで。",
     heroTitle: "PPF の施工範囲を、パネル単位で証明する。",
     heroSubtitle:
       "どのパネルを、どのフィルムで、全面か部分か。施工内容をパネルごとに証明書へ残し、保証とメンテナンス案内につなげます。",
     pains: [
       { title: "施工範囲が写真と口頭頼み", desc: "どこまで貼ったかを後から説明しづらく、保証の話で食い違う。" },
       {
-        title: "フィルムの銘柄・ロットが追えない",
-        desc: "不具合の相談が来たとき、どのロットを使ったかを探すのに時間がかかる。",
+        title: "どのフィルムを貼ったか説明しづらい",
+        desc: "数年後に相談が来たとき、銘柄や種類を記録から探すのに時間がかかる。",
       },
       { title: "高額施工のあとが続かない", desc: "施工後のメンテナンスや追加施工の提案につなげられていない。" },
     ],
@@ -121,8 +121,8 @@ export const SHOP_INDUSTRIES: ShopIndustry[] = [
         href: "/features/digital-certificate",
       },
       {
-        title: "フィルムの銘柄・ロット・種類",
-        description: "フィルムのブランド・製品・ロット番号と、グロス・マット・サテン・カラーなどの種類を記録します。",
+        title: "フィルムの銘柄と種類",
+        description: "フィルムのブランド・製品名と、グロス・マット・サテン・カラーなどの種類を証明書に記載します。",
       },
       warrantyFeature,
       {
@@ -134,7 +134,7 @@ export const SHOP_INDUSTRIES: ShopIndustry[] = [
       followUpFeature,
       {
         title: "膜厚の記録",
-        description: "膜厚の測定値を入力して証明書に残せます。NexPTG の計測データの取り込みにも対応しています。",
+        description: "膜厚の測定値を施工の記録として入力できます。NexPTG の計測データの取り込みにも対応しています。",
         href: "/features/thickness",
       },
     ],
@@ -193,8 +193,7 @@ export const SHOP_INDUSTRIES: ShopIndustry[] = [
       },
       {
         title: "修理内容の証明書",
-        description:
-          "修理箇所・修理方法（板金修正・パネル交換・PDR など）・色番号・塗装保証を記録。損傷箇所は車体図をタップして残せます。",
+        description: "修理箇所・修理方法（板金修正・パネル交換・PDR など）・色番号・塗装保証を証明書に記載します。",
         href: "/features/digital-certificate",
       },
       {
@@ -266,7 +265,8 @@ export const SHOP_INDUSTRIES: ShopIndustry[] = [
       },
       {
         title: "部品の交換時期のお知らせ",
-        description: "部品の次回交換時期（日付・走行距離）を記録し、時期が来たらお客様にメールでお知らせします。",
+        description:
+          "部品の次回交換時期（日付・走行距離）を記録し、時期が来たらお客様にお知らせします（LINE 連携済みのお客様には LINE、それ以外はメール）。",
       },
       {
         title: "部品の在庫とメカニックの予定",
