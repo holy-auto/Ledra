@@ -20,6 +20,15 @@
  * **10組が重複したままである**。これは既知で、台帳冒頭の「ID について」節の表で引ける。
  * ここで見るのは新 ID の一意性だけ。旧番号の重複は「余剰の数」で見て、増えたら落とす。
  *
+ * ## 型表の行も見る（2026-10-09 追加）
+ *
+ * 冒頭の「失敗の型」の表は、マージの衝突で**行が2本になる**ことがある。
+ * `docs/context/*.md` は追記型ログなので衝突は「両側を残す」で解けるが、
+ * それは**エントリには正しく、表の行には誤り**である（2026-10-07 に実際に壊した:
+ * `M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing`）。
+ * そのとき「grep で1本かを確かめる」習慣を決めたが、**2026-10-09 の4回のマージで
+ * 4回とも手で打つ必要があった。** 習慣で持つものではないので検査に入れた。
+ *
  * ## コードフェンスの中は見ない
  *
  * 台帳は**自分の書式を自分の中で説明する**文書なので、`## M-…` の例がフェンスの中に
@@ -61,10 +70,67 @@ export const KNOWN_LEGACY_EXCESS = 10;
  */
 export const MIN_ENTRIES = 105;
 
+/**
+ * 失敗の「型」の表の行数の下限。**今は A〜L の12型**。
+ *
+ * 型が増えることはあっても減らないので、下回ったら**表の書式が変わって読めなくなった**か
+ * 行が消えたかである。0件チェックだけでは「12行のうち9行しか読めていない」が見えない
+ * （上の MIN_ENTRIES と同じ理由）。
+ *
+ * ponytail: 手で持っている床なので、型を増やしたら上げてよい（上げ忘れても検査は成立し、
+ * 緩いまま残るだけ）。範囲を `[A-Z]` にしてあるのは、`[A-I]` と書いて J/K/L を
+ * 見逃す範囲にした前例があるため（MISTAKE_LEDGER の 2026-10-08 訂正）。
+ */
+export const MIN_TYPE_ROWS = 12;
+
+/** 同じ数え方を3度書かないための小物（検査5・6で使う）。 */
+const countBy = (xs, key) => xs.reduce((m, x) => m.set(key(x), (m.get(key(x)) ?? 0) + 1), new Map());
+
+/**
+ * 型表の本体の行だけを返す。ヘッダ行 → 区切り行 → 本体 → 空行、という形を前提にする。
+ * ヘッダが見つからなければ空配列（検査6-b の床が落とす）。
+ */
+function typeTableRows(lines) {
+  const h = lines.findIndex((l) => l.startsWith(TYPE_TABLE_HEADER));
+  if (h < 0) return [];
+  const rows = [];
+  for (const line of lines.slice(h + 2)) {
+    if (line.trim() === "") break;
+    rows.push(line);
+  }
+  return rows.filter((l) => TYPE_ROW_RE.test(l));
+}
+
 /** 正準の見出し。`## M-<YYYYMMDD>-<スラッグ> 表題（…）` */
 const ID_RE = /^## (M-(\d{4})(\d{2})(\d{2})-[a-z0-9-]+) \S/;
 /** `## M-` で始まる見出しは全部この網に入れる。書式から外れたものを黙って見逃さないため。 */
 const ANY_ENTRY_RE = /^## M-/;
+/**
+ * 失敗の「型」の表の行。`| **A. 道具を検証しない** | 中身… | 該当 ID… |`
+ *
+ * **行頭アンカーだけでは足りない。** 台帳は自分の書式を自分の中で説明する文書なので、
+ * **フェンスに入れずに表の行を引用した本文**も行頭から始まる。全文を走査すると、
+ * その引用を2本目の行として数えて落ちる —— そして `check:ledger-ids` は pre-commit に
+ * 入っているので、**正しい文書がリポジトリ全体のコミットを止める**（/code-review 指摘・
+ * 2026-10-09。実測で `A 行×2` を出した）。逆向きも壊れる: 表に無い文字の引用
+ * （`| **M. …`）が行数を13に増やし、**本当に消えた行を隠す**。
+ * だから走査は**表のブロック1つに限る**（下の `typeTableRows()`）。
+ */
+const TYPE_ROW_RE = /^\| \*\*([A-Z])\. /;
+/** 型表のヘッダ。この次の区切り行の後から、最初の空行までが表の本体。 */
+const TYPE_TABLE_HEADER = "| 型 | 中身 | 該当 |";
+/**
+ * 表のセルに書かれた ID らしきもの。**緩く拾う。**
+ *
+ * 当初は `M-\d{8}-[a-z0-9-]+` に限っていたが、それでは
+ * **打ち間違い（大文字混入・日付の桁落ち）が「一致しない」ので素通りする** ——
+ * 検査7が止めるはずの誤りそのものを見逃していた（/code-review 指摘。
+ * `M-20991231-Does-Not-Exist` と `M-2099123-does-not-exist` の両方で素通りを実測）。
+ * 緩く拾って、**実在のエントリでも旧番号でもないもの**を落とす。
+ */
+const TABLE_ID_LOOSE_RE = /M-[0-9A-Za-z-]{3,}/g;
+/** 旧番号（`M-060` 等）。移行時の別名で、新形式の見出しとしては実在しない。 */
+const LEGACY_ID_RE = /^M-\d{1,4}$/;
 /**
  * 旧番号の別名。`・旧 M-NNN` に続くのは `）`（末尾）か `・`（後ろに項目が続く）。
  * **行末にアンカーしない。** アンカーすると `（…・旧 M-070・型 A）` のように
@@ -76,12 +142,18 @@ const LEGACY_RE = /・旧 (M-\d+)(?=[・）])/g;
 /**
  * 台帳の本文を検査する。問題があれば人が読めるメッセージを `error` に入れて返す。
  *
- * **落とす条件を5つに分けてあるのは、どれか1つが空振りしても他が生きるようにするため。**
+ * **落とす条件を7つに分けてあるのは、どれか1つが空振りしても他が生きるようにするため。**
  * 「重複が無い」だけを見ると、見出しの書式が変わって0件になった日から
  * この検査は永久に緑になる（型 A）。
+ * （1〜5 が見出しの ID、6-a/6-b/7 が表。2026-10-09 に 5 → 7 に増えた。）
  */
-export function checkLedger(text, { knownLegacyExcess = KNOWN_LEGACY_EXCESS, minEntries = MIN_ENTRIES } = {}) {
-  const headings = contentLines(text).lines.map(({ line }) => line).filter((l) => ANY_ENTRY_RE.test(l));
+export function checkLedger(
+  text,
+  { knownLegacyExcess = KNOWN_LEGACY_EXCESS, minEntries = MIN_ENTRIES, minTypeRows = MIN_TYPE_ROWS } = {},
+) {
+  const bodyLines = contentLines(text).lines.map(({ line }) => line);
+  const headings = bodyLines.filter((l) => ANY_ENTRY_RE.test(l));
+  const typeRows = typeTableRows(bodyLines);
 
   // 1. 書式から外れた見出し。旧形式 (`## M-060 …`) も、スラッグの大文字混入も、
   //    表題の付け忘れも、まとめてここに落ちる。**分類できないものを通さない。**
@@ -143,11 +215,8 @@ export function checkLedger(text, { knownLegacyExcess = KNOWN_LEGACY_EXCESS, min
   }
 
   // 5. 旧番号の余剰が増えていないか（新しい重複を持ち込ませない）。
-  const legacySeen = new Map();
-  for (const h of headings) {
-    for (const m of h.matchAll(LEGACY_RE)) legacySeen.set(m[1], (legacySeen.get(m[1]) ?? 0) + 1);
-  }
-  const legacyDupes = [...legacySeen.entries()].filter(([, n]) => n > 1);
+  const legacyNames = headings.flatMap((h) => [...h.matchAll(LEGACY_RE)].map((m) => m[1]));
+  const legacyDupes = [...countBy(legacyNames, (x) => x).entries()].filter(([, n]) => n > 1);
   const excess = legacyDupes.reduce((s, [, n]) => s + n - 1, 0);
   if (excess > knownLegacyExcess) {
     return {
@@ -159,7 +228,69 @@ export function checkLedger(text, { knownLegacyExcess = KNOWN_LEGACY_EXCESS, min
     };
   }
 
-  return { ok: true, error: null, ids, legacyDupes: legacyDupes.map(([n]) => n), legacyExcess: excess };
+  // 6. **型表の行が型ごとに1本か。** ここが本題。
+  //    `docs/context/*.md` は追記型ログなので、衝突は「両側を残す」で解ける —— **エントリは**。
+  //    型表の行は両側に同じ行があるので、同じ解き方をすると**行が2本になる**。
+  //    2026-10-07 に実際にそれで壊し、ID 一覧が食い違った状態をマージした
+  //    （`M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing`）。
+  //    そのとき決めた習慣（`grep -oE '^\| \*\*[A-Z]\.' | sort | uniq -c`）は、
+  //    **2026-10-09 の4回のマージで4回とも手で打つ必要があった。** 習慣ではなく検査にする。
+  if (typeRows.length < minTypeRows) {
+    return {
+      ok: false,
+      error:
+        `型表の行が ${typeRows.length} 行しか読めなかった（下限は ${minTypeRows} 行）。\n` +
+        "  表の書式が変わったか、行が消えている。行は `| **A. 型の名前** | 中身 | 該当 ID |`。",
+    };
+  }
+  const rowDupes = [...countBy(typeRows, (r) => r.match(TYPE_ROW_RE)[1]).entries()].filter(([, n]) => n > 1);
+  if (rowDupes.length > 0) {
+    return {
+      ok: false,
+      error:
+        `型表の行が重複している: ${rowDupes.map(([l, n]) => `${l} 行×${n}`).join(", ")}\n` +
+        "  → マージの衝突を「両側を残す」で解いたときに起きる。**エントリには正しく、表の行には誤り。**\n" +
+        "  2本の行は ID 一覧が食い違っているので、**和集合にして1本へ戻すこと**\n" +
+        "  （説明文が一致していることを確かめてから、ID を結合する）。",
+    };
+  }
+
+  // 7. **表に載っている ID が、実在のエントリか旧番号か。**
+  //    行を和集合にするときの打ち間違い・エントリの改名で、表が死んだ ID を指すようになる。
+  //    表は「この型は過去にどれだったか」を引くための索引なので、指し先が無いと索引が壊れる。
+  //
+  //    **型表だけでなく、ファイル中のすべての表の行を見る。** 冒頭の
+  //    「旧番号が重複していた10組」の表も同じ索引で、同じ壊れ方をする
+  //    （打ち間違い・改名の置き忘れ）。範囲を型表に限る理由が無い（/code-review 指摘）。
+  const entryIds = new Set(ids);
+  const dangling = new Set();
+  for (const line of bodyLines) {
+    if (!line.startsWith("| ")) continue;
+    for (const m of line.matchAll(TABLE_ID_LOOSE_RE)) {
+      if (entryIds.has(m[0]) || LEGACY_ID_RE.test(m[0])) continue;
+      dangling.add(m[0]);
+    }
+  }
+  if (dangling.size > 0) {
+    return {
+      ok: false,
+      error:
+        `表が実在しない ID を指している（${dangling.size} 件）: ${[...dangling].slice(0, 5).join(", ")}\n` +
+        "  → 表の ID の打ち間違いか、エントリを改名して表を直していない。\n" +
+        "  表は「この型は過去にどれだったか」を引く索引なので、指し先が無いと引けない。\n" +
+        "  正準形は `M-<YYYYMMDD>-<スラッグ>`（スラッグは英小文字・数字・ハイフン）、" +
+        "旧番号は `M-NNN`。",
+    };
+  }
+
+  return {
+    ok: true,
+    error: null,
+    ids,
+    legacyDupes: legacyDupes.map(([n]) => n),
+    legacyExcess: excess,
+    typeRows: typeRows.length,
+  };
 }
 
 function main() {
@@ -169,7 +300,7 @@ function main() {
     process.exit(1);
   }
   console.log(
-    `check-ledger-ids: OK（ID ${result.ids.length} 件すべて一意 / 旧番号の既知重複 ${result.legacyDupes.length} 組・余剰 ${result.legacyExcess}）`,
+    `check-ledger-ids: OK（ID ${result.ids.length} 件すべて一意 / 旧番号の既知重複 ${result.legacyDupes.length} 組・余剰 ${result.legacyExcess} / 型表 ${result.typeRows} 行が型ごとに1本）`,
   );
 }
 
