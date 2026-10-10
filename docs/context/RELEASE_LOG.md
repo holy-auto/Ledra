@@ -45,6 +45,11 @@
   `.optional().transform((v) => v || null)`）を外した。現状これを踏む呼び出し元は無い（実測 2026-10-10）が、`status` を1つ直せば発火する。
 - 検証: 新規テスト `src/app/api/admin/hearings/__tests__/link-customer.test.ts`（5件）。
   修正前のコードに対して**5件のうち4件が落ちる**ことを確認（残り1件は正常系）。ほかに tsc / eslint / prettier。
+- `/code-review` の指摘（#1306・5件）のうち4件を取り込んだ: 連携を**冪等**にした（ヒアリングに `customer_id` /
+  `vehicle_id` が付いていれば作り直さない。500 のあと押し直すと顧客が二重に増えていた
+  —— MISTAKE_LEDGER `M-20261010-comment-claimed-the-500-prevents-double-registration`）、
+  ヒアリング更新の 500 でも ID をログに残す、明示的な `null` は 500 ではなく 400 で返す（`.nullable()` を外した）、
+  メーカーも車種も無いヒアリングで「車両は作っていない」を画面に出す。残り1件は `hearings.status` の語彙（下記）。
 - 直っていないこと: 同じ形（戻り値を受け取らない DB 書き込み）が `src/` に 276 件ある（OPEN_QUESTIONS 2026-10-10）。
 
 ## 2026-10-10 入金済の納品書・請求書を合算請求書に入れられないようにした

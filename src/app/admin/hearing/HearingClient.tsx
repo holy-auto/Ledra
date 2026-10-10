@@ -198,6 +198,9 @@ export default function HearingClient() {
       // 顧客は登録できたが車両だけ落ちた場合（API が vehicle_error を返す）。
       // 黙って一覧を読み直すと、車両が無いことに誰も気づかない。
       if (j.vehicle_error) alert(j.vehicle_error);
+      // メーカーも車種も空のヒアリングは車両を作らない（API 側で insert 自体を飛ばす）。
+      // 黙って一覧を読み直すと、「証明書発行へ進まない理由」が操作者に何も出ない。
+      else if (!j.vehicle_id) alert("顧客を登録しました。メーカー・車種が未入力のため、車両は作成していません。");
       // 連携後、証明書作成に遷移するかリロード
       if (j.vehicle_id) {
         router.push(`/admin/certificates/new?vehicle_id=${j.vehicle_id}`);

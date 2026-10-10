@@ -15,8 +15,12 @@ import { z } from "zod";
  * つまり踏んでいないだけで、`status` を1つ直せば発火する。
  *
  * 空文字→null の詰め替えは POST 側の `toEmpty` が担う（DB の既存慣例は空文字）。
+ *
+ * `.nullable()` も外した。明示的な `null` を通すと、PUT の通常更新がそれをそのまま書き、
+ * `hearings.customer_name` は**本番で NOT NULL（既定 `''`）**なので 23502 → 500 になる
+ * （本番の `information_schema` で確認・2026-10-10）。入力の誤りは 500 ではなく 400 で返す。
  */
-const textField = (max: number) => z.string().trim().max(max).nullable().optional();
+const textField = (max: number) => z.string().trim().max(max).optional();
 
 const hearingStatuses = ["draft", "confirmed", "linked", "archived"] as const;
 

@@ -100,7 +100,7 @@ export const PUT = withCaller(
         const { data: hearing, error: hearErr } = await supabase
           .from("hearings")
           .select(
-            "id, customer_name, customer_phone, customer_email, vehicle_maker, vehicle_model, vehicle_year, vehicle_plate, vehicle_vin, vehicle_size",
+            "id, customer_id, vehicle_id, customer_name, customer_phone, customer_email, vehicle_maker, vehicle_model, vehicle_year, vehicle_plate, vehicle_vin, vehicle_size",
           )
           .eq("id", id)
           .eq("tenant_id", caller.tenantId)
@@ -114,24 +114,33 @@ export const PUT = withCaller(
         }
         if (!hearing) return apiNotFound("ヒアリングが見つかりません。");
 
-        // 顧客作成
-        const { data: customer, error: custErr } = await supabase
-          .from("customers")
-          .insert({
-            tenant_id: caller.tenantId,
-            name: hearing.customer_name || "未入力",
-            email: hearing.customer_email || null,
-            phone: hearing.customer_phone || null,
-          })
-          .select("id")
-          .single();
+        // 顧客作成。**既に付いているなら作り直さない。**
+        // この操作は途中で落ちうる（下の2つの 500）。落ちた後に操作者が押し直したとき、
+        // 無条件に insert すると顧客が二重に増える —— 一覧のボタンは `status !== "linked"` で
+        // 出続けるので、押し直しは普通に起こる（`HearingClient.tsx`）。
+        let customerId: string | null = hearing.customer_id ?? null;
+        if (!customerId) {
+          const { data: customer, error: custErr } = await supabase
+            .from("customers")
+            .insert({
+              tenant_id: caller.tenantId,
+              name: hearing.customer_name || "未入力",
+              email: hearing.customer_email || null,
+              phone: hearing.customer_phone || null,
+            })
+            .select("id")
+            .single();
 
-        if (custErr) return apiInternalError(custErr, "hearings link_customer");
+          if (custErr || !customer) {
+            return apiInternalError(custErr ?? "customers insert returned no row", "hearings link_customer");
+          }
+          customerId = customer.id;
+        }
 
-        // 車両作成
-        let vehicleId: string | null = null;
+        // 車両作成。顧客と同じ理由で、既に付いているなら作り直さない。
+        let vehicleId: string | null = hearing.vehicle_id ?? null;
         let vehicleError: string | null = null;
-        if (hearing.vehicle_maker || hearing.vehicle_model) {
+        if (!vehicleId && (hearing.vehicle_maker || hearing.vehicle_model)) {
           const { data: vehicle, error: vehErr } = await supabase
             .from("vehicles")
             .insert({
@@ -141,7 +150,7 @@ export const PUT = withCaller(
               year: hearing.vehicle_year || null,
               plate_display: hearing.vehicle_plate || null,
               vin_code: hearing.vehicle_vin || null,
-              customer_id: customer.id,
+              customer_id: customerId,
               size_class: hearing.vehicle_size || null,
             })
             .select("id")
@@ -154,7 +163,7 @@ export const PUT = withCaller(
             logger.error("hearings link_customer: vehicle insert failed", vehErr, {
               route: "admin/hearings PUT",
               hearing_id: id,
-              customer_id: customer.id,
+              customer_id: customerId,
             });
             vehicleError = "車両の登録に失敗しました。顧客は登録済みです。車両は車両一覧から登録してください。";
           } else {
@@ -166,7 +175,7 @@ export const PUT = withCaller(
         const { error: linkErr } = await supabase
           .from("hearings")
           .update({
-            customer_id: customer.id,
+            customer_id: customerId,
             vehicle_id: vehicleId,
             status: "linked",
             updated_at: new Date().toISOString(),
@@ -174,13 +183,28 @@ export const PUT = withCaller(
           .eq("id", id);
 
         // ここが落ちると顧客・車両は作られたのにヒアリングは draft のまま残る。
-        // ok: true を返すと画面は成功として一覧を読み直し、status が draft のままなので
-        // 操作者はもう一度押す —— 顧客が二重に増える。失敗は失敗として返す（Sentry にも載る）。
-        if (linkErr) return apiInternalError(linkErr, "hearings link_customer update");
+        // ok: true を返すと画面は成功として一覧を読み直すので、操作者は気づかない。だから 500 を返す。
+        //
+        // ponytail: 上限。**この失敗だけは押し直しで顧客が増えうる。** ヒアリングの `customer_id` を
+        // 書けていないので、上の「既に付いているなら作り直さない」が効かない（500 を返すこと自体は
+        // 二重登録を防がない —— MISTAKE_LEDGER `M-20261010-comment-claimed-the-500-prevents-double-registration`）。
+        // 名前も電話も空のヒアリングがあるので既存顧客を引き当てる鍵が無く、ここを閉じるには
+        // 3つの書き込みを1トランザクション（RPC 1本）にまとめるしかない。それは別判断
+        // （OPEN_QUESTIONS 2026-10-10）。それまでは、どの顧客・車両行が宙に浮いたかをログに残す
+        // （`apiInternalError` は DB メッセージと Sentry だけで、ID を持たない）。
+        if (linkErr) {
+          logger.error("hearings link_customer: hearing update failed", linkErr, {
+            route: "admin/hearings PUT",
+            hearing_id: id,
+            customer_id: customerId,
+            vehicle_id: vehicleId,
+          });
+          return apiInternalError(linkErr, "hearings link_customer update");
+        }
 
         return apiJson({
           ok: true,
-          customer_id: customer.id,
+          customer_id: customerId,
           vehicle_id: vehicleId,
           ...(vehicleError ? { vehicle_error: vehicleError } : {}),
         });

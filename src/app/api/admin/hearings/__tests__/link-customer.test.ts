@@ -16,13 +16,15 @@ let customerRes: Res;
 let vehicleRes: Res;
 let updateRes: { error: unknown };
 const updates: Record<string, unknown>[] = [];
+/** insert が走った表の名前（押し直しで顧客を作り直していないかを見る）。 */
+const inserted: string[] = [];
 
 const supabase = {
   from(table: string) {
     const q = {
       select: () => q,
       eq: () => q,
-      insert: () => q,
+      insert: () => (inserted.push(table), q),
       single: async () => (table === "customers" ? customerRes : table === "vehicles" ? vehicleRes : hearingRes),
       // `.eq()` は連鎖もできて await もできる（通常更新は .eq を2回繋ぐ）。
       update: (row: Record<string, unknown>) => {
@@ -62,6 +64,7 @@ describe("PUT /api/admin/hearings action=link_customer", () => {
     vehicleRes = { data: { id: "v1" }, error: null };
     updateRes = { error: null };
     updates.length = 0;
+    inserted.length = 0;
   });
 
   it("正常系は車両まで紐付け、vehicle_error は付かない", async () => {
@@ -104,6 +107,37 @@ describe("PUT /api/admin/hearings action=link_customer", () => {
     // zod の textField に `.transform((v) => v || null)` が戻ると、ここに
     // vehicle_maker: null 以下18列が並ぶ（= 入力が消える）。
     expect(Object.keys(updates[0]).sort()).toEqual(["customer_name", "updated_at"]);
+  });
+
+  it("既に顧客が付いているヒアリングは、押し直しても顧客を作り直さない", async () => {
+    // ヒアリング更新だけが落ちた回のあと、操作者がもう一度押した状況
+    // （一覧のボタンは status !== "linked" で出続ける）。
+    (hearingRes.data as Record<string, unknown>).customer_id = "c1";
+    const res = await link();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, customer_id: "c1", vehicle_id: "v1" });
+    // customers の insert は走らない（走ると顧客が二重に増える）。
+    expect(inserted).toEqual(["vehicles"]);
+  });
+
+  it("既に車両が付いていれば車両も作り直さない", async () => {
+    (hearingRes.data as Record<string, unknown>).customer_id = "c1";
+    (hearingRes.data as Record<string, unknown>).vehicle_id = "v9";
+    const j = await (await link()).json();
+    expect(j).toMatchObject({ customer_id: "c1", vehicle_id: "v9" });
+    expect(inserted).toEqual([]);
+  });
+
+  it("明示的な null は 400。500 にしない", async () => {
+    // hearings.customer_name は本番で NOT NULL（既定 ''）。null をそのまま書くと 23502 になる。
+    const res = await (PUT as unknown as (r: Request) => Promise<Response>)(
+      new Request("https://app.example/api/admin/hearings", {
+        method: "PUT",
+        body: JSON.stringify({ id: HEARING_ID, customer_name: null }),
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(updates).toEqual([]);
   });
 
   it("ヒアリング取得の DB エラーは 500。404 に化けない", async () => {
