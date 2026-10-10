@@ -2,8 +2,9 @@
  * POST /api/admin/inspection-records/images
  *
  * 点検記録の外観写真を Supabase Storage (`assets` バケット) にアップロードし、
- * 公開 URL の配列を返す。点検フォーム (`InspectionRecordForm`) はこの URL を
- * `inspection_records.photo_urls` に保存する。
+ * **保存パス**の配列を返す（応答のキーは互換のため `urls`）。点検フォーム (`InspectionRecordForm`) は
+ * これを `inspection_records.photo_urls` に保存する。公開 URL は返さない: `assets` を非公開にしても
+ * 記録が壊れないように（写真の非公開化 ③）。表示するときは `signAssetPaths`（src/lib/signedUrl.ts）で署名 URL にする。
  *
  * 従来はクライアントで base64 data URL 化して JSONB に直に埋めていたため
  * レコードが肥大化していた。本ルートで Storage 保存に置き換える。
@@ -114,7 +115,7 @@ export const POST = withCaller(
           .from(CERTIFICATE_IMAGE_BUCKET)
           .upload(path, strippedBuffer, { contentType: mime, upsert: false });
         if (upErr) throw new Error(`storage upload failed: ${upErr.message}`);
-        return admin.storage.from(CERTIFICATE_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
+        return path;
       };
 
       // 最大 UPLOAD_CONCURRENCY 枚ずつ処理してメモリを抑える。

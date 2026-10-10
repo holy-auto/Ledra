@@ -25,7 +25,7 @@ import {
  *     各項目に任意の「備考」テキストを付与可能
  *  3. 「カメラで撮影 / アルバムから選択」: 選択した写真はローカル保持し、
  *     「保存」確定時にまとめて Supabase Storage (`/api/admin/inspection-records/images`)
- *     へアップロードして公開 URL を photo_urls に保存する。所見は音声メモ (VoiceMemoPanel)
+ *     へアップロードして保存パスを photo_urls に保存する（公開 URL は持たない。表示時に署名する）。所見は音声メモ (VoiceMemoPanel)
  *     からも入力できる (AI 対応プランのみ)。
  *  4. 「点検を保存」: 写真アップロード → POST /api/admin/inspection-records
  */
