@@ -70,7 +70,7 @@
 
 | 型 | 中身 | 該当 |
 |---|---|---|
-| **A. 道具を検証しない** | 変更したコードは検証したのに、「何を変えるべきか判断するために使った道具」（検出器・正規表現・スクリプト・クエリ）を検証していない。道具の出力を事実として扱う。**そのクエリが何を確定させたのかを確かめずに、確定したつもりになる**のもこの型。**自分の想定だけで検証するのも同じ**（当たりを取る「既知の1件」を自分で作る）。**動作を主張するコメントを、その根拠（スキーマ・型定義）を確認せずに書く**のも同じ。**検査の「該当なし」を、その検査が何件を見たか数えずに受け取る**のも同じ | M-001, M-002, M-003, M-006, **M-010**, M-012, M-016, M-017, **M-022**, **M-024**, **M-031**, M-036, **M-041**, **M-044**, **M-046**, **M-050**, **M-055**, **M-056**, **M-057**, **M-060**, **M-061**, **M-062**, **M-064**, **M-065**, **M-068**, **M-075**, **M-078**, **M-079**, **M-084**, **M-085**, **M-089**, **M-092**, **M-093**, **M-20260904-repeated-m035-shape**, **M-20260905-calibrated-on-single-line-cases**, **M-20260906-prototype-numbers-reported**, **M-20260906-unverified-finding-accepted**, **M-20260906-leftover-files-polluted-check**, **M-20260906-tested-only-happy-input**, **M-20260906-wrong-control-three-times**, **M-20260907-no-negative-control**, **M-20260908-scan-script-two-errors**, **M-20260908-bulk-replace-without-context**, **M-20260908-tested-only-touched-dir**, **M-20260908-x-forwarded-for-unverified**, **M-20260908-null-made-guard-fail-open**, **M-20260909-unverified-overwrite-assumption**, **M-20260910-check-covered-28-percent**, **M-20260911-dts-as-behavior-evidence**, **M-20260911-git-grep-missed-untracked**, **M-20260911-git-checkout-destroyed-work**, **M-20260912-rls-table-double-count**, **M-20260913-regex-missed-two-digit-cols**, **M-20260913-ineffective-css-claimed-fixed**, **M-20260914-plain-replace-silently-noop**, **M-20260914-escaped-angle-brackets-in-commit**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-silent-skip-made-detector-never-run**, **M-20260918-replay-db-lacked-prod-column**, **M-20260918-read-detector-blindness-as-stale-list**, **M-20260919-attributed-an-overloads-call-to-its-sibling**, **M-20260919-swept-for-the-literal-not-the-bug-class**, **M-20260919-cancel-2xx-treated-as-final**, **M-20260921-compared-counts-where-names-differed**, **M-20260921-detector-covered-half-the-tables-i-had-listed**, **M-20260921-said-the-drift-checker-ignores-policies**, **M-20260922-wrote-constraint-bodies-from-their-names**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260923-committed-conflict-markers-from-truncated-merge-output**, **M-20260923-counted-only-page-files-for-tenant-bug**, **M-20260925-grep-missed-the-generic-upsert-helper**, **M-20260927-read-a-failed-rebuild-as-a-measurement**, **M-20260927-checks-were-green-on-rows-production-would-reject**, **M-20260927-said-evaluated-all-while-filtering-the-population**, **M-20260927-grep-filter-hid-vitest-errors-line**, **M-20260929-build-oom-cause-guessed-three-times**, **M-20261001-grep-filtered-vitest-summary-again**, **M-20261002-asserted-conformance-impact-from-our-own-gpsa**, **M-20260929-assumed-ingredient-needs-original-bytes**, **M-20260929-swapped-fetch-broke-formdata-uploads**, **M-20260927-c2pa-ledger-tested-only-on-exif-free-images**, **M-20260927-read-c2pa-valid-as-conformant**, **M-20260929-never-tested-the-gps-leak-premise**, **M-20261002-relayed-the-notes-framing-as-the-fix**, **M-20261005-log-edit-replaced-heading-prefix-and-dropped-it**, **M-20261005-test-tsa-echoed-my-own-content-type-assumption**, **M-20261005-declared-auth-root-cause-without-retest**, **M-20261005-said-loader-table-unreadable-after-granting-select**, **M-20261005-statement-splitter-split-inside-comments**, **M-20261005-hoisted-a-try-scoped-name-and-trusted-eslint-zero-errors**, **M-20261005-truncated-grep-hid-the-mobile-pdf-caller**, **M-20261005-took-sharps-limit-as-the-limit-of-what-i-could-verify**, **M-20261007-committed-ours-theirs-conflict-markers**, **M-20261007-read-an-empty-tool-result-as-no-problem-found**, **M-20261008-swapped-a-parity-having-impl-for-my-own-parser**, **M-20261008-called-the-build-successful-from-a-file-mtime**, **M-20261008-named-two-clusters-from-three-points**, **M-20261009-parity-test-covered-the-parser-and-missed-the-override**, **M-20261008-wrote-subagent-feature-claims-unchecked**, **M-20261009-wrote-that-stale-time-refetches**, **M-20261010-validated-the-scanner-on-single-type-headings-only**, **M-20261010-e2e-checklist-claimed-verified-calls**, **M-20261010-guard-compared-head-parent-and-silently-skipped-push**, **M-20261010-stated-action-ids-change-every-build-from-memory** |
+| **A. 道具を検証しない** | 変更したコードは検証したのに、「何を変えるべきか判断するために使った道具」（検出器・正規表現・スクリプト・クエリ）を検証していない。道具の出力を事実として扱う。**そのクエリが何を確定させたのかを確かめずに、確定したつもりになる**のもこの型。**自分の想定だけで検証するのも同じ**（当たりを取る「既知の1件」を自分で作る）。**動作を主張するコメントを、その根拠（スキーマ・型定義）を確認せずに書く**のも同じ。**検査の「該当なし」を、その検査が何件を見たか数えずに受け取る**のも同じ | M-001, M-002, M-003, M-006, **M-010**, M-012, M-016, M-017, **M-022**, **M-024**, **M-031**, M-036, **M-041**, **M-044**, **M-046**, **M-050**, **M-055**, **M-056**, **M-057**, **M-060**, **M-061**, **M-062**, **M-064**, **M-065**, **M-068**, **M-075**, **M-078**, **M-079**, **M-084**, **M-085**, **M-089**, **M-092**, **M-093**, **M-20260904-repeated-m035-shape**, **M-20260905-calibrated-on-single-line-cases**, **M-20260906-prototype-numbers-reported**, **M-20260906-unverified-finding-accepted**, **M-20260906-leftover-files-polluted-check**, **M-20260906-tested-only-happy-input**, **M-20260906-wrong-control-three-times**, **M-20260907-no-negative-control**, **M-20260908-scan-script-two-errors**, **M-20260908-bulk-replace-without-context**, **M-20260908-tested-only-touched-dir**, **M-20260908-x-forwarded-for-unverified**, **M-20260908-null-made-guard-fail-open**, **M-20260909-unverified-overwrite-assumption**, **M-20260910-check-covered-28-percent**, **M-20260911-dts-as-behavior-evidence**, **M-20260911-git-grep-missed-untracked**, **M-20260911-git-checkout-destroyed-work**, **M-20260912-rls-table-double-count**, **M-20260913-regex-missed-two-digit-cols**, **M-20260913-ineffective-css-claimed-fixed**, **M-20260914-plain-replace-silently-noop**, **M-20260914-escaped-angle-brackets-in-commit**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-silent-skip-made-detector-never-run**, **M-20260918-replay-db-lacked-prod-column**, **M-20260918-read-detector-blindness-as-stale-list**, **M-20260919-attributed-an-overloads-call-to-its-sibling**, **M-20260919-swept-for-the-literal-not-the-bug-class**, **M-20260919-cancel-2xx-treated-as-final**, **M-20260921-compared-counts-where-names-differed**, **M-20260921-detector-covered-half-the-tables-i-had-listed**, **M-20260921-said-the-drift-checker-ignores-policies**, **M-20260922-wrote-constraint-bodies-from-their-names**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260923-committed-conflict-markers-from-truncated-merge-output**, **M-20260923-counted-only-page-files-for-tenant-bug**, **M-20260925-grep-missed-the-generic-upsert-helper**, **M-20260927-read-a-failed-rebuild-as-a-measurement**, **M-20260927-checks-were-green-on-rows-production-would-reject**, **M-20260927-said-evaluated-all-while-filtering-the-population**, **M-20260927-grep-filter-hid-vitest-errors-line**, **M-20260929-build-oom-cause-guessed-three-times**, **M-20261001-grep-filtered-vitest-summary-again**, **M-20261002-asserted-conformance-impact-from-our-own-gpsa**, **M-20260929-assumed-ingredient-needs-original-bytes**, **M-20260929-swapped-fetch-broke-formdata-uploads**, **M-20260927-c2pa-ledger-tested-only-on-exif-free-images**, **M-20260927-read-c2pa-valid-as-conformant**, **M-20260929-never-tested-the-gps-leak-premise**, **M-20261002-relayed-the-notes-framing-as-the-fix**, **M-20261005-log-edit-replaced-heading-prefix-and-dropped-it**, **M-20261005-test-tsa-echoed-my-own-content-type-assumption**, **M-20261005-declared-auth-root-cause-without-retest**, **M-20261005-said-loader-table-unreadable-after-granting-select**, **M-20261005-statement-splitter-split-inside-comments**, **M-20261005-hoisted-a-try-scoped-name-and-trusted-eslint-zero-errors**, **M-20261005-truncated-grep-hid-the-mobile-pdf-caller**, **M-20261005-took-sharps-limit-as-the-limit-of-what-i-could-verify**, **M-20261007-committed-ours-theirs-conflict-markers**, **M-20261007-read-an-empty-tool-result-as-no-problem-found**, **M-20261008-swapped-a-parity-having-impl-for-my-own-parser**, **M-20261008-called-the-build-successful-from-a-file-mtime**, **M-20261008-named-two-clusters-from-three-points**, **M-20261009-parity-test-covered-the-parser-and-missed-the-override**, **M-20261008-wrote-subagent-feature-claims-unchecked**, **M-20261009-wrote-that-stale-time-refetches**, **M-20261010-validated-the-scanner-on-single-type-headings-only**, **M-20261010-e2e-checklist-claimed-verified-calls**, **M-20261010-guard-compared-head-parent-and-silently-skipped-push**, **M-20261010-tested-a-global-regex-and-halved-the-count**, **M-20261010-stated-action-ids-change-every-build-from-memory** |
 | **B. 読まずに分類する** | コードの形（関数名・構造・コメント）から中身を推測して分類し、実際に読んでいない。**1段だけ深く読んで止まる**のも同じ（条件式は読んだが、その値の既定を追っていない）。**その値がどこから来るかを見ない**のも同じ（既定・サンプル・過去の配布物に同じ値が無いか）。**列や機能が「ある」ことを「使われている」と読む**のもこの型。**値の出所を変えたのに、その値を使う式が旧い出所の前提（排他性等）を暗黙に置いたままか確認しない**のも同じ。**部品が直ったことを、その部品を使う機能が直ったことと読む**のも同じ | M-004, M-020, **M-032**, M-035, M-036, **M-039**, **M-040**, **M-048**, **M-052**, **M-063**, **M-074**, **M-083**, **M-088**, **M-20260904-ignored-input-type**, **M-20260904-escape-hatch-disabled-guard**, **M-20260904-repeated-m035-shape**, **M-20260904-limit-read-as-cost-guard**, **M-20260908-part-fixed-read-as-feature**, **M-20260908-mixed-axes-in-fix**, **M-20260911-payment-failure-single-message**, **M-20260914-claimed-no-gate-exists**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-asked-for-a-decision-that-was-already-made-in-the-file-i-cited**, **M-20260921-classified-rls-impact-from-one-policy**, **M-20260922-copied-a-check-without-checking-the-default**, **M-20260924-blamed-all-ten-inserts-on-the-check**, **M-20260924-called-a-tolerant-job-the-real-check**, **M-20260927-anon-customer-names-read-as-by-design**, **M-20260930-diagnosable-fix-left-without-anyone-watching**, **M-20260929-assumed-ingredient-needs-original-bytes**, **M-20260929-left-crjson-time-fallback-unread**, **M-20261002-delete-ignored-legal-retention**, **M-20261002-relayed-the-notes-framing-as-the-fix**, **M-20261006-grant-ui-removed-opt-out-the-comment-said-to-keep**, **M-20261008-kept-the-own-tenant-policy-that-bypasses-server-checks** |
 | **C. 経路を1本しか見ない** | 同じ操作に複数の入口があるのに、目についた1本だけ直す。**同じ事実を2箇所に書いて片方だけ直す**のも同じ（文書に出た形）。**排他にすべき組み合わせのうち一部のペアだけをチェックする**のも同じ | M-005, M-007, M-013, M-019, **M-023**, **M-025**, M-038, **M-058**, **M-061**, **M-072**, **M-076**, **M-087**, **M-20260904-same-eight-in-two-entries**, **M-20260906-zero-refs-read-as-unused**, **M-20260906-public-page-code-only**, **M-20260908-asked-production-not-replay**, **M-20260911-untracked-files-investigated-thrice**, **M-20260918-verification-skippable-via-transition-flag**, **M-20260919-exclusivity-guard-only-in-admin-route**, **M-20260919-exclusivity-checked-one-pair-not-all**, **M-20260920-called-it-all-no-op-while-fixing-the-one-statement-that-runs**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260922-renamed-a-migration-the-preview-db-had-applied**, **M-20260923-new-key-axis-not-traced-to-every-entry-point**, **M-20261001-cited-sources-i-never-opened-in-decision-log**, **M-20261001-reported-applied-migrations-as-not-applied**, **M-20260929-swapped-fetch-broke-formdata-uploads**, **M-20260929-checked-exif-gps-but-not-manifest-gps**, **M-20260929-closed-vercel-app-bypass-for-uploads-only**, **M-20261002-tls-check-covered-www-but-app-host-is-app-ledra**, **M-20261002-gpsa-o5-traced-upload-path-only**, **M-20261002-tls13-guard-scanned-providers-dir-only**, **M-20261002-added-holy-inc-category-without-ledra-cms-list**, **M-20261002-checked-one-side-effect-and-called-it-no-orphans**, **M-20261003-fixed-the-pr-body-and-left-the-business-logs-wrong**, **M-20261005-truncated-grep-hid-the-mobile-pdf-caller**, **M-20261006-breakdown-ids-wiped-by-draft-edit**, **M-20261006-widened-delete-without-checking-cycle-invoice-links**, **M-20261007-service-role-read-trusted-client-consolidation-check**, **M-20261007-claimed-single-source-without-grepping-the-siblings**, **M-20261008-widened-the-scan-once-and-stopped-at-src-and-scripts**, **M-20261009-consolidated-invoice-left-sources-receivable**, **M-20261009-parity-test-covered-the-parser-and-missed-the-override**, **M-20261009-said-sibling-pdfs-used-the-main-domain-without-reading-them**, **M-20261009-hashed-the-token-but-line-history-stored-it-plain**, **M-20261009-new-consent-entry-not-stopped-by-existing-revoke**, **M-20261010-wide-scopes-in-the-ledgers-own-checker-forbid-how-the-ledger-is-written**, **M-20261010-checked-bucket-limits-against-two-writers-not-all** |
 | **D. 移設で弱める** | 「同じものを別の場所に置くだけ」のつもりが、検査の強さや信号が落ちている。**移設先の信頼境界（誰の書き換えを受けるか・どんな権限を持つか）が変わっているのに気づかない**のもこの型。**移設でなく「追加」で弱めるのも同じ** —— 制約を1本足したら、同じ対象を別の観点で見ていた既存の検査が、その制約のせいで区別できなくなる | M-008, **M-028**, **M-029**, **M-042**, **M-047**, **M-054**, **M-060**, **M-062**, **M-063**, **M-065**, **M-20260906-stripped-security-invoker**, **M-20260906-unification-dropped-guarantees**, **M-20260906-write-token-to-foreign-code**, **M-20260924-shared-resolver-dropped-error-to-500**, **M-20260925-my-not-null-blinded-the-sibling-check**, **M-20261005-reused-oauth-state-signer-with-shared-fallback-key**, **M-20261008-swapped-a-parity-having-impl-for-my-own-parser**, **M-20261010-stored-paths-without-validating-whose-paths** |
@@ -120,6 +120,38 @@
 **再発防止**: 仕組み無し（判断に依存）。習慣として、(1) 中断条件付きの1行は**偽のときに必ず何か出す**
 （`|| { echo "guard failed"; exit 1; }`）、(2) **破壊的な後始末を `;` で繋がない**（成功時だけ `&&` で繋ぐか、別コマンドにする）、
 (3) マージ途中の `HEAD` は**まだ取り込み前の先端**であり、`HEAD^1` を使うのはマージをコミットした後だけ、と覚えておく。
+## M-20261010-tested-a-global-regex-and-halved-the-count 読んで正しいと思った2行が、実行で両方落ちた（`/g` の `.test()` と宣言順）（2026-10-10・型 A）
+
+**Before**: `/code-review` の指摘を直す途中で2行書いた。
+(1) 型を名乗る見出しの床: `DECLARED_TYPE_RE.test(tail[1])` で数える。
+(2) `MIN_TYPE_ROWS = REQUIRED_TYPES.length`（同じ事実を2箇所に持たないため）。
+どちらも**読んで正しいと判断して次に進んだ**。
+
+**After**: 実行したら両方落ちた。
+(1) `DECLARED_TYPE_RE` は `/g` なので **`.test()` が `lastIndex` を進め、隔回で外す** ——
+実測 212 件が **109 件**になり、入れたばかりの床が自分を落とした。`matchAll` に変えた
+（`String.prototype.matchAll` は内部で複製するので状態を持たない）。
+(2) `MIN_TYPE_ROWS` の宣言が `REQUIRED_TYPES` より**上**にあり、
+`ReferenceError: Cannot access 'REQUIRED_TYPES' before initialization` で
+**スクリプト自体が起動しなくなった** —— pre-commit に入っているので、
+気づかずに push していたら**リポジトリ全体のコミットが止まっていた**。宣言を上に移した。
+
+**なぜ気づけなかったか**: **どちらも「JavaScript の仕様」側の罠で、ロジックとしては正しかった。**
+読み返しても見つからない種類の誤りで、**実行だけが見つける**。
+この日は走査器・補完器・検査を何度も直しており、**1行ずつ実行していた**ので両方すぐ出た。
+もし「まとめて直して最後に1回実行」にしていたら、どちらが原因かの切り分けから始まっていた。
+
+**型 A の再発防止が効かなかった理由**: 型 A の対策は「道具の出力を既知の1件で当たり取りする」。
+**今回は道具が起動すらしない／数が半分になるという形**で、当たり取りの前段で死んでいる。
+対策は効かなかったのではなく、**実行しないと到達しない**ところに誤りがあった。
+
+**再発を止める仕組み**: 一部は仕組みあり。
+- 仕組み: 変異テストと `node scripts/check-ledger-ids.mjs` を1行直すたびに回す運用にした
+  （この2件はその回で出た）。
+- 習慣: **グローバル正規表現（`/g`）に `.test()` と `.exec()` を使わない。**
+  `matchAll` か、使うなら `lastIndex = 0` を直前に置く。`/g` は状態を持つ。
+- 習慣: **`const` の相互参照を書いたら、その場で1回実行する。** モジュールの先頭から
+  順に評価されるので、下にある定数は使えない（関数の中からなら使える）。
 
 ## M-20261010-read-tails-exit-code-as-the-pushs-exit-code `git push | tail -1` の終了コードを push の成否として読み、失敗を「PUSH OK」と出した（2026-10-10・型 F）
 
@@ -238,9 +270,17 @@ staging で `vehicle_required` が返って気づいた。
 しかも台帳は自分がいちばん書く文書なので、**禁止されたことに後から気づく**（コミットが止まる）。
 4回のうち3回は他者のレビューが先に見つけており、自分では出せていない。
 
+**【同日5件目】** 「説明用の表で止めるな」を直した**その同じ検査の中に、同じ誤りが残っていた。**
+対象を「索引の表2つ」に絞ったが、**行を丸ごと走査していた**ので、型表の「中身」や
+旧番号表の「表題」に区切り無しで ID を書くと（`（M-20260915-… の形）` → `M-20260915-…の形`）
+実在しない ID として落ちた（/code-review 2巡目・実測）。
+**「どの表か」まで絞って、「どの列か」を絞っていなかった。**
+索引は**列**であって行ではない。該当列・旧番号列・新 ID 列だけを見る形にした。
+
 **型 C の再発防止が効かなかった理由**: 型 C は「同じ操作に複数の入口があるのに1本だけ直す」。
 **今回は逆向き** —— 入口を広く取りすぎて、正当な入口まで塞いだ。
 型 C の対策（入口を数える）は「狭すぎ」にしか向いていなかった。
+5件目で分かったのは、**絞り方にも段がある**こと（文書 → 表 → 列）。1段絞って安心していた。
 
 **再発を止める仕組み**: 一部は仕組みあり。
 - 仕組み: 誤検出の陽性対照を**形ごとに**置いている（フェンス内の例・行の引用・ヘッダの引用・
@@ -312,9 +352,18 @@ ID を取るときに装飾（`**M-001**`）を落とす処理を**検査7にだ
 **「同じ事実を2箇所で計算するな」と書いた直後に、同じファイルで3回目をやった** ——
 書いただけでは効かない。効いたのは**実行**である。
 
+**【同日4件目】** `missingPairs()` に寄せて「列の決め打ちをやめた」と書いたのに、
+**`fixLedger` の書き込み側は `parts.length !== 5` / `parts[3]` のままだった**
+（/code-review 2巡目・実測）。中身セルにパイプが1つ入った正しい行では、
+検査8が赤になるのに `--fix` が置けず、**「置き先の行が無い」という原因と違うメッセージ**が出た。
+しかもその形のテストは `checkLedger` しか呼んでいないので踏めなかった。
+**「読む側」を1つにして「書く側」を揃えていなかった。**
+
 **再発を止める仕組み**: 一部は仕組みあり。
-- 仕組み: 検査と補完が**同じ関数**（`missingPairs`・`cellIds`）を呼ぶ。変異「該当列を決め打ちに
-  戻す」で2件赤になることを確認した（以前は検査側だけ壊れて補完側は無反応だった）。
+- 仕組み: 検査と補完が**同じ関数**（`missingPairs`・`cellIds`・`targetCell`）を呼ぶ。変異
+  「該当列の判定を列数だけに戻す」「補完の列を `parts[3]` の決め打ちに戻す」でそれぞれ赤になる。
+- 習慣: **読む側を直したら、書く側も同じ関数を通っているかを見る。**
+  テストも `checkLedger` だけでなく `fixLedger` を通す（この穴はそれが無くて残った）。
 - 習慣: **正規表現や定数を参照する箇所は、直したあとに `grep -n` で数える。**
   1箇所でなければ、そこが次の食い違いになる。
 - 習慣: **検査と「その検査を満たす道具」を書いたら、両者が同じ事実を2度計算していないかを見る。**
