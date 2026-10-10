@@ -21,6 +21,11 @@ describe("isConsolidatableDoc", () => {
     expect(isConsolidatableDoc(doc({ doc_type: "invoice", status: "sent", customer_id: null }))).toBe(false);
   });
 
+  it("rejects paid docs (paying twice: the consolidated invoice would bill an amount already settled)", () => {
+    expect(isConsolidatableDoc(doc({ doc_type: "invoice", status: "paid", customer_id: "c1" }))).toBe(false);
+    expect(isConsolidatableDoc(doc({ doc_type: "delivery", status: "paid", customer_id: "c1" }))).toBe(false);
+  });
+
   it("rejects cancelled/rejected docs", () => {
     expect(isConsolidatableDoc(doc({ doc_type: "invoice", status: "cancelled", customer_id: "c1" }))).toBe(false);
     expect(isConsolidatableDoc(doc({ doc_type: "invoice", status: "rejected", customer_id: "c1" }))).toBe(false);
