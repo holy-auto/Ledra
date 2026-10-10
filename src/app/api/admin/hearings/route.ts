@@ -1,15 +1,13 @@
-
-
 import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { hearingCreateSchema, hearingUpdateSchema } from "@/lib/validations/hearing";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { logger } from "@/lib/logger";
 export const dynamic = "force-dynamic";
 
 export const GET = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const { searchParams } = new URL(req.url);
       const status = searchParams.get("status");
 
@@ -40,14 +38,13 @@ export const GET = withCaller(
 export const POST = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const parsed = hearingCreateSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
       }
 
       // ヒアリングレコード作成 (null を空文字に詰め直して DB の既存慣例に合わせる)
-      const toEmpty = (v: string | null) => v ?? "";
+      const toEmpty = (v: string | null | undefined) => v ?? "";
       const { data, error } = await supabase
         .from("hearings")
         .insert({
@@ -91,7 +88,6 @@ export const POST = withCaller(
 export const PUT = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const parsed = hearingUpdateSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -101,7 +97,7 @@ export const PUT = withCaller(
       // アクション: 顧客登録連携
       if (action === "link_customer") {
         // 顧客レコード作成
-        const { data: hearing } = await supabase
+        const { data: hearing, error: hearErr } = await supabase
           .from("hearings")
           .select(
             "id, customer_name, customer_phone, customer_email, vehicle_maker, vehicle_model, vehicle_year, vehicle_plate, vehicle_vin, vehicle_size",
@@ -110,6 +106,12 @@ export const PUT = withCaller(
           .eq("tenant_id", caller.tenantId)
           .single();
 
+        // PGRST116 は 0 行（存在しない / 他テナント）。それ以外は DB 側の失敗なので
+        // 404 に化けさせない —— 「見つかりません」を返すと操作者は id を疑って終わり、
+        // 本当の原因（接続・権限・RLS）が誰にも届かない。
+        if (hearErr && hearErr.code !== "PGRST116") {
+          return apiInternalError(hearErr, "hearings link_customer select");
+        }
         if (!hearing) return apiNotFound("ヒアリングが見つかりません。");
 
         // 顧客作成
@@ -128,6 +130,7 @@ export const PUT = withCaller(
 
         // 車両作成
         let vehicleId: string | null = null;
+        let vehicleError: string | null = null;
         if (hearing.vehicle_maker || hearing.vehicle_model) {
           const { data: vehicle, error: vehErr } = await supabase
             .from("vehicles")
@@ -143,11 +146,24 @@ export const PUT = withCaller(
             })
             .select("id")
             .single();
-          if (!vehErr && vehicle) vehicleId = vehicle.id;
+          if (vehErr || !vehicle) {
+            // **ここで 500 を返さない。** 顧客行は既に作成済みでロールバックできないので、
+            // 500 にすると操作者は押し直し、顧客だけが二重に増える。
+            // 顧客連携は完遂させ、「車両だけ落ちた」を返して画面に出す（黙って null を返すと
+            // 車両が無いことに誰も気づかないまま証明書発行へ進む）。
+            logger.error("hearings link_customer: vehicle insert failed", vehErr, {
+              route: "admin/hearings PUT",
+              hearing_id: id,
+              customer_id: customer.id,
+            });
+            vehicleError = "車両の登録に失敗しました。顧客は登録済みです。車両は車両一覧から登録してください。";
+          } else {
+            vehicleId = vehicle.id;
+          }
         }
 
         // ヒアリングレコード更新
-        await supabase
+        const { error: linkErr } = await supabase
           .from("hearings")
           .update({
             customer_id: customer.id,
@@ -157,10 +173,16 @@ export const PUT = withCaller(
           })
           .eq("id", id);
 
+        // ここが落ちると顧客・車両は作られたのにヒアリングは draft のまま残る。
+        // ok: true を返すと画面は成功として一覧を読み直し、status が draft のままなので
+        // 操作者はもう一度押す —— 顧客が二重に増える。失敗は失敗として返す（Sentry にも載る）。
+        if (linkErr) return apiInternalError(linkErr, "hearings link_customer update");
+
         return apiJson({
           ok: true,
           customer_id: customer.id,
           vehicle_id: vehicleId,
+          ...(vehicleError ? { vehicle_error: vehicleError } : {}),
         });
       }
 
