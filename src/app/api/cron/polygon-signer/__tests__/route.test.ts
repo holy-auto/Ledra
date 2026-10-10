@@ -163,6 +163,15 @@ describe("GET /api/cron/polygon-signer", () => {
     expect(body.message).toContain("rpc down");
   });
 
+  it("surfaces the hidden undici cause behind viem's 'fetch failed' (TLS vs DNS vs timeout)", async () => {
+    const tls = Object.assign(new Error("wrong version number"), { code: "ERR_SSL_WRONG_VERSION_NUMBER" });
+    getBalanceMock.mockRejectedValueOnce(
+      new Error("HTTP request failed.", { cause: new TypeError("fetch failed", { cause: tls }) }),
+    );
+    const body = (await (await GET(req())).json()) as { message: string };
+    expect(body.message).toContain("[cause: fetch failed <- ERR_SSL_WRONG_VERSION_NUMBER: wrong version number]");
+  });
+
   it("POST is accepted (no 405) and behaves like GET — POST-based schedulers / monitors", async () => {
     expect(POST).toBe(GET);
     getBalanceMock.mockResolvedValueOnce(ETH(2.5));
