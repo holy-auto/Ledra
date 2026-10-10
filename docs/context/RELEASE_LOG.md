@@ -4,6 +4,19 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-10 ログイン画面「ログインページの読み込みに失敗しました」をデプロイ後に出さない
+
+- 症状: `/login` で送信すると `src/app/login/error.tsx` の失敗画面になる（エラーIDが出ない＝クライアント側の例外）。
+- 原因: ログインは Server Action（`src/app/login/page.tsx` の `signIn`）。Server Action の ID はビルドごとに
+  変わるため、**デプロイ前に開いた画面から送ると新ビルドに ID が無く 404**（`UnrecognizedActionError`）になる。
+  自動ログアウトで `/login?reason=idle` を開いたまま置き、その間にデプロイが入ると必ず起きる。
+  画面の「再読み込み」は `reset()` で古い ID のまま再描画するだけなので、何度押しても直らなかった。
+- 対応: `error.tsx` で `unstable_isUnrecognizedActionError` を判定し、ページごと読み直して新しい ID を取らせる。
+  送信時にしか起きないので読み直しは繰り返さない。
+- 検証: ローカル（next dev）で送信の `Next-Action` を存在しない ID に差し替え、修正前は同じ失敗画面
+  （エラーIDなし）を再現、修正後は 404 → 自動で再取得 → ログイン画面に戻ることを確認。
+  本番のログ（Sentry）は見られていないので、本番の失敗がこの原因だけかは【要確認】。
+
 ## 2026-10-10 点検記録の写真は公開 URL ではなく保存パスで持つ（写真の非公開化の前段）
 
 - 内容: 点検記録の外観写真のアップロード（`/api/admin/inspection-records/images`）が公開 URL を返し、フォームがそれを `inspection_records.photo_urls` に
