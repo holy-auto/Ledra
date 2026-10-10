@@ -49,10 +49,7 @@ export default function HelpDrawer({ open, onClose }: HelpDrawerProps) {
       <div className="space-y-6">
         {/* Quick start */}
         <section className="rounded-xl border border-accent/30 bg-accent-dim/30 p-4 space-y-3">
-          <div className="text-sm font-semibold text-primary flex items-center gap-2">
-            <span aria-hidden>🚀</span>
-            クイックスタート
-          </div>
+          <div className="text-sm font-semibold text-primary flex items-center gap-2">クイックスタート</div>
           <p className="text-xs text-muted leading-relaxed">
             初回ツアーをもう一度見たり、各画面のヒントを再表示したりできます。
           </p>
@@ -96,9 +93,6 @@ export default function HelpDrawer({ open, onClose }: HelpDrawerProps) {
                       aria-expanded={isOpen}
                       className="flex w-full items-center gap-3 px-3 py-2.5 text-left"
                     >
-                      <span className="text-lg shrink-0" aria-hidden>
-                        {guide.icon}
-                      </span>
                       <span className="flex-1 text-sm font-medium text-primary">{guide.title}</span>
                       <svg
                         width="14"

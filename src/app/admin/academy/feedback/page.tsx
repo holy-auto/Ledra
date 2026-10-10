@@ -79,9 +79,7 @@ export default function AcademyFeedbackPage() {
         <a href="/admin/academy" className="text-sm text-accent hover:underline">
           ← Academy
         </a>
-        <h1 className="text-xl font-bold text-primary mt-2 flex items-center gap-2">
-          <span>✏️</span> 証明書AI添削
-        </h1>
+        <h1 className="text-xl font-bold text-primary mt-2 flex items-center gap-2">証明書AI添削</h1>
         <p className="text-sm text-muted mt-1">証明書IDを入力してAIに品質評価・フィードバックを依頼します。</p>
       </div>
 
@@ -153,9 +151,7 @@ export default function AcademyFeedbackPage() {
 
           {/* Ledra Standard */}
           <div className="glass-card p-5">
-            <h2 className="font-semibold text-primary mb-3 flex items-center gap-2">
-              <span>🏆</span> Ledra Standard 達成状況
-            </h2>
+            <h2 className="font-semibold text-primary mb-3 flex items-center gap-2">Ledra Standard 達成状況</h2>
             <div className="flex gap-3 mb-3">
               {(["basic", "standard", "pro"] as const).map((lvl) => {
                 const achieved = result.standardStatus[lvl];
@@ -166,10 +162,7 @@ export default function AcademyFeedbackPage() {
                       achieved ? "bg-success-dim border-success/40" : "bg-inset border-border-subtle opacity-40"
                     }`}
                   >
-                    <div className={`text-lg ${achieved ? "opacity-100" : "opacity-30"}`}>
-                      {lvl === "basic" ? "🥉" : lvl === "standard" ? "🥈" : "🥇"}
-                    </div>
-                    <div className={`text-xs font-medium mt-1 capitalize ${achieved ? "text-success" : "text-muted"}`}>
+                    <div className={`text-xs font-medium capitalize ${achieved ? "text-success" : "text-muted"}`}>
                       {lvl}
                     </div>
                     {achieved && <div className="text-xs text-success">✓ 達成</div>}
@@ -186,9 +179,7 @@ export default function AcademyFeedbackPage() {
           {/* 良かった点 */}
           {result.strengths.length > 0 && (
             <div className="glass-card p-5">
-              <h2 className="font-semibold text-primary mb-3 flex items-center gap-2">
-                <span>✅</span> 良かった点
-              </h2>
+              <h2 className="font-semibold text-primary mb-3 flex items-center gap-2">良かった点</h2>
               <div className="space-y-2">
                 {result.strengths.map((s, i) => (
                   <div key={i} className="flex gap-2 text-sm">
@@ -206,9 +197,7 @@ export default function AcademyFeedbackPage() {
           {/* 改善点 */}
           {result.improvements.length > 0 && (
             <div className="glass-card p-5">
-              <h2 className="font-semibold text-primary mb-3 flex items-center gap-2">
-                <span>🔧</span> 改善点
-              </h2>
+              <h2 className="font-semibold text-primary mb-3 flex items-center gap-2">改善点</h2>
               <div className="space-y-3">
                 {result.improvements.map((item, i) => {
                   const pc = PRIORITY_CONFIG[item.priority] ?? PRIORITY_CONFIG.low;

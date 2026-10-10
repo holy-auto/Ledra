@@ -214,7 +214,7 @@ export default function AcademyLessonDetailPage({ params }: { params: Promise<{ 
           <span className="text-border-subtle">{"★".repeat(5 - Math.round(lesson.rating_avg))}</span>
           <span className="ml-1">({lesson.rating_count})</span>
         </span>
-        <span>👁 {lesson.view_count}</span>
+        <span>{lesson.view_count}</span>
         <span className="text-yellow-400">難易度 {"★".repeat(lesson.difficulty)}</span>
       </div>
 
@@ -243,7 +243,7 @@ export default function AcademyLessonDetailPage({ params }: { params: Promise<{ 
             rel="noreferrer"
             className="inline-flex items-center gap-2 px-4 py-2 bg-accent/10 border border-accent/30 rounded-lg text-accent text-sm hover:bg-accent/20 transition-colors"
           >
-            🎬 動画を再生
+            動画を再生
           </a>
         </div>
       )}
@@ -259,13 +259,13 @@ export default function AcademyLessonDetailPage({ params }: { params: Promise<{ 
           href={`/admin/academy/learn/${id}/edit`}
           className="text-xs px-3 py-1.5 bg-inset border border-border-subtle rounded-lg text-secondary hover:bg-surface transition-colors"
         >
-          ✏️ 編集
+          編集
         </Link>
         <Link
           href={`/admin/academy/learn/${id}/quiz/edit`}
           className="text-xs px-3 py-1.5 bg-inset border border-border-subtle rounded-lg text-secondary hover:bg-surface transition-colors"
         >
-          📝 クイズを編集 {quizQuestionCount > 0 && `(${quizQuestionCount}問)`}
+          クイズを編集 {quizQuestionCount > 0 && `(${quizQuestionCount}問)`}
         </Link>
         <button
           onClick={handleDelete}
@@ -280,9 +280,7 @@ export default function AcademyLessonDetailPage({ params }: { params: Promise<{ 
         <div className="mt-10 glass-card p-5">
           <div className="flex items-center justify-between gap-3 mb-2">
             <div>
-              <h2 className="font-semibold text-primary mb-1 flex items-center gap-2">
-                <span>📝</span> 理解度チェック
-              </h2>
+              <h2 className="font-semibold text-primary mb-1 flex items-center gap-2">理解度チェック</h2>
               <p className="text-xs text-muted">
                 {quizQuestionCount} 問・70% 以上で合格 → レッスン完了が自動マークされます
               </p>

@@ -188,7 +188,7 @@ export default function NewsClient() {
                   }`}
                   onClick={() => setCategoryFilter(group)}
                 >
-                  {group === "国内ニュース" ? "🇯🇵 国内" : group === "法改正・規制" ? "⚖️ 法改正" : "🌍 海外"}
+                  {group === "国内ニュース" ? "国内" : group === "法改正・規制" ? "法改正" : "海外"}
                 </button>
               ))}
             </div>

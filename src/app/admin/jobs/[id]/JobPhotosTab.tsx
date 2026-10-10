@@ -80,12 +80,11 @@ export default function JobPhotosTab({
             この案件の写真 ({photos.length} 枚 / {certCount} 件の証明書)
           </div>
           <p className="mt-1 text-xs text-muted leading-relaxed">
-            車両に紐付く全証明書の写真をここに集約。各写真の「🖊️
-            注釈」ボタンから矢印・図形・テキストでマーキングできます。
+            車両に紐付く全証明書の写真をここに集約。各写真の「注釈」ボタンから矢印・図形・テキストでマーキングできます。
           </p>
         </div>
         <Link href={certificateNewUrl} className="btn-primary text-xs px-3 py-1.5">
-          🪪 新規証明書を発行
+          新規証明書を発行
         </Link>
       </div>
 

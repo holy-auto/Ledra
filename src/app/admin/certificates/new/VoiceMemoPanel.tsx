@@ -197,7 +197,6 @@ export default function VoiceMemoPanel(props: Props) {
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-medium hover:opacity-80 rounded-xl transition-opacity"
       >
-        <span className="text-base">🎤</span>
         <span className="text-secondary">{isNote ? "音声メモから備考を生成" : "音声メモから施工内容を生成"}</span>
         <span className="ml-auto text-muted text-xs">{open ? "▲ 閉じる" : "▼ 開く"}</span>
       </button>
@@ -226,7 +225,7 @@ export default function VoiceMemoPanel(props: Props) {
                 disabled={!supported}
                 className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
               >
-                🎤 録音開始
+                録音開始
               </button>
             ) : (
               <button
@@ -234,7 +233,7 @@ export default function VoiceMemoPanel(props: Props) {
                 onClick={stopRecording}
                 className="flex items-center gap-2 rounded-xl bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 animate-pulse"
               >
-                ⏹ 録音停止
+                録音停止
               </button>
             )}
             {recording && <span className="text-xs text-red-500">● 録音中…</span>}
@@ -266,7 +265,7 @@ export default function VoiceMemoPanel(props: Props) {
                   生成中…
                 </>
               ) : (
-                <>✨ AI 整形して適用</>
+                <>AI 整形して適用</>
               )}
             </button>
             <button
@@ -285,8 +284,8 @@ export default function VoiceMemoPanel(props: Props) {
           {applied && (
             <div className="rounded-lg border border-success/30 bg-success-dim px-3 py-2 text-xs text-success-text">
               {isNote
-                ? "✅ 備考欄に追記しました。内容を確認・編集してください。"
-                : "✅ ドラフトをフォームに適用しました。内容を確認・編集してください。"}
+                ? "備考欄に追記しました。内容を確認・編集してください。"
+                : "ドラフトをフォームに適用しました。内容を確認・編集してください。"}
             </div>
           )}
           {error && (

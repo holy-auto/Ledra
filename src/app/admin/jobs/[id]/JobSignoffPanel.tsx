@@ -57,10 +57,10 @@ const STEP_LABEL: Record<SignoffStepKey, string> = {
 const STATE_STYLE: Record<StepState, { icon: string; cls: string }> = {
   done: { icon: "✓", cls: "border-success/30 bg-success-dim text-success-text" },
   current: { icon: "●", cls: "border-accent bg-accent-dim text-accent-text" },
-  blocked: { icon: "⚠", cls: "border-danger/30 bg-danger-dim text-danger-text" },
+  blocked: { icon: "!", cls: "border-danger/30 bg-danger-dim text-danger-text" },
   pending: { icon: "○", cls: "border-border-default bg-inset text-secondary" },
   optional: { icon: "◍", cls: "border-border-default bg-inset text-muted" },
-  deferred: { icon: "⏭", cls: "border-border-default bg-inset text-muted" },
+  deferred: { icon: "–", cls: "border-border-default bg-inset text-muted" },
 };
 
 const STEP_ORDER: SignoffStepKey[] = ["completion", "certificate", "signature", "payment", "anchor"];
@@ -234,7 +234,7 @@ export default function JobSignoffPanel({ reservationId }: { reservationId: stri
                 href={`/admin/certificates/new?reservation_id=${reservationId}`}
                 className="btn-primary text-sm px-4 py-2"
               >
-                🪪 証明書を発行
+                証明書を発行
               </Link>
             ) : certificate.status !== "active" &&
               certificate.hasBeforePhoto &&
@@ -247,12 +247,12 @@ export default function JobSignoffPanel({ reservationId }: { reservationId: stri
                   disabled={issuing}
                   className="btn-primary text-sm px-4 py-2 disabled:opacity-50"
                 >
-                  {issuing ? "発行中…" : "🪪 証明書を発行する"}
+                  {issuing ? "発行中…" : "証明書を発行する"}
                 </button>
               </MutationGuard>
             ) : (
               <Link href={`/admin/certificates/${certificate.id}`} className="btn-secondary text-sm px-4 py-2">
-                📷 施工前後の写真を追加
+                施工前後の写真を追加
               </Link>
             )}
           </div>
@@ -289,7 +289,7 @@ export default function JobSignoffPanel({ reservationId }: { reservationId: stri
                       disabled={busy}
                       className="btn-primary text-sm px-4 py-2 disabled:opacity-50"
                     >
-                      {busy ? "依頼作成中…" : "✍️ 受領サインを依頼"}
+                      {busy ? "依頼作成中…" : "受領サインを依頼"}
                     </button>
                   </MutationGuard>
                 </div>
@@ -347,7 +347,7 @@ export default function JobSignoffPanel({ reservationId }: { reservationId: stri
         {/* サイン完了 */}
         {state.steps.signature.state === "done" && (
           <div className="rounded-lg border border-success/20 bg-success-dim px-3 py-2 text-xs text-success-text">
-            ✅ お客様の受領サインが完了しました
+            お客様の受領サインが完了しました
             {signoff.signed_off_at && <>（{fmtDeadline(signoff.signed_off_at)}）</>}。 署名内容は暗号署名 +
             ブロックチェーンで改ざん不能に保全されます。
           </div>
@@ -358,26 +358,26 @@ export default function JobSignoffPanel({ reservationId }: { reservationId: stri
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-danger-text">法人の支払いサイクルが未設定です:</span>
             <Link href={`/admin/customers/${customer.id}`} className="btn-secondary text-xs px-3 py-1.5">
-              👤 顧客管理で設定
+              顧客管理で設定
             </Link>
           </div>
         )}
         {state.steps.payment.state === "deferred" && (
           <div className="rounded-lg border border-border-default bg-inset px-3 py-2 text-xs text-muted">
-            ⏭ 合算 (締め払い) 契約のため、この案件でのお会計はスキップし後日まとめて請求します。
+            合算 (締め払い) 契約のため、この案件でのお会計はスキップし後日まとめて請求します。
           </div>
         )}
         {state.steps.payment.state === "current" && (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted">お会計:</span>
             <Link href={`/admin/pos?reservation_id=${reservationId}`} className="btn-secondary text-xs px-3 py-1.5">
-              💰 その場会計 (POS)
+              その場会計 (POS)
             </Link>
             <Link
               href={`/admin/invoices/new?reservation_id=${reservationId}`}
               className="btn-secondary text-xs px-3 py-1.5"
             >
-              🧾 後日請求 (請求書)
+              後日請求 (請求書)
             </Link>
           </div>
         )}

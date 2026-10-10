@@ -231,7 +231,7 @@ export default function HearingClient() {
           {/* お客様情報 */}
           <fieldset className={sectionCls}>
             <legend className="text-sm font-semibold text-primary border-b border-border pb-2 mb-3 w-full">
-              👤 お客様情報
+              お客様情報
             </legend>
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1">
@@ -270,7 +270,7 @@ export default function HearingClient() {
           {/* 車両情報 */}
           <fieldset className={sectionCls}>
             <legend className="text-sm font-semibold text-primary border-b border-border pb-2 mb-3 w-full">
-              🚗 車両情報
+              車両情報
             </legend>
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1">
@@ -351,7 +351,7 @@ export default function HearingClient() {
           {/* 施工内容 */}
           <fieldset className={sectionCls}>
             <legend className="text-sm font-semibold text-primary border-b border-border pb-2 mb-3 w-full">
-              🔧 施工内容
+              施工内容
             </legend>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">
@@ -408,7 +408,7 @@ export default function HearingClient() {
           {/* 車両状態 */}
           <fieldset className={sectionCls}>
             <legend className="text-sm font-semibold text-primary border-b border-border pb-2 mb-3 w-full">
-              🔍 車両状態
+              車両状態
             </legend>
             <div className="space-y-1">
               <label className={labelCls}>気になる箇所</label>
@@ -459,7 +459,7 @@ export default function HearingClient() {
           {/* その他 */}
           <fieldset className={sectionCls}>
             <legend className="text-sm font-semibold text-primary border-b border-border pb-2 mb-3 w-full">
-              💬 その他
+              その他
             </legend>
             <div className="space-y-1">
               <label className={labelCls}>その他のご要望</label>

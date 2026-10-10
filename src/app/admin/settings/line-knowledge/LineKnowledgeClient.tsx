@@ -162,7 +162,7 @@ export default function LineKnowledgeClient({
             (内容が重なる場合はこの店舗ナレッジが優先されます)。
           </p>
           <Link href="/admin/settings/ai-automation" className="btn-secondary mt-3 inline-block">
-            ✨ AI 自動入力の設定を開く →
+            AI 自動入力の設定を開く →
           </Link>
         </section>
       )}

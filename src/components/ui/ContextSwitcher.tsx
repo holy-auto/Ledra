@@ -80,7 +80,6 @@ export default function ContextSwitcher() {
   };
 
   const currentLabel = activeContext === "agent" ? "代理店モード" : "施工店モード";
-  const currentIcon = activeContext === "agent" ? "🤝" : "🔧";
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -91,8 +90,7 @@ export default function ContextSwitcher() {
         className="flex items-center gap-2 rounded-[var(--radius-md)] border border-border-default bg-[var(--bg-elevated)] px-3 py-1.5 text-[12px] font-medium text-secondary transition-all hover:border-accent hover:text-accent"
         title="モードを切り替える"
       >
-        <span>{currentIcon}</span>
-        <span className="hidden sm:inline">{currentLabel}</span>
+        <span>{currentLabel}</span>
         <svg
           width="12"
           height="12"
@@ -119,7 +117,6 @@ export default function ContextSwitcher() {
               activeContext === "shop" ? "font-semibold text-accent" : "text-secondary"
             }`}
           >
-            <span className="text-base">🔧</span>
             <span className="flex-1 text-left">施工店ダッシュボード</span>
             {activeContext === "shop" && (
               <svg
@@ -145,7 +142,6 @@ export default function ContextSwitcher() {
               activeContext === "agent" ? "font-semibold text-accent" : "text-secondary"
             }`}
           >
-            <span className="text-base">🤝</span>
             <span className="flex-1 text-left">代理店ポータル</span>
             {activeContext === "agent" && (
               <svg

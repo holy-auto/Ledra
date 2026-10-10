@@ -701,7 +701,7 @@ export default function DocumentForm({
           );
         }
         if (draft.note) setFormNote(draft.note);
-        setAiPrefillNote("✨ AI で明細・備考を起票しました。内容を確認して保存してください。");
+        setAiPrefillNote("AI で明細・備考を起票しました。内容を確認して保存してください。");
       } catch {
         setAiPrefillNote("AI 起票で通信エラーが発生しました。");
       } finally {

@@ -21,15 +21,6 @@ import {
 
 const fmt = (n: number) => `¥${n.toLocaleString("ja-JP")}`;
 
-const CATEGORY_ICONS: Record<ShopProductCategory, string> = {
-  nfc_tag: "📡",
-  certificate_template: "📜",
-  sticker: "🏷️",
-  sign: "🪧",
-  banner: "🚩",
-  other: "📦",
-};
-
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */

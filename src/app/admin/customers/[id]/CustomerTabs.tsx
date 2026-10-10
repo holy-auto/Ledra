@@ -262,7 +262,7 @@ export default function CustomerTabs({
       { k: "certificates" as const, label: `証明書 (${certificates.length})` },
       { k: "reservations" as const, label: `予約・案件 (${reservations.length})` },
       { k: "billing" as const, label: `請求 (${invoices.length})` },
-      { k: "messages" as const, label: "💬 メッセージ" },
+      { k: "messages" as const, label: "メッセージ" },
     ],
     [vehicles.length, certificates.length, reservations.length, invoices.length],
   );
@@ -395,7 +395,7 @@ export default function CustomerTabs({
               <div className="mt-1 text-base font-semibold text-primary">予約・案件 ({reservations.length}件)</div>
             </div>
             <Link href={`/admin/jobs/new?customer_id=${customerId}`} className="btn-secondary text-xs">
-              🏃 飛び込み案件
+              飛び込み案件
             </Link>
           </div>
           <div className="overflow-x-auto">

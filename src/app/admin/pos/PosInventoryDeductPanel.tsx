@@ -94,7 +94,7 @@ export default function PosInventoryDeductPanel({ sales }: { sales: Sale[] }) {
   if (warning && (!suggestions || suggestions.length === 0)) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
-        ⚠ {warning}
+        {warning}
       </div>
     );
   }
@@ -103,7 +103,7 @@ export default function PosInventoryDeductPanel({ sales }: { sales: Sale[] }) {
   return (
     <section className="rounded-xl border border-accent/20 bg-accent/5 px-3 py-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-semibold text-accent">✨ 在庫引落候補</div>
+        <div className="text-xs font-semibold text-accent">在庫引落候補</div>
         <div className="text-[10px] text-muted">{suggestions.length} 件</div>
       </div>
 

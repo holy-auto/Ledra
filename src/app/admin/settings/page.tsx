@@ -363,7 +363,7 @@ export default async function AdminSettingsPage({
           </p>
         </div>
         <Link href="/admin/settings/ai-automation" className="btn-secondary">
-          ✨ AI 自動入力の設定を開く →
+          AI 自動入力の設定を開く →
         </Link>
       </section>
 
@@ -384,7 +384,7 @@ export default async function AdminSettingsPage({
           </p>
         </div>
         <Link href="/admin/settings/line-knowledge" className="btn-secondary">
-          💬 LINEナレッジを開く →
+          LINEナレッジを開く →
         </Link>
       </section>
 
@@ -402,7 +402,7 @@ export default async function AdminSettingsPage({
           <p className="mt-1 text-xs text-muted">現場の勘所を資産化し、新人でも AI で引き出せるようにします。</p>
         </div>
         <Link href="/admin/field-knowledge" className="btn-secondary">
-          🔧 施工ナレッジを開く →
+          施工ナレッジを開く →
         </Link>
       </section>
 
@@ -416,7 +416,7 @@ export default async function AdminSettingsPage({
           </p>
         </div>
         <Link href="/admin/settings/security" className="btn-secondary">
-          🔐 セキュリティ設定を開く →
+          セキュリティ設定を開く →
         </Link>
       </section>
 

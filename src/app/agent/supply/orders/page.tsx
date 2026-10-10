@@ -343,21 +343,21 @@ function OrderDetailModal({
         ) : mode === null ? (
           <div className="mt-4 grid grid-cols-1 gap-2">
             <button type="button" onClick={() => setMode("accept")} className="btn-primary text-sm">
-              ✅ この内容で受注する
+              この内容で受注する
             </button>
             <button
               type="button"
               onClick={() => setMode("partial")}
               className="rounded-lg border border-border-subtle py-2 text-sm text-secondary"
             >
-              ⚠️ 一部欠品・数量変更で回答
+              一部欠品・数量変更で回答
             </button>
             <button
               type="button"
               onClick={() => setMode("decline")}
               className="rounded-lg border border-border-subtle py-2 text-sm text-red-500"
             >
-              ❌ お受けできない
+              お受けできない
             </button>
           </div>
         ) : (

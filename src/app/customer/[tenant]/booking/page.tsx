@@ -407,7 +407,7 @@ export default function BookingPage() {
 
           {doneReservation.intake && (
             <div className="rounded-xl border border-accent/30 bg-accent-dim p-4 mb-4 text-left">
-              <div className="text-sm font-semibold text-primary mb-2">📝 事前カルテのご入力 (任意)</div>
+              <div className="text-sm font-semibold text-primary mb-2">事前カルテのご入力 (任意)</div>
               <p className="text-xs text-secondary mb-3 leading-relaxed">
                 来店前に住所・生年月日などの基本情報をご入力いただけます。
                 身分証の写真撮影で自動入力も可能です。記入は任意です。
@@ -624,7 +624,6 @@ export default function BookingPage() {
                 className="mb-4 flex w-full items-center justify-between rounded-xl border-2 border-accent bg-accent-dim px-4 py-3 text-left transition-all hover:bg-accent/10 active:scale-[0.99]"
               >
                 <span className="flex items-center gap-2">
-                  <span className="text-xl">📅</span>
                   <span>
                     <span className="block text-sm font-bold text-accent">終日（1日お預かり）</span>
                     <span className="block text-[11px] text-secondary">時間を指定せず1日通してご予約</span>
@@ -646,7 +645,6 @@ export default function BookingPage() {
               <div className="py-12 text-center text-sm text-muted">空き状況を確認中...</div>
             ) : dayData?.closed ? (
               <div className="py-12 text-center">
-                <div className="text-4xl mb-3">🚫</div>
                 <p className="text-sm font-medium text-secondary">{dayData.message ?? "この日は定休日です"}</p>
                 <button onClick={() => setStep("calendar")} className="mt-4 text-sm text-accent font-medium underline">
                   別の日を選ぶ
@@ -654,7 +652,6 @@ export default function BookingPage() {
               </div>
             ) : !dayData || visibleSlots(dayData).length === 0 ? (
               <div className="py-12 text-center">
-                <div className="text-4xl mb-3">📅</div>
                 <p className="text-sm text-secondary">
                   {selectedCategory
                     ? `この日は「${selectedCategory}」を受け付ける枠がありません。`

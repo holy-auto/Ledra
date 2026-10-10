@@ -80,7 +80,7 @@ export default function LinkCodeButton({ customerId }: { customerId: string }) {
   return (
     <div className="mt-2">
       <button type="button" onClick={issue} disabled={busy} className="btn-secondary text-xs disabled:opacity-50">
-        {busy ? "発行中…" : "🔗 連携コードを発行"}
+        {busy ? "発行中…" : "連携コードを発行"}
       </button>
       {err && <p className="mt-1 text-xs text-danger-text">{err}</p>}
     </div>

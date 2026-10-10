@@ -197,7 +197,7 @@ export default function LineConnectSection() {
       {/* 料金の目安（設定時に確認できるヘルプ） */}
       <details className="rounded-lg border border-border-subtle bg-surface-hover/30 px-3 py-2 text-xs text-secondary">
         <summary className="cursor-pointer font-medium text-primary hover:text-accent">
-          💰 料金の目安（無料／有料の違い）
+          料金の目安（無料／有料の違い）
         </summary>
         <div className="mt-2 space-y-2 leading-relaxed">
           <p>

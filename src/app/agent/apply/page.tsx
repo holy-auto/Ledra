@@ -187,7 +187,7 @@ export default function AgentApplyPage() {
 
           {result.linked_existing_account && (
             <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-700">
-              ✅ 既存のLedraアカウントと紐付けて申請されました。
+              既存のLedraアカウントと紐付けて申請されました。
               <br />
               審査完了後、現在のアカウントで代理店ポータルにアクセスできるようになります。
             </div>

@@ -255,7 +255,7 @@ export default function CoatingProductsSection({ serviceType, canDeliveryNoteExt
         <div className="rounded-xl border border-border-default bg-surface p-3 space-y-2">
           <label className="flex items-center gap-2 text-sm font-medium text-secondary cursor-pointer w-fit">
             <span className="rounded-lg border border-border-default bg-inset px-3 py-2 text-xs font-medium hover:bg-surface-hover">
-              📄 納品書を撮影して読み取り
+              納品書を撮影して読み取り
             </span>
             <input
               type="file"
@@ -276,7 +276,7 @@ export default function CoatingProductsSection({ serviceType, canDeliveryNoteExt
           </p>
           {extractedCount > 0 && !extracting && (
             <p className="text-xs text-success-text">
-              ✅ {extractedCount} 件を下書きに追加しました。
+              {extractedCount} 件を下書きに追加しました。
               {extractTruncatedFrom && (
                 <span className="text-warning-text">
                   {" "}

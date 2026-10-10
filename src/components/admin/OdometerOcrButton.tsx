@@ -103,7 +103,7 @@ export default function OdometerOcrButton({ disabled, onRead }: Props) {
           disabled || busy ? "pointer-events-none opacity-50" : ""
         }`}
       >
-        📷 {busy ? "読み取り中…" : "メーターを撮って入力"}
+        {busy ? "読み取り中…" : "メーターを撮って入力"}
         <input
           type="file"
           accept="image/jpeg,image/png,image/webp"

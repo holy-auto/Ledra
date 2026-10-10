@@ -591,7 +591,7 @@ export default async function AdminHome({
             </span>
             <div>
               <div className="text-sm font-semibold text-primary group-hover:text-accent transition-colors">
-                🏃 飛び込み案件
+                飛び込み案件
               </div>
               <div className="text-xs text-muted">予約なしで案件をすぐ開始</div>
             </div>

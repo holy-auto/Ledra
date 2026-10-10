@@ -64,32 +64,28 @@ interface Props {
 
 const STATUS_CONFIG = {
   pass: {
-    label: "Ledra Standard ✅",
+    label: "Ledra Standard",
     bg: "bg-success-dim",
     border: "border-success/30",
     text: "text-success",
-    icon: "✅",
   },
   warning: {
-    label: "要確認 ⚠️",
+    label: "要確認",
     bg: "bg-warning-dim",
     border: "border-warning/30",
     text: "text-warning",
-    icon: "⚠️",
   },
   fail: {
-    label: "基準未達 ❌",
+    label: "基準未達",
     bg: "bg-red-400/10",
     border: "border-red-400/40",
     text: "text-red-400",
-    icon: "❌",
   },
   pending: {
     label: "未チェック",
     bg: "bg-surface",
     border: "border-border-default",
     text: "text-muted",
-    icon: "○",
   },
 };
 
@@ -156,14 +152,9 @@ export default function AiQualityPanel({ category, photoCount = 0, formRef }: Pr
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-medium hover:opacity-80 rounded-xl transition-opacity"
       >
-        <span className="text-base">📋</span>
         <span className={result ? cfg.text : "text-secondary"}>
           撮影チェック / 抜け漏れ検知
-          {result && (
-            <span className="ml-2 font-semibold">
-              {cfg.icon} {result.score}/100点
-            </span>
-          )}
+          {result && <span className="ml-2 font-semibold">{result.score}/100点</span>}
         </span>
         <span className="ml-auto text-muted text-xs">{open ? "▲ 閉じる" : "▼ 開く"}</span>
       </button>
@@ -187,7 +178,7 @@ export default function AiQualityPanel({ category, photoCount = 0, formRef }: Pr
                 チェック中…
               </>
             ) : (
-              <>📋 品質チェックを実行</>
+              <>品質チェックを実行</>
             )}
           </button>
 
@@ -222,7 +213,7 @@ export default function AiQualityPanel({ category, photoCount = 0, formRef }: Pr
               {/* エラーメッセージ */}
               {result.warningMessages.filter((w) => w.level === "error").length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold text-red-400">❌ 必須修正</p>
+                  <p className="text-xs font-semibold text-red-400">必須修正</p>
                   {result.warningMessages
                     .filter((w) => w.level === "error")
                     .map((w, i) => (
@@ -239,7 +230,7 @@ export default function AiQualityPanel({ category, photoCount = 0, formRef }: Pr
               {/* 警告メッセージ */}
               {result.warningMessages.filter((w) => w.level === "warning").length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold text-warning">⚠️ 推奨修正</p>
+                  <p className="text-xs font-semibold text-warning">推奨修正</p>
                   {result.warningMessages
                     .filter((w) => w.level === "warning")
                     .map((w, i) => (
@@ -257,7 +248,7 @@ export default function AiQualityPanel({ category, photoCount = 0, formRef }: Pr
               {result.missingPhotos.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold text-secondary mb-2">
-                    📷 不足写真（{result.missingPhotos.filter((p) => p.required).length}枚必須）
+                    不足写真（{result.missingPhotos.filter((p) => p.required).length}枚必須）
                   </p>
                   <div className="space-y-1.5">
                     {result.missingPhotos.map((p, i) => (
@@ -269,7 +260,6 @@ export default function AiQualityPanel({ category, photoCount = 0, formRef }: Pr
                             : "bg-warning-dim border border-warning/20 text-warning"
                         }`}
                       >
-                        <span className="mt-0.5">{p.required ? "🔴" : "🟡"}</span>
                         <div>
                           <span className="font-medium">{p.label}</span>
                           {p.required && <span className="ml-1 opacity-70">（必須）</span>}
@@ -286,7 +276,7 @@ export default function AiQualityPanel({ category, photoCount = 0, formRef }: Pr
               {result.missingFields.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold text-secondary mb-2">
-                    📝 未入力項目（{result.missingFields.filter((f) => f.required).length}件必須）
+                    未入力項目（{result.missingFields.filter((f) => f.required).length}件必須）
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {result.missingFields.map((f, i) => (
@@ -309,7 +299,7 @@ export default function AiQualityPanel({ category, photoCount = 0, formRef }: Pr
               {/* 合格時メッセージ */}
               {status === "pass" && (
                 <div className="rounded-lg bg-success-dim border border-success/30 px-3 py-2 text-xs text-success">
-                  ✅ Ledra Standard 基準をクリアしています！このまま発行できます。
+                  Ledra Standard 基準をクリアしています！このまま発行できます。
                 </div>
               )}
             </div>

@@ -67,9 +67,7 @@ export default function AcademyQAPage() {
         <a href="/admin/academy" className="text-sm text-accent hover:underline">
           ← Academy
         </a>
-        <h1 className="text-xl font-bold text-primary mt-2 flex items-center gap-2">
-          <span>💬</span> 施工QAアシスタント
-        </h1>
+        <h1 className="text-xl font-bold text-primary mt-2 flex items-center gap-2">施工QAアシスタント</h1>
         <p className="text-sm text-muted mt-1">
           施工に関する質問をAIに質問できます。Academy事例とマニュアルを参照して回答します。
         </p>
@@ -129,7 +127,6 @@ export default function AcademyQAPage() {
       {answer && (
         <div className="glass-card p-5 mb-6">
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-lg">🤖</span>
             <span className="text-sm font-medium text-secondary">AIの回答</span>
           </div>
           <p className="text-sm text-primary leading-relaxed whitespace-pre-wrap mb-4">{answer.answer}</p>

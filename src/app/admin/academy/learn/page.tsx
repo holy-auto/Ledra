@@ -56,8 +56,6 @@ const LEVEL_LABEL: Record<string, string> = {
   pro: "応用",
 };
 
-const RANK_MEDAL: Record<number, string> = { 0: "🥇", 1: "🥈", 2: "🥉" };
-
 function StarRating({ value }: { value: number }) {
   const full = Math.round(value);
   return (
@@ -107,7 +105,6 @@ function RankingSection({ category }: { category: string }) {
   return (
     <div className="mb-6">
       <h2 className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
-        <span>🏆</span>
         {category
           ? `${CATEGORIES.find((c) => c.value === category)?.label ?? category} ランキング`
           : "総合ランキング TOP 5"}
@@ -121,7 +118,7 @@ function RankingSection({ category }: { category: string }) {
             className="shrink-0 w-60 glass-card p-3 hover:border-accent/40 transition-colors"
           >
             <div className="flex items-start justify-between gap-1 mb-1.5">
-              <span className="text-lg">{RANK_MEDAL[idx] ?? `#${idx + 1}`}</span>
+              <span className="text-lg">#{idx + 1}</span>
               <span className={`text-xs px-1.5 py-0.5 border rounded-full ${LEVEL_BADGE[l.level] ?? ""}`}>
                 {LEVEL_LABEL[l.level] ?? l.level}
               </span>
@@ -192,7 +189,7 @@ export default function AcademyLearnPage() {
       <div className="mt-2 mb-6">
         <PageHeader
           tag="アカデミー"
-          title="📖 オンライン学習"
+          title="オンライン学習"
           description="運営・先輩加盟店のレッスンで知識を深めよう。良いレッスンへの評価は投稿者の報酬・割引につながります。"
           actions={
             <Link
@@ -203,9 +200,9 @@ export default function AcademyLearnPage() {
             </Link>
           }
           tabs={[
-            { key: "published", label: "📚 公開レッスン" },
-            { key: "drafts", label: "✏️ 下書き" },
-            { key: "mine", label: "👤 自分の投稿" },
+            { key: "published", label: "公開レッスン" },
+            { key: "drafts", label: "下書き" },
+            { key: "mine", label: "自分の投稿" },
           ]}
           activeTab={tab}
           onTabSelect={(k) => setTab(k as "published" | "drafts" | "mine")}
@@ -218,7 +215,6 @@ export default function AcademyLearnPage() {
       {/* 入門ロック説明 */}
       {introOnly && tab === "published" && (
         <div className="mb-4 p-3 bg-warning-dim border border-warning/30 rounded-xl text-xs text-warning flex items-start gap-2">
-          <span className="mt-0.5">🔒</span>
           <div>
             <p className="font-medium">入門レッスンのみ表示中</p>
             <p className="text-warning/70 mt-0.5">
@@ -263,7 +259,6 @@ export default function AcademyLearnPage() {
         </div>
       ) : lessons.length === 0 ? (
         <div className="text-center py-12 text-muted">
-          <div className="text-4xl mb-2">📭</div>
           <p className="text-sm">
             {tab === "drafts"
               ? "下書きはありません"
@@ -310,7 +305,7 @@ export default function AcademyLearnPage() {
               <div className="flex items-center gap-3 text-xs text-muted">
                 <StarRating value={l.rating_avg} />
                 <span>({l.rating_count})</span>
-                <span>👁 {l.view_count}</span>
+                <span>{l.view_count}</span>
                 <span className="text-yellow-400">{"★".repeat(l.difficulty)}</span>
               </div>
             </Link>

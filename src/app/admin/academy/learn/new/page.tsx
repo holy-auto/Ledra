@@ -25,9 +25,7 @@ export default async function NewLessonPage() {
         <Link href="/admin/academy/learn" className="text-sm text-accent hover:underline">
           ← オンライン学習
         </Link>
-        <h1 className="text-xl font-bold text-primary mt-2 flex items-center gap-2">
-          <span>✏️</span> レッスンを投稿
-        </h1>
+        <h1 className="text-xl font-bold text-primary mt-2 flex items-center gap-2">レッスンを投稿</h1>
         <p className="text-sm text-muted mt-1">
           先輩加盟店として知識を共有しましょう。良いレッスンには評価が集まり、投稿者の還元につながります。
         </p>

@@ -281,7 +281,7 @@ export default function DocumentDetailClient({
             {doc.is_invoice_compliant && <Badge variant="info">インボイス対応</Badge>}
             {seal && (
               <span className="inline-flex flex-wrap items-center gap-1" title={seal.detail ?? undefined}>
-                <Badge variant={seal.hasTimestamp ? "success" : "info"}>🔏 {seal.label}</Badge>
+                <Badge variant={seal.hasTimestamp ? "success" : "info"}>{seal.label}</Badge>
                 {seal.detail && <span className="hidden text-xs text-muted sm:inline">{seal.detail}</span>}
               </span>
             )}
@@ -350,7 +350,7 @@ export default function DocumentDetailClient({
                       : "顧客に LINE ユーザが紐付いていません"
                 }
               >
-                {linePayBusy ? "送信中…" : "💚 LINE で決済リンクを送る"}
+                {linePayBusy ? "送信中…" : "LINE で決済リンクを送る"}
               </button>
             )}
           </div>
@@ -370,7 +370,7 @@ export default function DocumentDetailClient({
                   );
                 }}
               >
-                📋 コピー
+                コピー
               </button>
             </div>
           </div>

@@ -159,7 +159,6 @@ export default async function JobWorkflowPage({ params }: { params: Promise<{ id
 
       {failedLineCount > 0 && customer?.id && (
         <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <span className="mr-1">⚠</span>
           この顧客への LINE 通知が <strong>{failedLineCount}</strong> 件未配信です (過去 30 日)。 重要通知
           (作業完了・帳票・予約確認) は SMS フォールバックを自動試行しています。 詳細は{" "}
           <Link href={`/admin/customers/${customer.id}/messages`} className="font-medium underline">
@@ -181,7 +180,7 @@ export default async function JobWorkflowPage({ params }: { params: Promise<{ id
           {
             title: "次アクションで作業を起動",
             description:
-              "ステータスに応じて「🪪 証明書を発行」「💰 請求書を作成」などのボタンが表示されます。車両IDと顧客IDが自動で引き継がれます。",
+              "ステータスに応じて「証明書を発行」「請求書を作成」などのボタンが表示されます。車両IDと顧客IDが自動で引き継がれます。",
           },
           {
             title: "タブで関連情報を一覧",

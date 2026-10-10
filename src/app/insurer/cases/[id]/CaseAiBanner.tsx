@@ -92,7 +92,7 @@ export default function CaseAiBanner({ caseId, onApplyAssignee, initialSummary, 
   return (
     <section className="rounded-xl border border-accent/30 bg-accent/5 p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-xs font-semibold tracking-[0.18em] text-accent">✨ AI アシスト</div>
+        <div className="text-xs font-semibold tracking-[0.18em] text-accent">AI アシスト</div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={runSummary} disabled={summarizing} className="btn-ghost text-[11px] py-1 px-2">
             {summarizing ? "要約中..." : summary ? "再要約" : "3 行で要約"}

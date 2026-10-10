@@ -150,7 +150,7 @@ export default function WorkflowTemplateEditor({ steps, onChange }: Props) {
                         onChange={(e) => updateStep(i, "is_customer_visible", e.target.checked)}
                         className="rounded border-border-default text-accent focus:ring-accent"
                       />
-                      <span>📱 顧客に通知</span>
+                      <span>顧客に通知</span>
                     </label>
                   </div>
 
@@ -158,7 +158,7 @@ export default function WorkflowTemplateEditor({ steps, onChange }: Props) {
                       作業者のステッパーに写真ガイド／チェックリストとして表示される。 */}
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <label className="block text-[11px] text-muted">
-                      📸 撮る写真（1行に1つ・任意）
+                      撮る写真（1行に1つ・任意）
                       <textarea
                         value={guideText(step, "photos")}
                         onChange={(e) => setGuideText(step, "photos", e.target.value)}

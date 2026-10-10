@@ -314,7 +314,7 @@ export default function WorkflowTemplatesClient() {
                   作業ステップ <span className="text-red-500">*</span>
                 </label>
                 <div className="text-[11px] text-muted mb-2">
-                  📱マークのついたステップ完了時に顧客にLINE通知が送られます
+                  「顧客に通知」をオンにしたステップ完了時に顧客にLINE通知が送られます
                 </div>
                 <WorkflowTemplateEditor steps={form.steps} onChange={(steps) => setForm((f) => ({ ...f, steps }))} />
               </div>

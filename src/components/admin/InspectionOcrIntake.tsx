@@ -86,7 +86,7 @@ export default function InspectionOcrIntake({ items, disabled, onFillNumeric, on
                 disabled || busy ? "pointer-events-none opacity-50" : ""
               }`}
             >
-              📷 {isBusy ? t.busyLabel : t.label}
+              {isBusy ? t.busyLabel : t.label}
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"

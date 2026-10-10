@@ -290,7 +290,7 @@ export default function PurchaseOrdersClient() {
                     className="btn-ghost text-xs"
                     disabled={busyId === po.id}
                   >
-                    ✨ AI下書き
+                    AI下書き
                   </button>
                 )}
                 {hasBackorder(po) && (

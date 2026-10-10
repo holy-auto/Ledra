@@ -192,8 +192,8 @@ export default function WalkinJobClient() {
             <div className="flex gap-2">
               {(
                 [
-                  { k: "arrived", label: "🚪 来店・受付", hint: "これから作業開始" },
-                  { k: "in_progress", label: "🔧 作業中", hint: "既に作業中" },
+                  { k: "arrived", label: "来店・受付", hint: "これから作業開始" },
+                  { k: "in_progress", label: "作業中", hint: "既に作業中" },
                 ] as const
               ).map((s) => (
                 <button
@@ -226,12 +226,12 @@ export default function WalkinJobClient() {
                 [
                   {
                     k: "now",
-                    label: "📝 見積書を作成",
+                    label: "見積書を作成",
                     hint: "別日に作業 / 事前に金額を提示する場合",
                   },
                   {
                     k: "skip",
-                    label: "⏭ 見積もり不要",
+                    label: "見積もり不要",
                     hint: "その場で作業するので見積書は作らない",
                   },
                 ] as const
@@ -391,10 +391,10 @@ export default function WalkinJobClient() {
           {submitting
             ? "作成中..."
             : estimateChoice === "now"
-              ? "🧭 案件を開始 → 見積書作成へ"
+              ? "案件を開始 → 見積書作成へ"
               : estimateChoice === "skip"
-                ? "🧭 案件を開始 →"
-                : "🧭 案件を開始 →"}
+                ? "案件を開始 →"
+                : "案件を開始 →"}
         </button>
       </div>
     </form>

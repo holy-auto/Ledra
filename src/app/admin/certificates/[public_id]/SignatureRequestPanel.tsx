@@ -96,7 +96,6 @@ export default function SignatureRequestPanel({ certificateId }: Props) {
                    text-sm font-medium text-accent-text hover:bg-accent/20 transition-colors
                    text-left flex items-center gap-2"
       >
-        <span>✍️</span>
         <span>電子署名を依頼する</span>
       </button>
     );
@@ -108,7 +107,6 @@ export default function SignatureRequestPanel({ certificateId }: Props) {
       <div className="rounded-2xl border border-accent/30 bg-accent-dim/50 p-4 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-success text-lg">✅</span>
             <span className="text-sm font-semibold text-primary">
               {status === "already_pending" ? "有効な署名依頼が存在します" : "署名URLを発行しました"}
             </span>
@@ -139,7 +137,7 @@ export default function SignatureRequestPanel({ certificateId }: Props) {
           className="w-full rounded-xl border border-border-default bg-surface px-4 py-2.5
                      text-sm text-secondary hover:bg-base transition-colors"
         >
-          {copied ? "✅ コピーしました" : "🔗 署名URLをコピー"}
+          {copied ? "コピーしました" : "署名URLをコピー"}
         </button>
 
         <p className="text-xs text-muted leading-relaxed">
@@ -156,7 +154,6 @@ export default function SignatureRequestPanel({ certificateId }: Props) {
       {/* ヘッダー */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-lg">✍️</span>
           <span className="text-sm font-semibold text-primary">電子署名依頼</span>
         </div>
         <button
@@ -235,7 +232,7 @@ export default function SignatureRequestPanel({ certificateId }: Props) {
                     : "border-border-default bg-surface text-muted hover:bg-base"
                 }`}
             >
-              {method === "email" ? "📧 メール" : method === "line" ? "💬 LINE" : "📱 SMS"}
+              {method === "email" ? "メール" : method === "line" ? "LINE" : "SMS"}
             </button>
           ))}
         </div>

@@ -52,9 +52,7 @@ export default async function EditLessonPage({ params }: { params: Promise<{ id:
         <Link href={`/admin/academy/learn/${id}`} className="text-sm text-accent hover:underline">
           ← レッスン詳細
         </Link>
-        <h1 className="text-xl font-bold text-primary mt-2 flex items-center gap-2">
-          <span>✏️</span> レッスンを編集
-        </h1>
+        <h1 className="text-xl font-bold text-primary mt-2 flex items-center gap-2">レッスンを編集</h1>
       </div>
       <LessonForm initial={initial} mode="edit" canPublishAsPlatform={false} />
     </div>

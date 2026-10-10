@@ -143,21 +143,19 @@ export default function DeliveryReceiptClient({ token }: { token: string }) {
   };
 
   if (phase === "loading") return <LoadingScreen />;
-  if (phase === "error") return <StatusScreen icon="❌" title="エラー" message={errorMsg} />;
+  if (phase === "error") return <StatusScreen title="エラー" message={errorMsg} />;
   if (phase === "expired")
     return (
       <StatusScreen
-        icon="⏰"
         title="有効期限切れ"
         message="この受領サインリンクの有効期限が切れています。施工店に再送を依頼してください。"
       />
     );
   if (phase === "already_signed")
-    return <StatusScreen icon="✅" title="受領サイン済み" message="この受領サインはすでに完了しています。" />;
+    return <StatusScreen title="受領サイン済み" message="この受領サインはすでに完了しています。" />;
   if (phase === "cancelled")
     return (
       <StatusScreen
-        icon="🚫"
         title="無効なリンク"
         message="このリンクは無効化されています。施工店にリンクの再発行を依頼してください。"
       />
@@ -207,7 +205,6 @@ export default function DeliveryReceiptClient({ token }: { token: string }) {
             rel="noopener noreferrer"
             className="mt-4 flex items-center gap-2 text-blue-400 text-sm hover:underline"
           >
-            <span>📄</span>
             <span>施工内容 PDF を確認する (別タブで開く)</span>
           </a>
         )}
@@ -306,7 +303,7 @@ export default function DeliveryReceiptClient({ token }: { token: string }) {
               署名処理中...
             </span>
           ) : (
-            "✍️ 受領サインを行う"
+            "受領サインを行う"
           )}
         </button>
 
@@ -338,11 +335,10 @@ function LoadingScreen() {
   );
 }
 
-function StatusScreen({ icon, title, message }: { icon: string; title: string; message: string }) {
+function StatusScreen({ title, message }: { title: string; message: string }) {
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-md text-center">
-        <div className="text-5xl mb-4">{icon}</div>
         <h1 className="text-white text-2xl font-bold mb-3">{title}</h1>
         <p className="text-gray-200 text-base leading-relaxed">{message}</p>
         <div className="mt-8 text-gray-600 text-sm">
@@ -366,7 +362,6 @@ function CompleteScreen({ data }: { data: CompleteData }) {
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-start py-8 px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
-          <div className="text-5xl mb-3">✅</div>
           <h1 className="text-white text-2xl font-bold mb-2">受領サインが完了しました</h1>
           <p className="text-gray-200 text-sm">電子署名法に基づく受領サインが正常に記録されました</p>
         </div>
@@ -391,7 +386,7 @@ function CompleteScreen({ data }: { data: CompleteData }) {
             className="w-full py-2.5 rounded-lg border border-gray-700 text-gray-300 text-sm
                        hover:bg-gray-800 transition-colors"
           >
-            {copied ? "✅ コピーしました" : "🔗 検証 URL をコピー"}
+            {copied ? "コピーしました" : "検証 URL をコピー"}
           </button>
         </div>
 

@@ -116,7 +116,7 @@ export default function InquiryAiBanner({ inquiryId, onUseDraft, initial }: Prop
     return (
       <div className="rounded-xl border border-accent/30 bg-accent/5 px-3 py-2 flex items-center justify-between gap-2">
         <div className={`text-xs ${err ? "text-muted" : "text-accent"}`}>
-          {err ?? "✨ AI で分類 + 返信下書きを生成できます。"}
+          {err ?? "AI で分類 + 返信下書きを生成できます。"}
         </div>
         <button type="button" onClick={run} disabled={loading} className="btn-ghost text-[11px] py-1 px-2">
           {loading ? "解析中..." : err ? "再試行" : "AI 分類"}
@@ -131,7 +131,7 @@ export default function InquiryAiBanner({ inquiryId, onUseDraft, initial }: Prop
   return (
     <div className="rounded-xl border border-accent/30 bg-accent/5 px-3 py-3 space-y-2">
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-accent font-semibold">✨ AI 分類</span>
+        <span className="text-accent font-semibold">AI 分類</span>
         {isAuto && <span className="text-muted">受信時に自動分類</span>}
         {display.category && (
           <span className="rounded-full bg-accent/10 text-accent px-2 py-0.5">

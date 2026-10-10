@@ -86,22 +86,18 @@ const features = [
 
 const usecases = [
   {
-    icon: "🚗",
     title: "中古車として売るとき",
     desc: "買主にQRを見せるだけで「コーティング済み・PPF施工済み」が第三者検証付きで証明できる。口頭説明ではなく、データで価値が伝わります。",
   },
   {
-    icon: "🛡️",
     title: "保険請求するとき",
     desc: "事故後の保険請求で「施工の記録」を求められたとき、保険担当者にURLを送るだけ。電話や郵送での書類送付が不要になります。",
   },
   {
-    icon: "🔧",
     title: "別の施工店でメンテナンスするとき",
     desc: "転居や引越しで別の施工店に行くとき、「前にどんなコーティングをしたか」を証明書で正確に伝えられます。適切なメンテナンスにつながります。",
   },
   {
-    icon: "🎁",
     title: "ギフトとして",
     desc: "車へのコーティングをプレゼントした場合、デジタル証明書を贈ることができます。「施工の記念」として顧客のスマートフォンに残ります。",
   },
@@ -248,8 +244,7 @@ export default function CustomerPortalPage() {
         <div className="mx-auto mt-10 max-w-4xl grid grid-cols-1 sm:grid-cols-2 gap-5">
           {usecases.map((u, i) => (
             <ScrollReveal key={u.title} variant="fade-up" delay={i * 60}>
-              <div className="flex items-start gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-6">
-                <div className="text-3xl leading-none shrink-0">{u.icon}</div>
+              <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-6">
                 <div>
                   <h3 className="text-[1.063rem] font-bold text-white leading-snug">{u.title}</h3>
                   <p className="mt-2 text-sm leading-relaxed text-white">{u.desc}</p>

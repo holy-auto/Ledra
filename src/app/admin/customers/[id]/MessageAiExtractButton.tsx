@@ -62,7 +62,7 @@ export default function MessageAiExtractButton({ messageId, customerId }: Props)
         disabled={loading}
         className="mt-1.5 text-[10px] underline text-muted hover:text-accent"
       >
-        {loading ? "解析中..." : "✨ AI で予約候補に抽出"}
+        {loading ? "解析中..." : "AI で予約候補に抽出"}
       </button>
     );
   }

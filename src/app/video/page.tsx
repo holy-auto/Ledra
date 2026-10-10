@@ -198,26 +198,22 @@ const SLIDES = [
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
             {
-              icon: "🪪",
               title: "証明書発行",
               desc: "車両・顧客情報を自動引き継ぎ。重複発行防止機能付き",
             },
             {
-              icon: "💰",
               title: "請求書作成",
               desc: "案件情報から自動反映。PDF 生成・共有リンク発行",
             },
             {
-              icon: "🏃",
               title: "飛び込み案件",
               desc: "/jobs/new から数秒でワークフローに合流",
             },
           ].map((card) => (
             <div
-              key={card.icon}
+              key={card.title}
               className="rounded-xl bg-white/[0.04] border border-white/[0.07] p-5 flex flex-col gap-2"
             >
-              <div className="text-2xl">{card.icon}</div>
               <div className="text-white font-semibold">{card.title}</div>
               <div className="text-white text-sm leading-relaxed">{card.desc}</div>
             </div>
@@ -240,23 +236,21 @@ const SLIDES = [
         </h2>
         <div className="rounded-xl bg-white/[0.04] border border-white/[0.07] p-6 flex flex-col gap-4">
           <div className="flex items-center gap-3 rounded-lg bg-white/[0.06] border border-white/[0.1] px-4 py-3">
-            <span className="text-white">🔍</span>
             <span className="text-white text-sm">証明書番号 / 顧客名 / 車両ナンバーで検索…</span>
           </div>
           <div className="grid grid-cols-2 gap-3">
             {[
-              { label: "証明書一括検索", icon: "📄" },
-              { label: "案件管理", icon: "📋" },
-              { label: "SLA 自動管理", icon: "⏱️" },
-              { label: "CSV / PDF 出力", icon: "📊" },
-              { label: "自動振り分けルール", icon: "🤖" },
-              { label: "ウォッチリスト", icon: "👁️" },
+              { label: "証明書一括検索" },
+              { label: "案件管理" },
+              { label: "SLA 自動管理" },
+              { label: "CSV / PDF 出力" },
+              { label: "自動振り分けルール" },
+              { label: "ウォッチリスト" },
             ].map((f) => (
               <div
                 key={f.label}
                 className="flex items-center gap-2 rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2 text-sm text-white"
               >
-                <span>{f.icon}</span>
                 {f.label}
               </div>
             ))}
@@ -329,15 +323,14 @@ const SLIDES = [
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {[
-            { name: "Stripe", desc: "安全な決済・サブスク管理", icon: "💳" },
-            { name: "Supabase", desc: "PostgreSQL + RLS + Realtime", icon: "🗄️" },
-            { name: "Polygon BC", desc: "施工写真ハッシュのアンカリング", icon: "⛓️" },
-            { name: "C2PA", desc: "施工写真へのコンテンツクレデンシャル付与", icon: "🪪" },
-            { name: "電子署名 (内製)", desc: "ECDSA P-256 ベースの自前署名", icon: "✍️" },
-            { name: "2FA (TOTP)", desc: "Google Auth / 1Password 対応", icon: "🔐" },
+            { name: "Stripe", desc: "安全な決済・サブスク管理" },
+            { name: "Supabase", desc: "PostgreSQL + RLS + Realtime" },
+            { name: "Polygon BC", desc: "施工写真ハッシュのアンカリング" },
+            { name: "C2PA", desc: "施工写真へのコンテンツクレデンシャル付与" },
+            { name: "電子署名 (内製)", desc: "ECDSA P-256 ベースの自前署名" },
+            { name: "2FA (TOTP)", desc: "Google Auth / 1Password 対応" },
           ].map((t) => (
             <div key={t.name} className="rounded-xl bg-white/[0.04] border border-white/[0.07] p-4 flex flex-col gap-2">
-              <div className="text-xl">{t.icon}</div>
               <div className="text-white font-semibold text-sm">{t.name}</div>
               <div className="text-white text-xs leading-relaxed">{t.desc}</div>
             </div>

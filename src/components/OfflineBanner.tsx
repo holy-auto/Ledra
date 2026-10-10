@@ -105,9 +105,6 @@ export default function OfflineBanner() {
       }}
     >
       <div className="flex items-start gap-3 p-3">
-        <span aria-hidden className="text-xl mt-0.5">
-          {isOffline ? "📡" : queueCount > 0 ? "⏳" : "✅"}
-        </span>
         <div className="min-w-0 flex-1 text-xs">
           {isOffline ? (
             <div>
@@ -127,7 +124,7 @@ export default function OfflineBanner() {
                 disabled={syncing}
                 className="mt-2 inline-flex items-center gap-1 rounded-md border border-border-default bg-surface-hover px-2 py-1 text-[11px] font-medium text-primary hover:bg-surface-active disabled:opacity-50"
               >
-                {syncing ? "同期中…" : "🔄 今すぐ同期"}
+                {syncing ? "同期中…" : "今すぐ同期"}
               </button>
             </div>
           ) : lastResult ? (

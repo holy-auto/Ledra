@@ -279,7 +279,7 @@ export default function CustomerMessagesTab({
             className="btn-secondary text-sm self-end px-3 py-2 disabled:opacity-50"
             title="JPEG / PNG (10MBまで) をLINEで送信"
           >
-            📷 画像
+            画像
           </button>
           <button
             type="button"
@@ -287,7 +287,7 @@ export default function CustomerMessagesTab({
             disabled={!canSend || sendBusy || !draft.trim()}
             className="btn-primary text-sm self-end px-4 py-2 disabled:opacity-50"
           >
-            {sendBusy ? "送信中…" : "📤 送信"}
+            {sendBusy ? "送信中…" : "送信"}
           </button>
         </div>
         {sendMsg && <p className="mt-2 text-xs text-warning">{sendMsg}</p>}

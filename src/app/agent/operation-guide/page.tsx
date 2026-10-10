@@ -30,10 +30,7 @@ export default function AgentOperationGuidePage() {
       <div className="rounded-2xl border border-accent/30 bg-accent-dim/20 p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-primary flex items-center gap-2">
-              <span aria-hidden>📤</span>
-              施工店に共有する
-            </div>
+            <div className="text-sm font-semibold text-primary flex items-center gap-2">施工店に共有する</div>
             <p className="mt-1 text-xs text-muted leading-relaxed">
               ログイン不要の公開ページです。URL を伝えれば誰でも閲覧できます。
             </p>
@@ -67,7 +64,6 @@ export default function AgentOperationGuidePage() {
                 {group.guides.map((g) => (
                   <li key={g.id}>
                     <a href={`#guide-${g.id}`} className="hover:text-accent hover:underline">
-                      <span className="mr-1.5">{g.icon}</span>
                       {g.title}
                     </a>
                   </li>

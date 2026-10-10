@@ -210,7 +210,6 @@ export default function AgentTrainingPage() {
                     </span>
                   ) : (
                     <div className="text-center">
-                      <div className="text-2xl">🔒</div>
                       <div className="mt-1 text-[11px] font-medium text-muted">準備中</div>
                     </div>
                   )}

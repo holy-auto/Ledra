@@ -42,9 +42,6 @@ export default function AnchorBadge({
     >
       {/* 子 span にも accent-gold クラスを付与: globals.css のダーク時 span 白文字化
           セーフティネット（span:not([class*="accent-gold"])）から除外して金文字を保つ。 */}
-      <span aria-hidden className="text-accent-gold-text">
-        ⛓
-      </span>
       <span className="text-accent-gold-text">ブロックチェーン記録済み</span>
       <span className="min-w-0 break-all font-mono text-[10px] text-accent-gold-text opacity-80">
         {truncateHash(txHash)}

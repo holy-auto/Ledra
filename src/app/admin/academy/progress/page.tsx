@@ -6,7 +6,6 @@ import PageHeader from "@/components/ui/PageHeader";
 
 interface Badge {
   id: string;
-  emoji: string;
   label: string;
   description: string;
 }
@@ -283,9 +282,9 @@ export default function AcademyProgressPage() {
           </Link>
         }
         tabs={[
-          { key: "progress", label: "📊 進捗・バッジ" },
-          { key: "certificates", label: "📜 修了証" },
-          { key: "rewards", label: "💰 報酬履歴" },
+          { key: "progress", label: "進捗・バッジ" },
+          { key: "certificates", label: "修了証" },
+          { key: "rewards", label: "報酬履歴" },
         ]}
         activeTab={activeTab}
         onTabSelect={(key) => handleTabChange(key as Tab)}
@@ -337,14 +336,14 @@ export default function AcademyProgressPage() {
           {mvp && (
             <div className="glass-card p-5 mb-6 border border-yellow-400/30 bg-yellow-400/5">
               <h2 className="font-semibold text-primary mb-3 flex items-center gap-2">
-                <span>👑</span> 月間 MVP 投稿者
+                月間 MVP 投稿者
                 {mvpPeriod && (
                   <span className="text-xs text-muted font-normal">{mvpPeriod.slice(0, 7).replace("-", "年")}月</span>
                 )}
               </h2>
               <div className="flex items-start gap-4 flex-wrap">
                 <div className="flex-1 min-w-0">
-                  <div className="text-lg font-bold text-yellow-400 flex items-center gap-2">🥇 {mvp.tenant_name}</div>
+                  <div className="text-lg font-bold text-yellow-400 flex items-center gap-2">{mvp.tenant_name}</div>
                   <div className="text-sm text-secondary mt-1">
                     高評価レッスン {mvp.lesson_count} 件・報酬 ¥{mvp.total_amount_jpy.toLocaleString()}
                   </div>
@@ -364,7 +363,7 @@ export default function AcademyProgressPage() {
                   <div className="shrink-0 text-xs text-muted space-y-1">
                     {runnersUp.map((r, i) => (
                       <div key={r.author_user_id} className="flex items-center gap-1">
-                        <span>{["🥈", "🥉"][i] ?? `#${i + 2}`}</span>
+                        <span>#{i + 2}</span>
                         <span className="text-secondary">{r.tenant_name}</span>
                         <span>({r.lesson_count}件)</span>
                       </div>
@@ -377,9 +376,7 @@ export default function AcademyProgressPage() {
 
           {/* バッジ */}
           <div className="glass-card p-5 mb-6">
-            <h2 className="font-semibold text-primary mb-3 flex items-center gap-2">
-              <span>🎖</span> 獲得バッジ
-            </h2>
+            <h2 className="font-semibold text-primary mb-3 flex items-center gap-2">獲得バッジ</h2>
             {badges.length === 0 ? (
               <p className="text-sm text-muted">まだバッジがありません。レッスン完了や事例公開で獲得できます。</p>
             ) : (
@@ -389,7 +386,6 @@ export default function AcademyProgressPage() {
                     key={b.id}
                     className="flex items-center gap-3 p-3 rounded-xl bg-inset border border-border-subtle"
                   >
-                    <span className="text-3xl">{b.emoji}</span>
                     <div>
                       <div className="text-sm font-medium text-primary">{b.label}</div>
                       <div className="text-xs text-muted">{b.description}</div>
@@ -402,9 +398,7 @@ export default function AcademyProgressPage() {
 
           {/* 直近の完了 */}
           <div className="glass-card p-5">
-            <h2 className="font-semibold text-primary mb-3 flex items-center gap-2">
-              <span>🕒</span> 直近の完了
-            </h2>
+            <h2 className="font-semibold text-primary mb-3 flex items-center gap-2">直近の完了</h2>
             {recent.length === 0 ? (
               <p className="text-sm text-muted">完了したレッスンはまだありません</p>
             ) : (
@@ -436,7 +430,6 @@ export default function AcademyProgressPage() {
       {activeTab === "certificates" && (
         <div>
           <div className="glass-card p-5 mb-6 flex gap-3 items-start">
-            <span className="text-2xl">📜</span>
             <div>
               <p className="text-sm text-primary font-medium">カテゴリ別 修了証</p>
               <p className="text-sm text-muted mt-1">
@@ -503,7 +496,6 @@ export default function AcademyProgressPage() {
         <div>
           {/* 説明 */}
           <div className="glass-card p-5 mb-6 flex gap-3 items-start">
-            <span className="text-2xl">💡</span>
             <div>
               <p className="text-sm text-primary font-medium">高評価レッスンへの報酬制度</p>
               <p className="text-sm text-muted mt-1">
@@ -516,9 +508,7 @@ export default function AcademyProgressPage() {
           {/* super_admin: 集計操作パネル */}
           {isAdmin && (
             <div className="glass-card p-5 mb-6">
-              <h2 className="font-semibold text-primary mb-3 flex items-center gap-2">
-                <span>⚙️</span> 月次集計 (管理者)
-              </h2>
+              <h2 className="font-semibold text-primary mb-3 flex items-center gap-2">月次集計 (管理者)</h2>
               <div className="flex items-end gap-3 flex-wrap">
                 <div>
                   <label className="text-xs text-muted block mb-1">集計月 (YYYY-MM-01)</label>

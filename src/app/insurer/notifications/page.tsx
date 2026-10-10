@@ -6,12 +6,12 @@ import { createClient } from "@/lib/supabase/client";
 
 /* ── notification type config ── */
 
-const TYPE_CONFIG: Record<string, { icon: string; label: string; color: string }> = {
-  case_update: { icon: "📋", label: "案件更新", color: "blue" },
-  pii_approved: { icon: "✅", label: "PII開示承認", color: "emerald" },
-  pii_rejected: { icon: "❌", label: "PII開示却下", color: "red" },
-  new_message: { icon: "💬", label: "新規メッセージ", color: "purple" },
-  system: { icon: "🔔", label: "システム通知", color: "neutral" },
+const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
+  case_update: { label: "案件更新", color: "blue" },
+  pii_approved: { label: "PII開示承認", color: "emerald" },
+  pii_rejected: { label: "PII開示却下", color: "red" },
+  new_message: { label: "新規メッセージ", color: "purple" },
+  system: { label: "システム通知", color: "neutral" },
 };
 
 function typeColor(type: string) {
@@ -178,7 +178,6 @@ export default function InsurerNotificationsPage() {
       {/* Empty state */}
       {!loading && notifications.length === 0 && (
         <div className="rounded-2xl border border-border-default bg-surface py-16 text-center">
-          <div className="mb-2 text-4xl">🔔</div>
           <p className="text-muted">通知はまだありません</p>
         </div>
       )}
@@ -198,7 +197,7 @@ export default function InsurerNotificationsPage() {
                 <div
                   className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-lg ${typeColor(n.type)}`}
                 >
-                  {cfg.icon}
+                  {cfg.label.slice(0, 1)}
                 </div>
 
                 {/* Content */}

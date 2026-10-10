@@ -19,11 +19,11 @@ export type AutoQualityResult = {
   checked_at?: string | null;
 };
 
-const STATUS_STYLE: Record<AutoQualityResult["overall_status"], { badge: string; label: string; icon: string }> = {
-  pass: { badge: "bg-emerald-400/10 text-emerald-500 border-emerald-400/30", label: "基準クリア", icon: "✅" },
-  warning: { badge: "bg-warning-dim text-warning border-warning/30", label: "要確認", icon: "⚠️" },
-  fail: { badge: "bg-red-400/10 text-red-400 border-red-400/30", label: "基準未達", icon: "❌" },
-  pending: { badge: "bg-surface-hover text-muted border-border-default", label: "未判定", icon: "○" },
+const STATUS_STYLE: Record<AutoQualityResult["overall_status"], { badge: string; label: string }> = {
+  pass: { badge: "bg-emerald-400/10 text-emerald-500 border-emerald-400/30", label: "基準クリア" },
+  warning: { badge: "bg-warning-dim text-warning border-warning/30", label: "要確認" },
+  fail: { badge: "bg-red-400/10 text-red-400 border-red-400/30", label: "基準未達" },
+  pending: { badge: "bg-surface-hover text-muted border-border-default", label: "未判定" },
 };
 
 export default function QualityAutoPanel({ result }: { result: AutoQualityResult }) {
@@ -38,9 +38,7 @@ export default function QualityAutoPanel({ result }: { result: AutoQualityResult
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">LEDRA STANDARD</div>
           <div className="text-base font-semibold text-primary">写真品質・抜け漏れ監査</div>
         </div>
-        <span className={`rounded-full border px-3 py-1 text-sm font-semibold ${style.badge}`}>
-          {style.icon} {result.score}/100
-        </span>
+        <span className={`rounded-full border px-3 py-1 text-sm font-semibold ${style.badge}`}>{result.score}/100</span>
       </div>
 
       <div className={`rounded-xl border px-4 py-3 text-sm ${style.badge}`}>
@@ -58,7 +56,7 @@ export default function QualityAutoPanel({ result }: { result: AutoQualityResult
 
       {errors.length > 0 && (
         <div className="space-y-1">
-          <p className="text-xs font-semibold text-red-400">❌ 必須修正</p>
+          <p className="text-xs font-semibold text-red-400">必須修正</p>
           {errors.map((w, i) => (
             <div key={i} className="rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-400">
               {w.message}
@@ -69,7 +67,7 @@ export default function QualityAutoPanel({ result }: { result: AutoQualityResult
 
       {warns.length > 0 && (
         <div className="space-y-1">
-          <p className="text-xs font-semibold text-warning">⚠️ 推奨修正</p>
+          <p className="text-xs font-semibold text-warning">推奨修正</p>
           {warns.map((w, i) => (
             <div key={i} className="rounded-lg border border-warning/30 bg-warning-dim px-3 py-2 text-xs text-warning">
               {w.message}
@@ -80,7 +78,7 @@ export default function QualityAutoPanel({ result }: { result: AutoQualityResult
 
       {result.missing_photos.length > 0 && (
         <div>
-          <p className="mb-1 text-xs font-semibold text-secondary">📷 不足写真</p>
+          <p className="mb-1 text-xs font-semibold text-secondary">不足写真</p>
           <div className="flex flex-wrap gap-1.5">
             {result.missing_photos.map((p, i) => (
               <span
@@ -96,7 +94,7 @@ export default function QualityAutoPanel({ result }: { result: AutoQualityResult
 
       {result.missing_fields.length > 0 && (
         <div>
-          <p className="mb-1 text-xs font-semibold text-secondary">📝 未入力項目</p>
+          <p className="mb-1 text-xs font-semibold text-secondary">未入力項目</p>
           <div className="flex flex-wrap gap-1.5">
             {result.missing_fields.map((f, i) => (
               <span
@@ -112,7 +110,7 @@ export default function QualityAutoPanel({ result }: { result: AutoQualityResult
 
       {result.overall_status === "pass" && errors.length === 0 && warns.length === 0 && (
         <div className="rounded-lg border border-success/30 bg-success-dim px-3 py-2 text-xs text-success">
-          ✅ Ledra Standard 基準をクリアしています。
+          Ledra Standard 基準をクリアしています。
         </div>
       )}
     </section>

@@ -124,7 +124,7 @@ export default function PendingOfflineCerts() {
           disabled={busy}
           className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-50"
         >
-          {busy ? "同期中…" : "🔄 今すぐ同期"}
+          {busy ? "同期中…" : "今すぐ同期"}
         </button>
       </div>
 

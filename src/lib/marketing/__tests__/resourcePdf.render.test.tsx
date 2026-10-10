@@ -52,8 +52,9 @@ describe("pdfSafe", () => {
   ];
 
   it("PDF に流す全データから絵文字を落とす（埋め込みフォントに絵文字グリフが無く豆腐になるため）", () => {
-    // 元データには絵文字が実在する（このテスト自体が無意味になっていないことの確認）。
-    expect(sourceTexts.some((t) => EMOJI.test(t))).toBe(true);
+    // 元データからは UI 方針として絵文字を撤去済み。pdfSafe は再混入したときの保険で、
+    // 絵文字を実際に落とせることは下の2ケース（実在の絵文字を入力）で確かめている。
+    expect(sourceTexts.length).toBeGreaterThan(0);
     for (const t of sourceTexts) {
       expect(EMOJI.test(pdfSafe(t)), `絵文字が残っている: ${t}`).toBe(false);
     }

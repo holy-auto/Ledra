@@ -99,17 +99,17 @@ export default function LineKnowledgeOnboardingCard() {
   if (phase === "done") {
     return (
       <section className="glass-card p-5">
-        <div className="text-base font-semibold text-primary">✅ {savedCount} 件のナレッジを学習させました</div>
+        <div className="text-base font-semibold text-primary">{savedCount} 件のナレッジを学習させました</div>
         <p className="mt-1 text-xs text-muted">
           追加の学習はいつでも 店舗設定 &gt; LINEナレッジ から。自動返信を始めるには AI 自動入力設定を ON
           にしてください。
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Link href="/admin/settings/line-knowledge" className="btn-secondary">
-            💬 LINEナレッジを開く →
+            LINEナレッジを開く →
           </Link>
           <Link href="/admin/settings/ai-automation" className="btn-secondary">
-            ✨ AI 自動入力の設定を開く →
+            AI 自動入力の設定を開く →
           </Link>
         </div>
       </section>

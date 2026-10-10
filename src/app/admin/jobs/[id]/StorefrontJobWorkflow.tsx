@@ -157,7 +157,7 @@ export default function StorefrontJobWorkflow({ reservation, customer, vehicle, 
         kind: "reservation_update",
       });
       if (r.queued) {
-        setErr(`📡 オフラインです。変更を保留し、ネット復帰後に自動同期します。`);
+        setErr(`オフラインです。変更を保留し、ネット復帰後に自動同期します。`);
         return;
       }
       if (!r.ok && r.response) {
@@ -279,7 +279,7 @@ export default function StorefrontJobWorkflow({ reservation, customer, vehicle, 
         {currentStatus === "in_progress" && (
           <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-accent/20 bg-accent-dim px-3 py-2.5">
             <span className="text-xs text-accent-text">
-              📷 完了後は証跡を残しづらい作業もあります。作業中の様子も撮っておくと安心です。
+              完了後は証跡を残しづらい作業もあります。作業中の様子も撮っておくと安心です。
             </span>
             <Link href={inProgressPhotoUrl} className="ml-auto text-xs font-semibold text-accent hover:underline">
               作業中の写真を撮る →

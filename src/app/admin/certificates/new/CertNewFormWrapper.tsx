@@ -466,8 +466,8 @@ export default function CertNewFormWrapper({
         setError(null);
         const note =
           submitStatus === "active"
-            ? `📡 オフラインのため証明書 + 写真 ${files.length} 枚をキューに保存しました。通信復帰後に「写真アップロード → 発行」まで自動実行されます。`
-            : `📡 オフラインで下書き保存しました（写真 ${files.length} 枚）。通信復帰後に自動同期されます。`;
+            ? `オフラインのため証明書 + 写真 ${files.length} 枚をキューに保存しました。通信復帰後に「写真アップロード → 発行」まで自動実行されます。`
+            : `オフラインで下書き保存しました（写真 ${files.length} 枚）。通信復帰後に自動同期されます。`;
         setUploadProgress(note);
         return;
       } catch (e) {
@@ -839,7 +839,6 @@ export default function CertNewFormWrapper({
           </div>
           {defaultPhotoStage === "in_progress" && (
             <div className="rounded-xl border border-accent/20 bg-accent-dim px-4 py-3 text-xs text-accent-text">
-              📷
               作業中の記録として写真を追加します。まだ工程の途中でも、ここで「下書き保存」しておけば後から続きを入力・発行できます。
             </div>
           )}
@@ -981,7 +980,7 @@ export default function CertNewFormWrapper({
             {/* AI下書き適用通知 */}
             {draftApplied && (
               <div className="rounded-xl border border-success/30 bg-success-dim px-3 py-2 text-xs text-success-text">
-                ✅ AI下書きをフォームに適用しました。内容を確認・編集してください。
+                AI下書きをフォームに適用しました。内容を確認・編集してください。
               </div>
             )}
 

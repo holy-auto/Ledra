@@ -167,7 +167,7 @@ export default function LaborQuoteButton({
         disabled={disabled || busy}
         onClick={() => void run()}
       >
-        {busy ? "計算中…" : "🔧 工賃を計算"}
+        {busy ? "計算中…" : "工賃を計算"}
       </button>
       {msg && <span className="text-[11px] text-muted">{msg}</span>}
       {missing.length > 0 && (

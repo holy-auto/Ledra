@@ -106,11 +106,11 @@ type QrStep = "idle" | "creating" | "showing" | "paid" | "recording" | "error";
 /* ────────────────────────────────────────────── */
 
 const PAYMENT_METHODS = [
-  { value: "cash", label: "現金", icon: "💴" },
-  { value: "card", label: "カード", icon: "💳" },
-  { value: "qr", label: "QR決済", icon: "📱" },
-  { value: "bank_transfer", label: "振込", icon: "🏦" },
-  { value: "other", label: "その他", icon: "📋" },
+  { value: "cash", label: "現金" },
+  { value: "card", label: "カード" },
+  { value: "qr", label: "QR決済" },
+  { value: "bank_transfer", label: "振込" },
+  { value: "other", label: "その他" },
 ] as const;
 
 const RESERVATION_STATUS_MAP: Record<
@@ -1696,7 +1696,6 @@ export default function PosClient() {
                             : "border-border-subtle bg-surface text-secondary hover:border-border"
                         }`}
                       >
-                        <span className="block text-base">{pm.icon}</span>
                         {pm.label}
                       </button>
                     ))}

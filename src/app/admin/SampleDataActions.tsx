@@ -80,7 +80,6 @@ export default function SampleDataActions() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <div className="text-xs font-semibold text-primary flex items-center gap-1.5">
-            <span aria-hidden>🎓</span>
             {hasSample ? "サンプルデータが入っています" : "まずは触って試してみる"}
           </div>
           <p className="mt-0.5 text-[11px] text-muted leading-relaxed">
@@ -92,11 +91,11 @@ export default function SampleDataActions() {
         <div className="shrink-0">
           {hasSample ? (
             <button type="button" onClick={remove} disabled={busy} className="btn-ghost text-xs px-3 py-1.5">
-              {busy ? "削除中…" : "🧹 サンプルをクリア"}
+              {busy ? "削除中…" : "サンプルをクリア"}
             </button>
           ) : (
             <button type="button" onClick={create} disabled={busy} className="btn-secondary text-xs px-3 py-1.5">
-              {busy ? "作成中…" : "🎓 サンプルデータで試す"}
+              {busy ? "作成中…" : "サンプルデータで試す"}
             </button>
           )}
         </div>
