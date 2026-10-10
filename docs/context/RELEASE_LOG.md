@@ -8,7 +8,10 @@
 
 - 内容: `assets` バケット（施工写真・動画・ロゴ・印影・点検写真・部品の証跡）を `public = false` にするマイグレーション
   （`20261010130513_make_assets_bucket_private.sql`）。公開のままだと、公開ページで写真を隠しても、保存パスを知っている人は
-  `/storage/v1/object/public/assets/...` で原本を開けた。マージで本番に自動適用される。
+  `/storage/v1/object/public/assets/...` で原本を開けた。#1300 のマージで本番に適用済み（`db-migrate.yml` が 2026-10-10 13:47:08Z 開始・13:47:36Z 成功、
+  `schema_migrations` に記録、`storage.buckets` で `public = false`・容量/MIME は変わらず）。適用後、本番の写真の公開 URL は
+  **400（Bucket not found）**、CDN のキャッシュからも出ていない（`cf-cache-status: BYPASS`）。署名 URL での表示は、適用後にまだ
+  アクセスが無く本番では未確認（同じ設定のプレビュー分岐でバケットが非公開になったことは確認）。
 - 前提の確認（2026-10-10、本番）: `assets` を参照する storage.objects のポリシーは 0 本。公開 URL を保存しうる列
   （ブログのヒーロー画像・アカデミーのカバー画像/動画 URL・代理店研修のサムネイル/教材 URL・FT の契約書 URL・FT 研修の教材 URL）は 0 件。コード（Web・モバイル・scripts）に公開 URL を作る経路は無く、
   表示はすべて署名 URL か service-role の download（読み取り専用の全経路調査で確認）。
