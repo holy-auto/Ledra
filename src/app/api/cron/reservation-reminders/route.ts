@@ -37,14 +37,16 @@ export async function GET(req: NextRequest) {
       // withCronLock 経由で外側の sendCronFailureAlert に上げる (無言のゼロ件で隠さない)。
       const candidates: string[] = [];
       const PAGE = 1000;
-      let after = "";
+      // tenant_id は uuid。初回に .gt("tenant_id", "") を送ると 22P02 で discovery ごと落ちるので、初回は条件を付けない。
+      let after: string | null = null;
       for (;;) {
-        const { data: rows, error } = await admin
+        let q = admin
           .from("tenant_ai_automation_settings")
           .select("tenant_id, auto_actions")
-          .gt("tenant_id", after)
           .order("tenant_id", { ascending: true })
           .limit(PAGE);
+        if (after) q = q.gt("tenant_id", after);
+        const { data: rows, error } = await q;
         if (error) throw new Error(`tenant_ai_automation_settings select failed: ${error.message}`);
         const page = (rows as Array<{ tenant_id: string; auto_actions: unknown }> | null) ?? [];
         for (const r of page) {
