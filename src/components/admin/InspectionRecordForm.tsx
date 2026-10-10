@@ -25,7 +25,7 @@ import {
  *     各項目に任意の「備考」テキストを付与可能
  *  3. 「カメラで撮影 / アルバムから選択」: 選択した写真はローカル保持し、
  *     「保存」確定時にまとめて Supabase Storage (`/api/admin/inspection-records/images`)
- *     へアップロードして公開 URL を photo_urls に保存する。所見は音声メモ (VoiceMemoPanel)
+ *     へアップロードして保存パスを photo_urls に保存する（公開 URL は持たない。表示時に署名する）。所見は音声メモ (VoiceMemoPanel)
  *     からも入力できる (AI 対応プランのみ)。
  *  4. 「点検を保存」: 写真アップロード → POST /api/admin/inspection-records
  */
@@ -186,7 +186,7 @@ export default function InspectionRecordForm({
     setFormError(null);
     setSubmitting(true);
     try {
-      // 1) 写真があれば先に Storage へアップロードして URL を得る（保存確定時に一括）。
+      // 1) 写真があれば先に Storage へアップロードして保存パスを得る（保存確定時に一括。キー名は互換のため urls / photo_urls）。
       let photoUrls: string[] = [];
       if (photos.length > 0) {
         const form = new FormData();
