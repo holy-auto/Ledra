@@ -78,7 +78,10 @@ const inspectionAnswerSchema = z.object({
 /** answers: { [item_id]: { value, note? } } */
 const inspectionAnswersSchema = z.record(z.string(), inspectionAnswerSchema).default({});
 
-/** photo_urls: data URL もしくは Storage URL の文字列配列 (最大 20) */
+/**
+ * photo_urls: 点検写真の**保存パス**の配列 (最大 20)。形の検証（自テナントの点検写真のパスか）は
+ * テナント ID が要るので、ルートで `inspectionPhotoPathError` を通す。
+ */
 const photoUrlsSchema = z
   .array(z.string().max(5_000_000, "画像データが大きすぎます。"))
   .max(20, "写真は最大 20 枚までです。")
@@ -124,3 +127,14 @@ export const inspectionRecordUpdateSchema = z.object({
   notes: optionalText(2000),
 });
 export type InspectionRecordUpdateInput = z.infer<typeof inspectionRecordUpdateSchema>;
+
+/**
+ * 点検写真のパスが、自テナントの点検写真の保存先（`/api/admin/inspection-records/images` が作る
+ * `inspections/<tenantId>/<uuid>.<jpg|png|webp>`）だけかを確かめる。不正なら理由を、正しければ null を返す。
+ * 保存パスは表示時に service-role で署名するので、他テナントのパスや任意の URL を書かせない（他店の写真の署名 URL が作れてしまう）。
+ */
+export function inspectionPhotoPathError(tenantId: string, paths: readonly string[] | undefined): string | null {
+  if (!paths) return null;
+  const re = new RegExp(`^inspections/${tenantId}/[0-9a-f-]{36}\\.(jpg|png|webp)$`);
+  return paths.every((p) => re.test(p)) ? null : "写真の指定が不正です。写真はアップロードし直してください。";
+}

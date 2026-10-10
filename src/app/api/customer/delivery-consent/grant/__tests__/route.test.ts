@@ -25,7 +25,7 @@ vi.mock("@/lib/supabase/admin", () => ({
           upserts.push(row);
           const u: Record<string, unknown> = {
             eq: () => u,
-            neq: () => u,
+            or: () => u,
             select: async () => ({ data: [{}], error: null }),
           };
           return u;
