@@ -37,7 +37,7 @@
  * コミットを止める**（`check-context-dates.mjs` が PR #1027 の指摘で通った道）。
  * フェンスの歩き方はそこに実装があるので、`contentLines` を import して使い回す。
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { contentLines } from "./check-context-dates.mjs";
@@ -89,16 +89,22 @@ const countBy = (xs, key) => xs.reduce((m, x) => m.set(key(x), (m.get(key(x)) ??
 /**
  * 型表の本体の行だけを返す。ヘッダ行 → 区切り行 → 本体 → 空行、という形を前提にする。
  * ヘッダが見つからなければ空配列（検査6-b の床が落とす）。
+ *
+ * 受け取るのは `contentLines()` の要素（`{ n, line }`）で、**元の行番号を付けたまま返す。**
+ * `fixLedger` が「表のブロックの行だけ」を書き換えるのにその番号が要る ——
+ * 生の全行から `TYPE_ROW_RE` で拾うと、**フェンス外で表の行を引用した本文**まで
+ * 書き換えてしまう（検査側は #1289 の `/code-review` で同じ穴を塞いである）。
+ * 走査を2箇所に書かないために、ここを両方で使う。
  */
-function typeTableRows(lines) {
-  const h = lines.findIndex((l) => l.startsWith(TYPE_TABLE_HEADER));
+function typeTableRows(entries) {
+  const h = entries.findIndex(({ line }) => line.startsWith(TYPE_TABLE_HEADER));
   if (h < 0) return [];
   const rows = [];
-  for (const line of lines.slice(h + 2)) {
-    if (line.trim() === "") break;
-    rows.push(line);
+  for (const e of entries.slice(h + 2)) {
+    if (e.line.trim() === "") break;
+    rows.push(e);
   }
-  return rows.filter((l) => TYPE_ROW_RE.test(l));
+  return rows.filter(({ line }) => TYPE_ROW_RE.test(line));
 }
 
 /** 正準の見出し。`## M-<YYYYMMDD>-<スラッグ> 表題（…）` */
@@ -132,6 +138,24 @@ const TABLE_ID_LOOSE_RE = /M-[0-9A-Za-z-]{3,}/g;
 /** 旧番号（`M-060` 等）。移行時の別名で、新形式の見出しとしては実在しない。 */
 const LEGACY_ID_RE = /^M-\d{1,4}$/;
 /**
+ * 見出しが名乗る型。`（2026-10-09・型 F）`／`（…・型 F／A）`／`（…・型 A、併せて型 C）`
+ * のどれも拾う。**書式は型の書き方を1つに決めていない**ので、`型 X` の出現を全部取る。
+ *
+ * 末尾の括弧に限るのは、表題の中の「型 A」のような言及を型の宣言として読まないため。
+ */
+const HEADING_TAIL_RE = /（([^（）]*)）\s*$/;
+/**
+ * **`型 E／F` のように1つの「型」で2つ以上を名乗る形がある。**
+ * 当初は `/型\s*([A-Z])/g` で「型」の直後の1文字だけを取っていて、
+ * **2つ目を黙って落としていた**（実測10件がこの形。`型 A / C` もある）。
+ * テストの「2つの型を名乗って両方に無いと2件」が1件しか出さずに露呈した。
+ * 区切りは実測にあるものだけ（`／` と `/`）にする。`型 F・旧 M-090` の `・` は
+ * 型の区切りではないので入れない。
+ */
+const DECLARED_TYPE_RE = /型\s*([A-Z](?:\s*[／/]\s*[A-Z])*)/g;
+/** 上で拾った `E／F` を型1つずつに割る。 */
+const splitTypes = (token) => token.split(/[／/\s]+/).filter(Boolean);
+/**
  * 旧番号の別名。`・旧 M-NNN` に続くのは `）`（末尾）か `・`（後ろに項目が続く）。
  * **行末にアンカーしない。** アンカーすると `（…・旧 M-070・型 A）` のように
  * 項目の順が違うだけで別名が見えなくなり、そこで作られた重複を検出できない
@@ -142,18 +166,20 @@ const LEGACY_RE = /・旧 (M-\d+)(?=[・）])/g;
 /**
  * 台帳の本文を検査する。問題があれば人が読めるメッセージを `error` に入れて返す。
  *
- * **落とす条件を7つに分けてあるのは、どれか1つが空振りしても他が生きるようにするため。**
+ * **落とす条件を8つに分けてあるのは、どれか1つが空振りしても他が生きるようにするため。**
  * 「重複が無い」だけを見ると、見出しの書式が変わって0件になった日から
  * この検査は永久に緑になる（型 A）。
- * （1〜5 が見出しの ID、6-a/6-b/7 が表。2026-10-09 に 5 → 7 に増えた。）
+ * （1〜5 が見出しの ID、6-a/6-b/7/8 が表。2026-10-09 に 5 → 7、2026-10-10 に 8 に増えた。
+ * 7 は「表 → エントリ」、8 は「エントリ → 表」で、**両向きが無いと索引は片側だけ腐る**。）
  */
 export function checkLedger(
   text,
   { knownLegacyExcess = KNOWN_LEGACY_EXCESS, minEntries = MIN_ENTRIES, minTypeRows = MIN_TYPE_ROWS } = {},
 ) {
-  const bodyLines = contentLines(text).lines.map(({ line }) => line);
+  const entries = contentLines(text).lines;
+  const bodyLines = entries.map(({ line }) => line);
   const headings = bodyLines.filter((l) => ANY_ENTRY_RE.test(l));
-  const typeRows = typeTableRows(bodyLines);
+  const typeRows = typeTableRows(entries).map(({ line }) => line);
 
   // 1. 書式から外れた見出し。旧形式 (`## M-060 …`) も、スラッグの大文字混入も、
   //    表題の付け忘れも、まとめてここに落ちる。**分類できないものを通さない。**
@@ -283,6 +309,47 @@ export function checkLedger(
     };
   }
 
+  // 8. **見出しが名乗る型の行に、その ID が載っているか（索引の逆向き）。**
+  //    表の 該当 列は「この型は過去にどれだったか」を引くための索引である。
+  //    検査7は「表 → エントリ」（死んだ ID を指していないか）だけを見ており、
+  //    **「エントリ → 表」が抜けていた** —— 新しいエントリを足して表に足し忘れても緑だった。
+  //    2026-10-10 に実測したら、型を名乗る 203 件のうち **60 件が名乗った行に無かった**
+  //    （どの行にも無い）。索引が7割しか答えないのに、**欠けている印はどこにも出ない**
+  //    （型 L: 既定を開いたまま守る）。60件を補完したうえでこの向きを足した。
+  //
+  //    旧番号だけを名乗る見出し（`（…・旧 M-076）`、45件）は型を宣言していないので対象外。
+  //    全件が旧番号で表に載っていることは実測した。型を書けと強制はしない ——
+  //    それは初日から45件赤になり、「正しい検査でも初日から赤なら入れない」に反する
+  //    （DECISION_LOG 2026-10-09）。
+  const rowIds = new Map(
+    typeRows.map((r) => [
+      r.match(TYPE_ROW_RE)[1],
+      new Set([...r.split("|")[3].matchAll(TABLE_ID_LOOSE_RE)].map((m) => m[0])),
+    ]),
+  );
+  const unindexed = [];
+  for (const { heading, m } of parsed) {
+    const tail = heading.match(HEADING_TAIL_RE);
+    if (!tail) continue;
+    for (const [, token] of tail[1].matchAll(DECLARED_TYPE_RE)) {
+      for (const t of splitTypes(token)) {
+        if (!rowIds.get(t)?.has(m[1])) unindexed.push(`${m[1]} → 型 ${t}`);
+      }
+    }
+  }
+  if (unindexed.length > 0) {
+    return {
+      ok: false,
+      error:
+        `見出しが名乗る型の行に載っていない組が ${unindexed.length} 件ある:\n` +
+        unindexed.slice(0, 10).map((x) => `    ${x}`).join("\n") +
+        "\n  → 表の 該当 列は「この型は過去にどれだったか」を引く索引なので、" +
+        "**名乗った型の行に ID を足すこと**。\n" +
+        "  `npm run check:ledger-ids -- --fix` が、旧番号の後・日付の昇順の位置へ入れる。\n" +
+        "  型の分類を変えたときは見出しと表の両方を変える（--fix は足すだけで、消さない）。",
+    };
+  }
+
   return {
     ok: true,
     error: null,
@@ -293,7 +360,78 @@ export function checkLedger(
   };
 }
 
+/**
+ * 検査8の欠落を埋めた本文を返す（**足すだけ。消さない**）。
+ *
+ * **なぜ検査と同じファイルに置くか。** 台帳は1セッションに何度も追記する。
+ * 2箇所を手で直す検査は、面倒になった時点で無効化されるか、赤を見慣れて終わる
+ * （DECISION_LOG 2026-10-09）。補完は機械でできるので、検査と同じ所に置いて
+ * エラーメッセージから指せるようにする。
+ *
+ * 入れる位置は既存の並びの規則に合わせる: **旧番号が先、その後は日付の昇順。**
+ * 実測で12行すべてが「旧番号が日付 ID の後に混ざらない」形を守っている
+ * （昇順の方は既存に6箇所の逆順があるので、そこは直さない —— 並べ替えは
+ * この検査の仕事ではないし、差分が大きくなる）。
+ *
+ * ponytail: 天井。表のブロックが1つであることを前提にしている（検査6-a/6-b が
+ * それを保証する）。行の書式が `| **X. 名前** | 中身 | ID… |` から変わったら、
+ * ここも `TYPE_ROW_RE` と一緒に直す。
+ */
+export function fixLedger(text) {
+  const lines = text.split("\n");
+  const entries = contentLines(text).lines;
+  const bodyLines = entries.map(({ line }) => line);
+  const rows = typeTableRows(entries);
+  const want = new Map(); // 型 → 足す ID（日付順）
+  for (const h of bodyLines.filter((l) => ANY_ENTRY_RE.test(l))) {
+    const m = h.match(ID_RE);
+    const tail = h.match(HEADING_TAIL_RE);
+    if (!m || !tail) continue;
+    for (const [, token] of tail[1].matchAll(DECLARED_TYPE_RE)) {
+      for (const t of splitTypes(token)) {
+        const row = rows.find((r) => r.line.match(TYPE_ROW_RE)[1] === t);
+        const has = row && [...row.line.split("|")[3].matchAll(TABLE_ID_LOOSE_RE)].some(([x]) => x === m[1]);
+        if (!has) want.set(t, [...(want.get(t) ?? []), m[1]]);
+      }
+    }
+  }
+  for (const list of want.values()) list.sort();
+  const added = [];
+  // **表のブロックの行だけを書き換える。** 生の全行を `TYPE_ROW_RE` で拾うと、
+  // フェンス外で表の行を引用した本文まで書き換わる（台帳は自分の書式を自分の中で
+  // 説明する文書なので、その引用は正当な書き方である）。
+  for (const { n } of rows) {
+    const i = n - 1;
+    const t = lines[i].match(TYPE_ROW_RE)?.[1];
+    if (!t || !want.has(t)) continue;
+    const parts = lines[i].split("|");
+    if (parts.length !== 5) continue;
+    const items = parts[3].split(",").map((x) => x.trim()).filter(Boolean);
+    for (const id of want.get(t)) {
+      const date = id.slice(2, 10);
+      const at = items.findIndex((it) => {
+        const d = it.replace(/\*/g, "").match(/^M-(\d{8})-/);
+        return d !== null && d[1] > date;
+      });
+      items.splice(at < 0 ? items.length : at, 0, `**${id}**`);
+      added.push(`${id} → 型 ${t}`);
+    }
+    parts[3] = ` ${items.join(", ")} `;
+    lines[i] = parts.join("|");
+  }
+  return { text: lines.join("\n"), added };
+}
+
 function main() {
+  if (process.argv.includes("--fix")) {
+    const { text, added } = fixLedger(readFileSync(LEDGER, "utf8"));
+    if (added.length === 0) {
+      console.log("check-ledger-ids --fix: 足すものは無い（索引は埋まっている）");
+    } else {
+      writeFileSync(LEDGER, text);
+      console.log(`check-ledger-ids --fix: 型表に ${added.length} 件足した:\n  ${added.join("\n  ")}`);
+    }
+  }
   const result = checkLedger(readFileSync(LEDGER, "utf8"));
   if (!result.ok) {
     console.error(`check-ledger-ids: NG\n  ${result.error}`);
