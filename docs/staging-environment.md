@@ -49,6 +49,21 @@
 - 現在の staging は `Ledra-staging`。スキーマはダンプから入れたため、マイグレーションの適用履歴が空になっている。
   ここに `db push` する前に履歴を合わせる必要がある（`docs/context/OPEN_QUESTIONS.md`「staging（Ledra-staging）の残作業」）。
 
+#### Vercel 側の注意（2026-10-10 に staging をつないだときの実測）
+
+- 環境変数は「**Preview・ブランチ `staging`**」だけに入れる。Production / Development を選んだまま保存すると、
+  既存の同名の変数とぶつかって保存できない。Preview 全体に入れると、**他の PR のプレビューまで staging の DB を見る**。
+  上書きが要るのは `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` /
+  `APP_URL` / `NEXT_PUBLIC_APP_URL`（URL は `https://ledra-git-staging-yusuke-horikoshis-projects.vercel.app`）。
+- **本番と同じコミットを `staging` に置くと、Vercel が本番のビルドを使い回し、staging 用の環境変数が効かない**
+  （ログインは通るのにアプリ側で 401 になり、staging の Supabase に問い合わせが1件も来ない）。staging には本番に無い
+  コミットを1つ以上載せる（空コミットでよい）。そのため `staging` は `main` から早送りではなくマージで更新する。
+- プレビューは Vercel の保護（Vercel ログイン必須）が掛かっている。保護は外さず、**Settings → Deployment Protection →
+  Protection Bypass for Automation** の合言葉を `x-vercel-protection-bypass` ヘッダで付けてアクセスする。合言葉は秘密。
+- staging の写真アップロードは、`CF_ORIGIN_SECRET` が入った環境に `*.vercel.app` 直で送ると 403 になる作り
+  （TLS 1.3 のエッジ経由の強制）。2026-10-10 時点の Preview では 403 にならなかった。
+- E2E の手順と結果は `docs/operations/certificate-photo-e2e-checklist.md`（B は 2026-10-10 に 9/9 合格）。
+
 ### 3. Stripe テストモード
 
 ステージング環境では Stripe の **テストモード** を使用します。
