@@ -4,6 +4,7 @@ import { apiJson } from "@/lib/api/response";
 import { withQstashSignature } from "@/lib/qstash/verifySignature";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { renderCertificatePdf, type CertRow } from "@/lib/pdfCertificate";
+import { certificatePublicUrl } from "@/lib/url";
 
 const batchPdfJobSchema = z.object({
   job_id: z.string().uuid(),
@@ -13,17 +14,6 @@ const batchPdfJobSchema = z.object({
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-
-function getBaseUrl(): string {
-  const url = [
-    process.env.NEXT_PUBLIC_APP_URL,
-    process.env.APP_URL,
-    process.env.NEXT_PUBLIC_BASE_URL,
-    process.env.VERCEL_URL,
-  ].find(Boolean);
-  if (!url) throw new Error("Base URL not set");
-  return url.startsWith("http") ? url : `https://${url}`;
-}
 
 const CONCURRENCY = 5;
 
@@ -60,7 +50,7 @@ async function handler(req: NextRequest) {
     const { data: certs, error: fetchErr } = await admin
       .from("certificates")
       .select(
-        "id, public_id, status, customer_name, vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value, logo_asset_path, created_at, service_type, ppf_coverage_json, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json, accessory_json, craftsman_name",
+        "id, public_id, status, customer_name, vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value, logo_asset_path, created_at, service_type, ppf_coverage_json, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json, accessory_json, damage_map_json, craftsman_name",
       )
       .eq("tenant_id", tenant_id)
       .in("public_id", remainingIds);
@@ -103,7 +93,6 @@ async function handler(req: NextRequest) {
       }
     }
 
-    const baseUrl = getBaseUrl();
     let newlyProcessed = 0;
 
     // 5件ずつ並列処理（バッチごとに進捗を保存）
@@ -118,7 +107,7 @@ async function handler(req: NextRequest) {
           }
 
           try {
-            const publicUrl = `${baseUrl}/c/${cert.public_id}`;
+            const publicUrl = certificatePublicUrl(cert.public_id);
             const anchors = anchorsByCertId.get((cert as { id: string }).id) ?? [];
             // `cert` はここで Supabase select 結果。CertRow は nullable の
             // 組み合わせが微妙に揃わないので、上位 narrowing が済んでいる

@@ -4,6 +4,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { renderCertificatePdf, type CertRow } from "@/lib/pdfCertificate";
 import { checkAdminFeature, billingDenyResponse } from "@/lib/billing/adminFeatureGate";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
+import { certificatePublicUrl } from "@/lib/url";
 
 export async function GET(req: Request) {
   // @holy-guard:pdf_one
@@ -28,7 +29,7 @@ export async function GET(req: Request) {
   const { data: row, error } = await supabase
     .from("certificates")
     .select(
-      "id,public_id,customer_name,vehicle_info_json,content_free_text,content_preset_json,expiry_type,expiry_value,logo_asset_path,created_at,service_type,ppf_coverage_json,coating_products_json,warranty_period_end,warranty_exclusions,current_version,maintenance_json,body_repair_json,accessory_json,craftsman_name",
+      "id,public_id,customer_name,vehicle_info_json,content_free_text,content_preset_json,expiry_type,expiry_value,logo_asset_path,created_at,service_type,ppf_coverage_json,coating_products_json,warranty_period_end,warranty_exclusions,current_version,maintenance_json,body_repair_json,accessory_json,damage_map_json,craftsman_name",
     )
     .eq("tenant_id", tenantId)
     .eq("public_id", pid)
@@ -59,11 +60,8 @@ export async function GET(req: Request) {
     userId: userRes.user.id,
   });
 
-  // baseUrl（APP_URL依存なし）
-  const host = req.headers.get("host") ?? "localhost:3000";
-  const proto = req.headers.get("x-forwarded-proto") ?? "http";
-  const baseUrl = `${proto}://${host}`;
-  const publicUrl = `${baseUrl}/c/${row.public_id}`;
+  // QR の公開 URL は本ドメイン固定（リクエストのホストは使わない。url.ts）
+  const publicUrl = certificatePublicUrl(row.public_id);
 
   // row は supabase select の戻り値で CertRow の subset。該当コラムは
   // 全て select しているので CertRow として扱う。

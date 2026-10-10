@@ -1,11 +1,12 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { todayInJst } from "@/lib/retention";
 import { OUTWARD_VISIBLE_TYPES } from "@/lib/audit/certificateLog";
 import {
   resolveCertificateMedia,
   type CertificateMediaRow,
   type ResolvedCertificateMedia,
 } from "@/lib/certificateMedia";
-import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants";
+import { signAssetPaths } from "@/lib/signedUrl";
 import {
   canViewCertificateDetails,
   DETAIL_ACCESS_COLUMNS,
@@ -73,6 +74,7 @@ type CertRow = {
   maintenance_json: Json | null;
   body_repair_json: Json | null;
   accessory_json: Json | null;
+  damage_map_json: Json | null;
   manufacturer_id: string | null;
   manufacturer_template_id: string | null;
   craftsman_name: string | null;
@@ -92,7 +94,6 @@ type ManufacturerPublicRow = {
 type TenantRow = {
   name: string | null;
   slug: string | null;
-  custom_domain: string | null;
 };
 
 type VehicleRow = {
@@ -198,7 +199,6 @@ export type PublicCertificateData = {
   shop: {
     name: string | null;
     slug: string | null;
-    custom_domain: string | null;
   } | null;
   /**
    * Active manufacturer info when the certificate was issued under a
@@ -231,7 +231,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
         "vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value, " +
         "logo_asset_path, footer_variant, current_version, service_type, ppf_coverage_json, " +
         "coating_products_json, warranty_period_end, warranty_exclusions, " +
-        "maintenance_json, body_repair_json, accessory_json, manufacturer_id, manufacturer_template_id, craftsman_name, " +
+        "maintenance_json, body_repair_json, accessory_json, damage_map_json, manufacturer_id, manufacturer_template_id, craftsman_name, " +
         DETAIL_ACCESS_COLUMNS,
     )
     .eq("public_id", pid)
@@ -245,12 +245,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
   const [detailVisible, tenantRes, vehicleRes, nfcRes, histRes, imgRes, vcRes, mediaRes, reservationsRes] =
     await Promise.all([
       canViewCertificateDetails(cert),
-      supabase
-        .from("tenants")
-        .select("name, slug, custom_domain")
-        .eq("id", cert.tenant_id)
-        .limit(1)
-        .maybeSingle<TenantRow>(),
+      supabase.from("tenants").select("name, slug").eq("id", cert.tenant_id).limit(1).maybeSingle<TenantRow>(),
 
       cert.vehicle_id
         ? supabase
@@ -364,11 +359,25 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
     passportVin = passportRow?.vin_code_normalized ?? null;
   }
 
-  const images: (ImageRow & { url: string | null; rendered_url: string | null })[] = (
-    !imgRes.error && imgRes.data ? imgRes.data : []
-  ).map((img) => {
+  const imageRows = !imgRes.error && imgRes.data ? imgRes.data : [];
+  // void 状態のときは写真もメディアも公開しない（ページ側も出さない）
+  const certStatusLower = String(cert.status ?? "").toLowerCase();
+  const isVoid = certStatusLower === "void";
+  const mediaRows = !mediaRes.error && mediaRes.data && !isVoid && detailVisible ? mediaRes.data : [];
+  // 写真は署名 URL（公開 URL は使わない。保存先を非公開にしても表示が壊れないように）。見せない閲覧者・void の分は発行しない。
+  // 署名とメディアの解決は互いに独立なので並べて待つ。
+  const [signed, media] = await Promise.all([
+    detailVisible && !isVoid
+      ? signAssetPaths(
+          supabase,
+          imageRows.flatMap((i) => [i.storage_path, i.rendered_storage_path]),
+        )
+      : Promise.resolve(new Map<string, string>()),
+    Promise.all(mediaRows.map((row) => resolveCertificateMedia(supabase, row))) as Promise<ResolvedCertificateMedia[]>,
+  ]);
+  const images: (ImageRow & { url: string | null; rendered_url: string | null })[] = imageRows.map((img) => {
     // 写真を見せない閲覧者には URL・注釈・ファイル名を渡さない（件数と認証グレードだけ残す）。
-    // assets バケットは公開なので、パスだけでも写真に届く。パスも落とす。
+    // assets バケットは（非公開化するまで）公開なので、パスだけでも写真に届く。パスも落とす。
     if (!detailVisible)
       return {
         ...img,
@@ -379,28 +388,10 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
         url: null,
         rendered_url: null,
       };
-    let url: string | null = null;
-    if (img.storage_path) {
-      const { data: signedData } = supabase.storage.from(CERTIFICATE_IMAGE_BUCKET).getPublicUrl(img.storage_path);
-      url = signedData?.publicUrl ?? null;
-    }
-    let renderedUrl: string | null = null;
-    if (img.rendered_storage_path) {
-      const { data: signedData } = supabase.storage
-        .from(CERTIFICATE_IMAGE_BUCKET)
-        .getPublicUrl(img.rendered_storage_path);
-      renderedUrl = signedData?.publicUrl ?? null;
-    }
+    const url = (img.storage_path && signed.get(img.storage_path)) || null;
+    const renderedUrl = (img.rendered_storage_path && signed.get(img.rendered_storage_path)) || null;
     return { ...img, url, rendered_url: renderedUrl };
   });
-
-  // certificate_media: void 状態のときは images と同じく公開しない
-  const certStatusLower = String(cert.status ?? "").toLowerCase();
-  const isVoid = certStatusLower === "void";
-  const mediaRows = !mediaRes.error && mediaRes.data && !isVoid && detailVisible ? mediaRes.data : [];
-  const media: ResolvedCertificateMedia[] = await Promise.all(
-    mediaRows.map((row) => resolveCertificateMedia(supabase, row)),
-  );
 
   // reservations: 来店以降のステータスのみ公開対象。日時は scheduled_date + start_time
   // から ISO 文字列に整形して、UnifiedTimeline 側でソートできるようにする。
@@ -429,7 +420,9 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
     }
   }
 
-  const warrantyActive = cert.warranty_period_end != null && new Date(cert.warranty_period_end).getTime() > Date.now();
+  // 保証期限は date 型。UTC 0 時と比べると最終日の 9:00 JST で切れるので、JST の今日と日付どうしで比べる。
+  const warrantyActive =
+    cert.warranty_period_end != null && String(cert.warranty_period_end).slice(0, 10) >= todayInJst();
 
   return {
     ok: true,
@@ -468,7 +461,6 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
       ? {
           name: tenant.name ?? tenant.slug ?? null,
           slug: tenant.slug ?? null,
-          custom_domain: tenant.custom_domain ?? null,
         }
       : null,
     manufacturer,

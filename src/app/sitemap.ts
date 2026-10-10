@@ -3,6 +3,7 @@ import { siteConfig } from "@/lib/marketing/config";
 import { listContent, type ContentCollection } from "@/lib/marketing/content";
 import { listPublishedPosts } from "@/lib/marketing/site-content-posts";
 import { GLOSSARY } from "@/lib/marketing/glossary";
+import { SHOP_INDUSTRIES } from "@/lib/marketing/shopIndustries";
 
 const base = siteConfig.siteUrl;
 
@@ -149,6 +150,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...[...news.values()].map((e) => toEntry("/news", e)),
     ...cases.map((e) => toEntry("/cases", e)),
     ...[...blog.values()].map((e) => toEntry("/blog", e)),
+    // 業態別の入口ページ（静的・有限集合）
+    ...SHOP_INDUSTRIES.map((i) => toEntry("/for-shops", { slug: i.slug })),
     // 用語集の個別ページ（静的・有限集合）
     ...GLOSSARY.map((t) => toEntry("/glossary", { slug: t.slug })),
   ];

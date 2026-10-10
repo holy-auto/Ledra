@@ -1,5 +1,5 @@
 ﻿import React from "react";
-import { Document, Page, Text, View, Image, StyleSheet, Font } from "@react-pdf/renderer";
+import { Document, Page, Text, View, Image, StyleSheet, Font, Svg, Path, Circle, G } from "@react-pdf/renderer";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { notoSansJpDataUrl } from "@/lib/marketing/pdfFonts";
 
@@ -23,6 +23,8 @@ import {
   getRepairMethodLabel,
 } from "@/lib/bodyRepair/constants";
 import { getAccessoryTypeLabel, getInstallLocationLabel } from "@/lib/accessory/constants";
+import { parseFilmThickness, formatThickness } from "@/lib/certificates/filmThickness";
+import { parseDamageMap, damageKindLabel, DAMAGE_DIAGRAM, DAMAGE_KIND_COLOR } from "@/lib/certificates/damageMap";
 
 type FieldType = "text" | "textarea" | "number" | "date" | "select" | "multiselect" | "checkbox";
 
@@ -36,7 +38,6 @@ type TemplateSchema = {
 
 export type CertRow = {
   public_id: string;
-  tenant_custom_domain?: string | null;
   customer_name: string;
   /* eslint-disable @typescript-eslint/no-explicit-any -- DB JSON columns */
   vehicle_info_json: Record<string, any>;
@@ -47,6 +48,8 @@ export type CertRow = {
   maintenance_json?: Record<string, any> | null;
   body_repair_json?: Record<string, any> | null;
   accessory_json?: Record<string, any> | null;
+  /** 傷・損傷マップ（作業店舗・所有者・購入者向けの詳細。匿名の公開 PDF では null に落とす） */
+  damage_map_json?: unknown;
   /* eslint-enable @typescript-eslint/no-explicit-any */
   service_type?: string | null;
   expiry_type: string | null;
@@ -401,7 +404,12 @@ const styles = StyleSheet.create({
     color: colors.violet,
     letterSpacing: 1,
     textAlign: "center",
-    marginTop: 24,
+    // ponytail: 本文の流れに入れると 1 ページ目がわずかに溢れたとき標語だけの白紙ページが出る。
+    // 余白（paddingBottom 72）の中に絶対配置して、ページ数に影響させない。
+    position: "absolute",
+    bottom: 56,
+    left: 44,
+    right: 44,
   },
   // Footer
   footer: {
@@ -618,12 +626,6 @@ function normValue(v: unknown): string | null {
   return s ? s : null;
 }
 
-function buildPublicOrigin(cert: { tenant_custom_domain?: string | null }, fallbackOrigin?: string) {
-  if (cert.tenant_custom_domain) return `https://${cert.tenant_custom_domain}`;
-  if (fallbackOrigin) return fallbackOrigin;
-  return "http://localhost:3000";
-}
-
 async function makeQrDataUrl(publicUrl: string): Promise<string> {
   // PNG data URL（@react-pdf/renderer で安定）
   return await QRCode.toDataURL(publicUrl, {
@@ -681,6 +683,18 @@ export async function renderCertificatePdf(
     typeof row.accessory_json === "object" && row.accessory_json ? row.accessory_json : {};
 
   const presetLines = buildPresetLines(schema, values);
+  const thickness = parseFilmThickness(preset);
+  const damageMap = parseDamageMap(row.damage_map_json);
+  // 2 ページ目は保証・膜厚・損傷マップのどれかがあれば、業態を問わず出す（コーティングでも記録を落とさない）。
+  const showPage2 =
+    isPpf ||
+    isMaintenance ||
+    isBodyRepair ||
+    isAccessory ||
+    !!row.warranty_period_end ||
+    !!row.warranty_exclusions ||
+    thickness.length > 0 ||
+    !!damageMap;
 
   let logoUrl: string | null = null;
   try {
@@ -894,7 +908,12 @@ export async function renderCertificatePdf(
               <View key={idx} style={[styles.row, idx === 0 ? styles.rowFirst : {}]}>
                 <Text style={styles.rowLabel}>{cp.location || "-"}</Text>
                 <Text style={styles.rowValue}>
-                  {[cp.brand_name, cp.product_name, cp.film_type ? getFilmTypeLabel(cp.film_type) : null]
+                  {[
+                    cp.brand_name,
+                    cp.product_name,
+                    cp.film_type ? getFilmTypeLabel(cp.film_type) : null,
+                    cp.lot_number ? `ロット ${cp.lot_number}` : null,
+                  ]
                     .filter(Boolean)
                     .join(" / ") || "-"}
                 </Text>
@@ -1112,7 +1131,7 @@ export async function renderCertificatePdf(
       </Page>
 
       {/* ── ページ2: 保証・注意事項（サービス別の情報がある場合のみ表示） ── */}
-      {(isPpf || isMaintenance || isBodyRepair || isAccessory) && (
+      {showPage2 && (
         <Page size="A4" style={styles.page}>
           <Text style={styles.page2Eyebrow}>Certificate No. {row.public_id}</Text>
           <Text style={styles.page2Title}>{certTitle}</Text>
@@ -1124,7 +1143,14 @@ export async function renderCertificatePdf(
               <Text style={styles.cardEyebrow}>保証情報 · Warranty</Text>
               <View style={[styles.row, styles.rowFirst]}>
                 <Text style={styles.rowLabel}>保証期間終了日</Text>
-                <Text style={styles.rowValue}>{row.warranty_period_end}</Text>
+                <Text style={styles.rowValue}>
+                  {new Date(row.warranty_period_end).toLocaleDateString("ja-JP", {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                    timeZone: "Asia/Tokyo",
+                  })}
+                </Text>
               </View>
             </View>
           )}
@@ -1150,6 +1176,66 @@ export async function renderCertificatePdf(
             <View style={styles.card}>
               <Text style={styles.cardEyebrow}>保証対象外事項 · Exclusions</Text>
               <Text style={styles.cardBody}>{row.warranty_exclusions}</Text>
+            </View>
+          )}
+
+          {/* 膜厚の測定値 */}
+          {thickness.length > 0 && (
+            <View style={styles.card}>
+              <Text style={styles.cardEyebrow}>膜厚の測定値 · Film Thickness</Text>
+              {thickness.map((t, i) => (
+                <View key={i} style={[styles.row, i === 0 ? styles.rowFirst : {}]}>
+                  <Text style={styles.rowLabel}>{t.location || "-"}</Text>
+                  <Text style={styles.rowValue}>
+                    {formatThickness(t)}
+                    {t.notes ? `（${t.notes}）` : ""}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* 傷・損傷の位置 */}
+          {damageMap && (
+            <View style={styles.card} wrap={false}>
+              <Text style={styles.cardEyebrow}>傷・損傷の位置 · Damage Map</Text>
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                <Svg width={120} height={132} viewBox={`0 0 ${DAMAGE_DIAGRAM.width} ${DAMAGE_DIAGRAM.height}`}>
+                  <Path d={DAMAGE_DIAGRAM.body} fill="#f5f5f5" stroke="#d4d4d4" strokeWidth={1.5} />
+                  <Path d={DAMAGE_DIAGRAM.windshield} fill="#e0e7ff" stroke="#c7d2fe" strokeWidth={1} />
+                  <Path d={DAMAGE_DIAGRAM.rearWindow} fill="#e0e7ff" stroke="#c7d2fe" strokeWidth={1} />
+                  {damageMap.markers.map((m, i) => (
+                    <G key={i}>
+                      <Circle
+                        cx={m.x * DAMAGE_DIAGRAM.width}
+                        cy={m.y * DAMAGE_DIAGRAM.height}
+                        r={16}
+                        fill={DAMAGE_KIND_COLOR[m.kind]}
+                      />
+                      <Text
+                        x={m.x * DAMAGE_DIAGRAM.width}
+                        y={m.y * DAMAGE_DIAGRAM.height + 6}
+                        fill="#ffffff"
+                        textAnchor="middle"
+                        style={{ fontSize: 18, fontWeight: 700 }}
+                      >
+                        {String(i + 1)}
+                      </Text>
+                    </G>
+                  ))}
+                </Svg>
+                <View style={{ flex: 1 }}>
+                  {damageMap.markers.map((m, i) => (
+                    <Text key={i} style={styles.bullet}>
+                      {i + 1}. {damageKindLabel(m.kind)}
+                      {m.note ? ` — ${m.note}` : ""}
+                    </Text>
+                  ))}
+                  <Text style={[styles.cardBody, { marginTop: 4, fontSize: 8, color: colors.dim }]}>
+                    図は車両を上から見たもの（上が前方）。番号は記録した順。
+                  </Text>
+                </View>
+              </View>
             </View>
           )}
 

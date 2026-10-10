@@ -9,6 +9,7 @@ import { ScrollReveal } from "@/components/marketing/ScrollReveal";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import { CTAButton } from "@/components/marketing/CTAButton";
 import { ScreenshotFrame } from "@/components/marketing/ScreenshotFrame";
+import { SHOP_INDUSTRIES } from "@/lib/marketing/shopIndustries";
 
 export const metadata = {
   title: "施工店の方へ",
@@ -313,6 +314,22 @@ export default function ForShopsPage() {
         title="施工の技術を、証明に変える。"
         subtitle="コーティング・フィルム・ラッピング。一件一件の仕事を、デジタル証明書として積み上げる。事務時間を減らし、顧客の信頼と次の仕事に繋げます。"
       />
+
+      {/* 業態別の入口 */}
+      <Section>
+        <SectionHeading title="業態別に見る" subtitle="業態ごとに、よく使う機能とよくある質問をまとめました。" />
+        <FeatureGrid className="mt-10">
+          {SHOP_INDUSTRIES.map((ind, i) => (
+            <FeatureCard
+              key={ind.slug}
+              title={ind.name}
+              description={ind.heroTitle}
+              href={`/for-shops/${ind.slug}`}
+              delay={i * 40}
+            />
+          ))}
+        </FeatureGrid>
+      </Section>
 
       {/* Challenges */}
       <Section bg="alt">

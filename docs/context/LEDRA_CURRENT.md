@@ -4,13 +4,22 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-10-08
+最終更新: 2026-10-10
 
-> 2026-10-05 追記（**staging を作った**）: Supabase に独立プロジェクト `Ledra-staging` を作り、`main` から `staging` ブランチを
-> 作った。スキーマは本番と同じ構成（520 本時点。テーブル 279・関数 145・RLS ポリシー 665）で、写真の保存先 `assets` バケットも
-> 本番と同じ設定で作った。証明書写真の流れは **DB 層まで確認済み**（10 項目すべて期待どおり）。**アプリ経由の E2E はまだ**で、
-> Vercel の Preview をこの Supabase につなぐ設定が残っている。マイグレーションの適用履歴が無いので、`db push` を使う前に
-> 履歴を合わせる必要がある（OPEN_QUESTIONS「staging（Ledra-staging）の残作業」）。
+> 2026-10-08 追記（**デモテナントは撮影用の特例中**）: 社内撮影のため、ヒーロー車両（LEDRA-DEMO-0017〜0027）にダミー tx のアンカー表示を入れ、
+> その車両への証明書 INSERT だけ読み取り専用ポリシーの例外にしている。撮影後に戻す（OPEN_QUESTIONS「撮影用の特例を戻す」）。下の「本番アンカー 0 件」は実データの話で、
+> この撮影用の行（`polygon_network=amoy`、tx はチェーン未送信）は数えない。
+
+> 2026-10-07 追記（**本番の Polygon アンカーは未稼働**）: 本番 DB で `certificate_images.polygon_tx_hash`・`certificate_anchors`・
+> `certificate_anchor_batches` はいずれも 0 件（2026-10-07 に service role で件数確認）。ブロックチェーン証明は本番ではまだ1件も作られていない。
+> デモテナントには撮影用ヒーロー車両（LEDRA-DEMO-0017〜0027、NFC タグ付き）を追加した（RELEASE_LOG 2026-10-07）。
+
+> 2026-10-10 更新（**staging でアプリ経由の E2E が通った**）: Supabase の独立プロジェクト `Ledra-staging` と、Vercel の
+> `staging` ブランチ（`https://ledra-git-staging-yusuke-horikoshis-projects.vercel.app`、プレビュー保護あり）をつないだ。
+> 証明書写真の流れ（作成→写真なしの発行ブロック→施工前後の撮影送信→DB 記録→発行→ダウンロード）が **9/9 合格**。
+> **実機の確認（カメラの強制起動・端末保存）はまだ**。staging は本番と同じコミットだと Vercel が本番のビルドを使い回すので、
+> `staging` ブランチには空コミットを1つ載せてある。マイグレーションの適用履歴がほぼ空なので `db push` は使えない
+> （OPEN_QUESTIONS「staging（Ledra-staging）の残作業」）。
 
 > 2026-10-05 追記（**C2PA 署名に時刻証明（RFC 3161）を付けられるようにした**）: `C2PA_TSA_URL` を設定すると、Ledra の
 > claim 署名に TSA のタイムスタンプが入る。付いていないと、署名証明書の期限が切れた日から、それまでに署名した写真が

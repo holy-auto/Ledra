@@ -20,9 +20,9 @@ vi.mock("@/lib/billing/guard", async (orig) => ({
 }));
 const audit = vi.fn();
 vi.mock("@/lib/audit/certificateLog", () => ({ logCertificateAction: audit, getRequestMeta: () => ({}) }));
-// 通過後の描画処理は本テストの対象外。ゲートを越えたことだけ分かればよいので、最初の後続処理で止める。
-vi.mock("next/headers", () => ({
-  headers: async () => {
+// 通過後の描画処理は本テストの対象外。ゲートを越えたことだけ分かればよいので、公開 URL の組み立て（ゲートの後）で止める。
+vi.mock("@/lib/url", () => ({
+  certificatePublicUrl: () => {
     throw new Error("PASSED_GATE");
   },
 }));

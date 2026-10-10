@@ -2,10 +2,18 @@
 
 import Link from "next/link";
 import * as Sentry from "@sentry/nextjs";
+import { unstable_isUnrecognizedActionError } from "next/navigation";
 import { useEffect } from "react";
 
 export default function LoginError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
+    // デプロイ前に開いたログイン画面から送信すると、Server Action の ID が新ビルドに無く 404 になる
+    // （自動ログアウト後に /login?reason=idle を開いたまま置くと起きる）。reset() では古い ID のままなので、
+    // ページごと読み直して新ビルドの ID を取らせる。送信時にしか起きないのでリロードは繰り返さない。
+    if (unstable_isUnrecognizedActionError(error)) {
+      window.location.reload();
+      return;
+    }
     Sentry.captureException(error);
   }, [error]);
 

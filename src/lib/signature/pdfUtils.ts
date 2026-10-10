@@ -7,8 +7,7 @@
 
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { renderCertificatePdf, type CertRow } from "@/lib/pdfCertificate";
-
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.APP_URL ?? "https://ledra.jp";
+import { certificatePublicUrl } from "@/lib/url";
 
 /** PDF に埋め込む署名情報 */
 export interface PdfSignatureInfo {
@@ -35,6 +34,7 @@ type CertSelectRow = {
   maintenance_json: Record<string, unknown> | null;
   body_repair_json: Record<string, unknown> | null;
   accessory_json: Record<string, unknown> | null;
+  damage_map_json: unknown;
   service_type: string | null;
   expiry_type: string | null;
   expiry_value: string | null;
@@ -43,7 +43,6 @@ type CertSelectRow = {
   logo_asset_path: string | null;
   current_version: number | null;
   created_at: string | null;
-  tenant: { custom_domain: string | null } | null;
 };
 
 /**
@@ -74,6 +73,7 @@ export async function generateCertificatePdfBytes(certificateId: string): Promis
       maintenance_json,
       body_repair_json,
       accessory_json,
+      damage_map_json,
       service_type,
       expiry_type,
       expiry_value,
@@ -81,8 +81,7 @@ export async function generateCertificatePdfBytes(certificateId: string): Promis
       warranty_exclusions,
       logo_asset_path,
       current_version,
-      created_at,
-      tenant:tenants(custom_domain)
+      created_at
     `,
     )
     .eq("id", certificateId)
@@ -92,16 +91,13 @@ export async function generateCertificatePdfBytes(certificateId: string): Promis
     throw new Error(`[pdfUtils] Certificate not found: ${certificateId}`);
   }
 
-  const tenantDomain = cert.tenant?.custom_domain ?? null;
-  const origin = tenantDomain ? `https://${tenantDomain}` : BASE_URL;
-  const publicUrl = `${origin}/c/${cert.public_id}`;
+  const publicUrl = certificatePublicUrl(cert.public_id);
 
   // CertRow は Record<string, any> を許容するので Record<string, unknown>
   // からは直接代入できない。ここだけ一度 any 経由で橋渡しする。将来
   // CertRow 自体を unknown ベースに絞る PR を別に切る想定。
   const row: CertRow = {
     public_id: cert.public_id,
-    tenant_custom_domain: tenantDomain,
     customer_name: cert.customer_name ?? "",
     vehicle_info_json: (cert.vehicle_info_json ?? {}) as Record<string, unknown>,
     content_free_text: cert.content_free_text ?? null,
@@ -111,6 +107,7 @@ export async function generateCertificatePdfBytes(certificateId: string): Promis
     maintenance_json: cert.maintenance_json ?? null,
     body_repair_json: cert.body_repair_json ?? null,
     accessory_json: cert.accessory_json ?? null,
+    damage_map_json: cert.damage_map_json ?? null,
     service_type: cert.service_type ?? null,
     expiry_type: cert.expiry_type ?? null,
     expiry_value: cert.expiry_value ?? null,
