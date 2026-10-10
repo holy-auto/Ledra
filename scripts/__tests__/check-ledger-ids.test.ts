@@ -17,7 +17,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 // @ts-expect-error -- .mjs に型定義は無い。検査対象は実行時の挙動。
-import { checkLedger, KNOWN_LEGACY_EXCESS, MIN_ENTRIES } from "../check-ledger-ids.mjs";
+import { checkLedger, KNOWN_LEGACY_EXCESS, MIN_ENTRIES, MIN_TYPE_ROWS } from "../check-ledger-ids.mjs";
 
 const LEDGER = join(dirname(fileURLToPath(import.meta.url)), "../../docs/context/MISTAKE_LEDGER.md");
 const real: string = readFileSync(LEDGER, "utf8");
@@ -69,6 +69,31 @@ describe("checkLedger（陽性対照 — 正しい文書は通る）", () => {
     const r = checkLedger(real);
     expect(r.legacyDupes).toHaveLength(10);
     expect(r.legacyExcess).toBe(KNOWN_LEGACY_EXCESS);
+  });
+  it("型表を型ごとに1本として読み、行数が床を下回らない", () => {
+    const r = checkLedger(real);
+    expect(r.error).toBe(null);
+    // **厳密値で固定しない。** 型を1つ増やすのはこの表の唯一の定常変更で、
+    // `toBe` にすると**正しい編集でテストが赤になる**（/code-review 指摘）。
+    // スクリプト側の ponytail も「上げ忘れても検査は成立する」と書いている。
+    // 上の MIN_ENTRIES の陽性対照と同じ形に揃える。
+    expect(r.typeRows).toBeGreaterThanOrEqual(MIN_TYPE_ROWS);
+  });
+
+  it("フェンス外で型表の行を引用しても落ちない（pre-commit を止めない）", () => {
+    // **これが無いと、台帳が自分の書式を説明した日にリポジトリ全体のコミットが止まる。**
+    // 初版は全文を走査しており、`A 行×2` を出して落ちた（/code-review が実測）。
+    // 台帳は「自分の書式を自分の中で説明する」文書なので、この引用は正常な本文である。
+    const quoted = `${real}\n\n## 付録\n\n| 型 | 中身 | 該当 |\n|---|---|---|\n| **A. 道具を検証しない** | 引用 | M-001 |\n`;
+    expect(checkLedger(quoted).error, "正しい文書が落ちている").toBe(null);
+  });
+
+  it("表に無い文字を本文で引用しても行数が増えない（消えた行を隠さない）", () => {
+    // 逆向きの穴。`| **M. …` の引用が行数を13に増やすと、**本当に消えた行を隠す**。
+    const quoted = `${real}\n\n本文の引用:\n\n| **M. 架空の型** | 中身 | M-001 |\n`;
+    const r = checkLedger(quoted);
+    expect(r.error).toBe(null);
+    expect(r.typeRows, "表の外の行を数えている").toBe(checkLedger(real).typeRows);
   });
 });
 
@@ -143,6 +168,60 @@ describe("checkLedger（陰性対照 — 壊れを1つずつ入れる）", () =>
     const r = checkLedger(broken, { minEntries: total });
     expect(r.ok).toBe(false);
     expect(r.error).toContain(`エントリが ${total - 3} 件しか読めなかった`);
+  });
+
+  it("型表の行が2本になったら落ちる（マージで「両側を残す」をやった形）", () => {
+    // 2026-10-07 に実際にこれで壊し、ID 一覧が食い違った状態をマージした
+    // （M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing）。
+    // そのとき決めた「grep で1本かを確かめる」習慣は、10-09 の4回のマージで
+    // 4回とも手で打つ必要があった。だから検査にした。
+    const lines = real.split("\n");
+    const i = lines.findIndex((l) => /^\| \*\*[A-Z]\. /.test(l));
+    expect(i, "型表の行が1行も見つからない＝検査が何も見ていない").toBeGreaterThan(-1);
+    const dupe = [...lines.slice(0, i + 1), lines[i], ...lines.slice(i + 1)].join("\n");
+    const r = checkLedger(dupe);
+    expect(r.error).toContain("型表の行が重複している");
+    expect(r.error, "直し方（和集合で1本に戻す）が出ていないと、また両側を残してしまう").toContain("和集合");
+  });
+
+  it("表が実在しない ID を指したら落ちる（打ち間違い・改名の置き忘れ）", () => {
+    const broken = real.replace(/^\| \*\*A\. .*$/m, (row) => `${row.slice(0, -1)}, **M-20991231-does-not-exist** |`);
+    expect(broken, "A 行の書き換えが当たっていない").not.toBe(real);
+    const r = checkLedger(broken);
+    expect(r.error).toContain("実在しない ID を指している");
+    expect(r.error).toContain("M-20991231-does-not-exist");
+  });
+
+  it("**書式から外れた**打ち間違いも落ちる（大文字混入・日付の桁落ち）", () => {
+    // 当初は `M-\d{8}-[a-z0-9-]+` に限っており、**打ち間違いは「一致しない」ので素通り**していた
+    // —— 検査7が止めるはずの誤りそのもの（/code-review が両方とも実測）。
+    for (const typo of ["M-20991231-Does-Not-Exist", "M-2099123-does-not-exist"]) {
+      const broken = real.replace(/^\| \*\*A\. .*$/m, (row) => `${row.slice(0, -1)}, **${typo}** |`);
+      expect(broken, `${typo} の書き換えが当たっていない`).not.toBe(real);
+      const r = checkLedger(broken);
+      expect(r.error, `${typo} が素通りした`).toContain("実在しない ID を指している");
+      expect(r.error).toContain(typo);
+    }
+  });
+
+  it("型表以外の表（旧番号の対応表）が死んだ ID を指しても落ちる", () => {
+    // 冒頭の「旧番号が重複していた10組」の表も同じ索引で、同じ壊れ方をする。
+    // 範囲を型表に限る理由が無い（/code-review 指摘）。
+    const first = checkLedger(real).ids.find((id: string) => real.includes(`| \`${id}\` |`));
+    const target = first ?? "M-20260907-no-negative-control";
+    const broken = real.replace(`\`${target}\``, "`M-20991231-does-not-exist`");
+    expect(broken, "旧番号表の書き換えが当たっていない").not.toBe(real);
+    const r = checkLedger(broken);
+    expect(r.error).toContain("実在しない ID を指している");
+  });
+
+  it("型表の行が読めなくなったら落ちる（書式が変わって0件になる形）", () => {
+    // 「重複が無い」だけを見ると、表の書式が変わって0行になった日から永久に緑になる（型 A）。
+    const flattened = real.replace(/^\| \*\*([A-Z])\. /gm, "| $1. ");
+    expect(flattened, "行頭の書き換えが当たっていない").not.toBe(real);
+    const r = checkLedger(flattened);
+    expect(r.error).toContain("型表の行が");
+    expect(r.error).toContain("下限は");
   });
 });
 
