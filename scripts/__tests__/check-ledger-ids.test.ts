@@ -390,6 +390,61 @@ describe("checkLedger（陰性対照 — /code-review 2026-10-10 の13件）", (
   });
 });
 
+describe("checkLedger（陰性対照 — Codex 2026-10-10 の7件）", () => {
+  function editRow(text: string, type: string, fn: (row: string) => string): string {
+    const lines = text.split("\n");
+    const i = lines.findIndex((l) => l.startsWith(`| **${type}. `));
+    if (i < 0) throw new Error(`型 ${type} の行が無い`);
+    const before = lines[i];
+    lines[i] = fn(before);
+    if (lines[i] === before) throw new Error("書き換えが当たっていない");
+    return lines.join("\n");
+  }
+
+  it("既存 ID に接尾辞が付いた参照を落とす（前半だけ一致して素通りしていた）", () => {
+    const broken = real.replace(
+      "**M-20260915-dupe-count-from-truncated-grep**",
+      "**M-20260915-dupe-count-from-truncated-grep_typo**",
+    );
+    expect(broken, "置換が当たっていない").not.toBe(real);
+    expect(checkLedger(broken).error).toContain("M-20260915-dupe-count-from-truncated-grep_typo");
+  });
+
+  it("型のラベルが化けたら、その型を名指しで落とす（行数の床だけでは通る）", () => {
+    // A → M。12行・重複なしのまま通っていた。検査8が「65件が未掲載」と言うだけで、
+    // 原因を名指しできていなかった。
+    const broken = editRow(real, "A", (row) => row.replace("| **A. ", "| **M. "));
+    const r = checkLedger(broken);
+    expect(r.error).toContain("型表に無い型がある: A");
+  });
+
+  it("書式の崩れた行は濾さずに落とす（崩れた重複行が黙って捨てられていた）", () => {
+    const lines = real.split("\n");
+    const i = lines.findIndex((l) => l.startsWith("| **A. "));
+    lines.splice(i + 1, 0, "| **A.名前が詰まっている** | 中身 | M-001 |");
+    const r = checkLedger(lines.join("\n"));
+    expect(r.error).toContain("行の書式から外れた行が 1 行");
+  });
+
+  it("実在しない旧番号を落とす（旧番号の書式に当たるだけで通っていた）", () => {
+    const broken = editRow(real, "A", (row) => row.replace("M-001", "M-9999"));
+    expect(checkLedger(broken).error).toContain("M-9999");
+  });
+
+  it("旧番号の対応表の打ち間違いも落とす（索引の表2つを見る）", () => {
+    const broken = real.replace("| `M-060` | 2026-09-07 |", "| `M-9999` | 2026-09-07 |");
+    expect(broken, "置換が当たっていない").not.toBe(real);
+    expect(checkLedger(broken).error).toContain("M-9999");
+  });
+
+  it("エントリ本文の説明用の表に ID を書いても落ちない（誤検出でコミットを止めない）", () => {
+    // 台帳は「消した ID」「打ち間違えた ID」を表で説明することがある。
+    // `| ` で始まる全行を見ていたので、それを索引の参照と読んで全コミットを止めていた。
+    const text = `${real}\n## 付録\n\n| 事例 | 結果 |\n|---|---|\n| \`M-20260915-deleted-entry\` を参照していた | 落ちた |\n`;
+    expect(checkLedger(text).error, "正しい文書が落ちている").toBe(null);
+  });
+});
+
 describe("fixLedger（補完器）", () => {
   it("足し忘れを埋めると検査が通る", () => {
     const broken = withEntry("## M-20260915-not-indexed 表に足し忘れた（2026-09-15・型 A）");

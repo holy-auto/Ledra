@@ -96,24 +96,30 @@ const countBy = (xs, key) => xs.reduce((m, x) => m.set(key(x), (m.get(key(x)) ??
  * 書き換えてしまう（検査側は #1289 の `/code-review` で同じ穴を塞いである）。
  * 走査を2箇所に書かないために、ここを両方で使う。
  */
-function typeTableRows(entries) {
+function tableBlock(entries, header, isRow) {
   // **本文でヘッダを引用されても0行にしない。** `startsWith` で最初の一致を採ると、
   // 表の上の本文に `| 型 | 中身 | 該当 |` と書いた日から**正しい文書が0行**になり、
   // 行数の床（検査6-b）が落ちて pre-commit がリポジトリ全体を止める（/code-review 指摘・
   // 実測）。行の引用に対しては同じ穴を塞いであったのに、**ヘッダの引用を見ていなかった。**
   // 候補を全部試して、**行が1本でも取れたブロック**を採る。
   for (let h = 0; h < entries.length; h++) {
-    if (!entries[h].line.startsWith(TYPE_TABLE_HEADER)) continue;
-    const rows = [];
+    if (!entries[h].line.startsWith(header)) continue;
+    const body = [];
     for (const e of entries.slice(h + 2)) {
       if (e.line.trim() === "") break;
-      rows.push(e);
+      body.push(e);
     }
-    const found = rows.filter(({ line }) => TYPE_ROW_RE.test(line));
-    if (found.length > 0) return found;
+    if (body.some(({ line }) => isRow(line))) return body;
   }
   return [];
 }
+
+/** 型表の本体（**行でないものも含む**。崩れた行を検査6-a で落とすため）。 */
+const typeTableBody = (entries) => tableBlock(entries, TYPE_TABLE_HEADER, (l) => TYPE_ROW_RE.test(l));
+/** 型表の正しい行だけ。 */
+const typeTableRows = (entries) => typeTableBody(entries).filter(({ line }) => TYPE_ROW_RE.test(line));
+/** 旧番号の対応表の本体。検査7の対象を「索引の表」2つに限るのに使う。 */
+const legacyTableBody = (entries) => tableBlock(entries, LEGACY_TABLE_HEADER, (l) => l.includes("`M-"));
 
 /**
  * 表の行から「該当」列（ID の並ぶ最後のセル）を返す。読めなければ `null`。
@@ -147,7 +153,7 @@ function missingPairs(entries) {
   for (const { line } of typeTableRows(entries)) {
     const cell = targetCell(line);
     if (cell === null) continue; // 列が読めない行は検査6側の問題として扱う
-    rowCells.set(line.match(TYPE_ROW_RE)[1], new Set([...cell.matchAll(TABLE_ID_LOOSE_RE)].map((m) => m[0])));
+    rowCells.set(line.match(TYPE_ROW_RE)[1], new Set(cellIds(cell)));
   }
   const seen = new Set();
   const out = [];
@@ -194,8 +200,30 @@ const TYPE_TABLE_HEADER = "| 型 | 中身 | 該当 |";
  * 検査7が止めるはずの誤りそのものを見逃していた（/code-review 指摘。
  * `M-20991231-Does-Not-Exist` と `M-2099123-does-not-exist` の両方で素通りを実測）。
  * 緩く拾って、**実在のエントリでも旧番号でもないもの**を落とす。
+ *
+ * **区切りまで一気に拾う。** `[0-9A-Za-z-]` に限っていたら、
+ * `M-20260915-dupe-count-from-truncated-grep_typo` が `_` で切れて
+ * **前半の実在 ID だけが一致し、素通りした**（Codex 指摘・実測）。
+ * 区切り（空白・`,`・`|`・`、`・閉じ括弧）までを1つのトークンとして見る。
  */
-const TABLE_ID_LOOSE_RE = /M-[0-9A-Za-z-]{3,}/g;
+const TABLE_ID_LOOSE_RE = /M-[^\s,|、）)]+/g;
+/**
+ * 表のセル（または表の行）から ID を取り出す。装飾（`**M-001**`／`` `M-060` ``）を落とす。
+ *
+ * **1箇所にする。** 装飾を落とす処理を検査7にだけ入れて `missingPairs` に入れ忘れ、
+ * **225 組が未掲載**と言い出した（実測）。今日すでに
+ * `M-20261010-wrote-the-same-computation-twice-and-left-the-mirror-assertion` で
+ * 「同じ事実を2箇所で計算していた」と書いたのに、同じ形をもう一度作った。
+ */
+const cellIds = (text) => [...text.matchAll(TABLE_ID_LOOSE_RE)].map(([m]) => m.replace(/[*`]+$/, ""));
+/** 旧番号の対応表のヘッダ。検査7が見る「索引の表」のもう1つ。 */
+const LEGACY_TABLE_HEADER = "| 旧番号 | 日付 | 新 ID | 表題 |";
+/**
+ * 型表に必ず在る型。**行数の床だけでは、A が M に化けても12行のまま緑**になる
+ * （/code-review 指摘。実測では検査8が「65件が未掲載」という読めない形で落ちた）。
+ * 型を増やすときはここも足す —— 増やしたことを意識させるための固定である。
+ */
+const REQUIRED_TYPES = [..."ABCDEFGHIJKL"];
 /** 旧番号（`M-060` 等）。移行時の別名で、新形式の見出しとしては実在しない。 */
 const LEGACY_ID_RE = /^M-\d{1,4}$/;
 /**
@@ -360,6 +388,40 @@ export function checkLedger(
     };
   }
 
+  // 6-a0. **表のブロックに、行でない非空行が混ざっていないか。**
+  //       以前は `TYPE_ROW_RE` で**濾していた**ので、`| **A.名前が詰まっている** |` のような
+  //       崩れた重複行は**黙って捨てられ**、床は12行のまま・重複検査も元の A 行しか見ない
+  //       → 緑のまま壊れていた（Codex 指摘・実測で素通り）。濾さずに落とす。
+  const notRows = typeTableBody(entries)
+    .map(({ line }) => line)
+    .filter((l) => !TYPE_ROW_RE.test(l));
+  if (notRows.length > 0) {
+    return {
+      ok: false,
+      error:
+        `型表のブロックに、行の書式から外れた行が ${notRows.length} 行ある:\n` +
+        notRows.slice(0, 5).map((l) => `    ${l.slice(0, 90)}`).join("\n") +
+        "\n  → 行は `| **A. 型の名前** | 中身 | 該当 ID… |`（`**` の後は1文字＋`. `＋空白）。\n" +
+        "  表の下に続けて別の表や本文を書くときは、**空行を1つ入れて**ブロックを閉じること。",
+    };
+  }
+
+  // 6-d. **A〜L が揃っているか。** 行数の床だけでは、マージや打ち間違いで
+  //      `A` が `M` に化けても**12行・重複なし**で通る（Codex 指摘。実測では検査8が
+  //      「65件が未掲載」という読めない形で落ちた —— 原因を名指しできていない）。
+  const present = new Set(typeRows.map((r) => r.match(TYPE_ROW_RE)[1]));
+  const missingTypes = REQUIRED_TYPES.filter((t) => !present.has(t));
+  if (missingTypes.length > 0) {
+    return {
+      ok: false,
+      error:
+        `型表に無い型がある: ${missingTypes.join(", ")}\n` +
+        `  （読めた型: ${[...present].join(", ") || "なし"}）\n` +
+        "  → 行のラベルが化けたか、行が消えている。型を増やしたのなら " +
+        "`REQUIRED_TYPES` にも足すこと。",
+    };
+  }
+
   // 6-c. **該当列が読めない行。** 末尾のパイプが落ちた行は `TYPE_ROW_RE` には当たるので
   //      6-a/6-b を通り抜け、以前は検査8で `undefined.matchAll` になって
   //      **pre-commit がスタックトレースで死んでいた**（/code-review 指摘・実測）。
@@ -381,16 +443,22 @@ export function checkLedger(
   //    行を和集合にするときの打ち間違い・エントリの改名で、表が死んだ ID を指すようになる。
   //    表は「この型は過去にどれだったか」を引くための索引なので、指し先が無いと索引が壊れる。
   //
-  //    **型表だけでなく、ファイル中のすべての表の行を見る。** 冒頭の
-  //    「旧番号が重複していた10組」の表も同じ索引で、同じ壊れ方をする
-  //    （打ち間違い・改名の置き忘れ）。範囲を型表に限る理由が無い（/code-review 指摘）。
+  //    **対象は「索引の表」2つだけ**（型表と、冒頭の「旧番号が重複していた10組」の表）。
+  //    以前は `| ` で始まる全行を見ていたので、**エントリの本文が表で経過を説明するとき**
+  //    —— 「消した ID」「打ち間違えた ID」を表に書いた瞬間に、それを索引の参照と読んで
+  //    コミット全体を止めていた（Codex 指摘・実測。台帳には説明用の表が実際に多い）。
+  //    索引の表以外は索引ではないので、見ない。
+  //
+  //    **旧番号も実在を見る。** `LEGACY_ID_RE` に当たるだけで通していたので、
+  //    `M-9999` のような実在しない旧番号が素通りした（Codex 指摘・実測）。
+  //    見出しが名乗っている旧番号の集合に入っていることを見る。
   const entryIds = new Set(ids);
+  const legacyOwned = new Set(legacyNames);
   const dangling = new Set();
-  for (const line of bodyLines) {
-    if (!line.startsWith("| ")) continue;
-    for (const m of line.matchAll(TABLE_ID_LOOSE_RE)) {
-      if (entryIds.has(m[0]) || LEGACY_ID_RE.test(m[0])) continue;
-      dangling.add(m[0]);
+  for (const { line } of [...typeTableBody(entries), ...legacyTableBody(entries)]) {
+    for (const id of cellIds(line)) {
+      if (entryIds.has(id) || legacyOwned.has(id)) continue;
+      dangling.add(id);
     }
   }
   if (dangling.size > 0) {
