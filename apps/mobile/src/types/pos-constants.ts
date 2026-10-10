@@ -6,11 +6,11 @@
  */
 
 export const PAYMENT_METHODS = [
-  { value: "cash", label: "現金", icon: "💴" },
-  { value: "card", label: "カード", icon: "💳" },
-  { value: "qr", label: "QR決済", icon: "📱" },
-  { value: "bank_transfer", label: "振込", icon: "🏦" },
-  { value: "other", label: "その他", icon: "📋" },
+  { value: "cash", label: "現金" },
+  { value: "card", label: "カード" },
+  { value: "qr", label: "QR決済" },
+  { value: "bank_transfer", label: "振込" },
+  { value: "other", label: "その他" },
 ] as const;
 
 export type PaymentMethodValue = (typeof PAYMENT_METHODS)[number]["value"];

@@ -388,13 +388,7 @@ export default function WalkinJobClient() {
           disabled={submitting || !title.trim() || estimateChoice == null}
           className="btn-primary px-6 py-2.5 disabled:opacity-50"
         >
-          {submitting
-            ? "作成中..."
-            : estimateChoice === "now"
-              ? "案件を開始 → 見積書作成へ"
-              : estimateChoice === "skip"
-                ? "案件を開始 →"
-                : "案件を開始 →"}
+          {submitting ? "作成中..." : estimateChoice === "now" ? "案件を開始 → 見積書作成へ" : "案件を開始 →"}
         </button>
       </div>
     </form>

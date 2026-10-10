@@ -481,7 +481,7 @@ export default function AcademyProgressPage() {
                     {downloadingCat === c.category ? (
                       <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
                     ) : (
-                      <span>⬇</span>
+                      <span>↓</span>
                     )}
                     {downloadingCat === c.category ? "生成中…" : "PDF"}
                   </button>

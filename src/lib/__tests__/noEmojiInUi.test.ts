@@ -7,17 +7,17 @@
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { stripComments, walkSource } from "./sourceScan";
 
-// 既定で絵文字表示になる文字 + FE0F 付き + 文字表示が既定でも絵文字フォントで出がちな記号。
-// → ✓ ★ ✕ ○ などの約物は対象外（UI の記号として使っている）。
-const UI_EMOJI =
-  /\p{Emoji_Presentation}|\p{Extended_Pictographic}\uFE0F|[\u26A0\u23ED\u23F1\u23F9\u26D3\u2699\u270F\u270D\u2696\u267B\u2709\u2764\u2328]/u;
+// 絵文字にもなりうる絵記号（\p{Emoji} かつ Extended_Pictographic）。⚠ ⬇ のように文字表示が既定でも
+// スマホでは色付き絵文字で出るので、それも拾う。矢印 (U+2190–21FF) と © ® ™ は約物として許す
+// （→ ↗ を UI の記号として使っている）。✓ ★ ✕ ○ は \p{Emoji} でないので元々対象外。
+const UI_EMOJI = /[\u2190-\u21FF]\uFE0F|(?![\u2190-\u21FF\u00A9\u00AE\u2122])(?=\p{Emoji})\p{Extended_Pictographic}/u;
 
 const root = join(__dirname, "..", "..");
 const files = [
-  ...walkSource(join(root, "app")).filter((p) => !p.includes(`${join(root, "app", "api")}`)),
+  ...walkSource(join(root, "app")).filter((p) => !p.startsWith(join(root, "app", "api") + sep)),
   ...walkSource(join(root, "components")),
   join(root, "lib", "operationGuides.ts"),
   join(root, "lib", "academy", "scoring.ts"),
@@ -25,7 +25,8 @@ const files = [
 
 describe("UI に絵文字を出さない", () => {
   it("検出器が当たる/当たらない", () => {
-    for (const s of ["🏃 飛び込み案件", "⚠ 注意", "⚠️", "✅", "✨", "📄"]) expect(UI_EMOJI.test(s), s).toBe(true);
+    for (const s of ["🏃 飛び込み案件", "⚠ 注意", "⚠️", "✅", "✨", "📄", "⬇", "↗️"])
+      expect(UI_EMOJI.test(s), s).toBe(true);
     for (const s of ["→", "✓", "★", "✕", "○", "↗", "©"]) expect(UI_EMOJI.test(s), s).toBe(false);
   });
 

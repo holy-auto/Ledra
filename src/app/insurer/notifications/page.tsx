@@ -6,12 +6,12 @@ import { createClient } from "@/lib/supabase/client";
 
 /* ── notification type config ── */
 
-const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
-  case_update: { label: "案件更新", color: "blue" },
-  pii_approved: { label: "PII開示承認", color: "emerald" },
-  pii_rejected: { label: "PII開示却下", color: "red" },
-  new_message: { label: "新規メッセージ", color: "purple" },
-  system: { label: "システム通知", color: "neutral" },
+const TYPE_CONFIG: Record<string, { label: string; mark: string; color: string }> = {
+  case_update: { label: "案件更新", mark: "案件", color: "blue" },
+  pii_approved: { label: "PII開示承認", mark: "承認", color: "emerald" },
+  pii_rejected: { label: "PII開示却下", mark: "却下", color: "red" },
+  new_message: { label: "新規メッセージ", mark: "連絡", color: "purple" },
+  system: { label: "システム通知", mark: "通知", color: "neutral" },
 };
 
 function typeColor(type: string) {
@@ -195,9 +195,9 @@ export default function InsurerNotificationsPage() {
               >
                 {/* Icon */}
                 <div
-                  className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-lg ${typeColor(n.type)}`}
+                  className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-xs font-semibold ${typeColor(n.type)}`}
                 >
-                  {cfg.label.slice(0, 1)}
+                  {cfg.mark}
                 </div>
 
                 {/* Content */}

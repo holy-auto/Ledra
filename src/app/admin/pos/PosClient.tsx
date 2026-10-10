@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import useSWR from "swr";
 import QRCode from "qrcode";
 import { fetcher } from "@/lib/swr";
+import { PAYMENT_METHODS } from "@/types/pos-constants";
 import { formatJpy, formatDate } from "@/lib/format";
 import Badge from "@/components/ui/Badge";
 import PageHeader from "@/components/ui/PageHeader";
@@ -104,14 +105,6 @@ type QrStep = "idle" | "creating" | "showing" | "paid" | "recording" | "error";
 /* ────────────────────────────────────────────── */
 /*  Constants                                     */
 /* ────────────────────────────────────────────── */
-
-const PAYMENT_METHODS = [
-  { value: "cash", label: "現金" },
-  { value: "card", label: "カード" },
-  { value: "qr", label: "QR決済" },
-  { value: "bank_transfer", label: "振込" },
-  { value: "other", label: "その他" },
-] as const;
 
 const RESERVATION_STATUS_MAP: Record<
   string,
