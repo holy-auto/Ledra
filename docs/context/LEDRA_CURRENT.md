@@ -7,7 +7,7 @@
 最終更新: 2026-10-10
 
 > 2026-10-10 追記（**写真の保存先 `assets` バケットを非公開にする**）: 表示はすべて署名 URL か service-role の download に切り替え済みで、
-> バケットを `public = false` にするマイグレーション（`20261010130513_make_assets_bucket_private.sql`）をマージで本番に適用する（RELEASE_LOG 2026-10-10）。
+> バケットを `public = false` にするマイグレーション（`20261010130513_make_assets_bucket_private.sql`）を本番に適用した（#1300、RELEASE_LOG 2026-10-10）。
 > 以後、保存パスから組み立てた公開 URL（`/object/public/assets/...`）は開けない。staging（Ledra-staging）の `assets` は作成時の本番設定（公開）のままなので、
 > 揃えるならこのマイグレーションを staging にも当てる。バケットは画像のみ・10MB の制限で、HEIC 写真・10〜20MB の写真・動画・署名済み PDF の保存は
 > 弾かれる（以前から。OPEN_QUESTIONS 2026-10-10）。
