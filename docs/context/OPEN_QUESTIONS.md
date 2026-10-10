@@ -39,7 +39,24 @@
   1. **モバイルアプリの配布** → ✅ 待たなくてよい（2026-10-10 代表確認: アプリは未公開で、使っているのは代表のみ）。代表の端末は、非公開化の前後で
      署名 URL を使う版（#1285 以降）に入れ替える。
   2. **点検記録の写真** → ✅ 公開 URL ではなく保存パスを保存する形に変更（2026-10-10、RELEASE_LOG）。本番は 0 件なので移行は不要。
-  3. **バケットを非公開にする**（残り）: 1・2 の後に、`storage.buckets` の `assets` を `public = false` にする（戻すのも同じ 1 箇所）。直前に、公開 URL で読む経路が無いことを本番でも確かめる。
+  3. **バケットを非公開にする** → PR 作成（2026-10-10、`20261010130513_make_assets_bucket_private.sql`、RELEASE_LOG）。
+     本番でポリシー 0 本・公開 URL を保存した列 0 件・コードの公開 URL 経路 0 を確認済み。マージで本番に適用される。
+
+## `assets` バケットの制限（画像のみ・10MB）が、アプリが受け付けるアップロードを弾いている（2026-10-10）
+
+- 状況: 本番の `assets` は `allowed_mime_types` が画像 5 種（jpeg/png/webp/gif/avif）、上限 10MB（2026-10-10 に storage.buckets で確認）。
+  アプリはこれより広く受け付けて、そのままの形式で保存しようとするので、次が本番で弾かれる（以前から。#1300 の /code-review で判明）:
+  - **iPhone の HEIC 写真**: 証明書写真のアップロードは HEIC を受け付け（`uploadHandler.ts` の `validateMagicBytes`）、`contentType: image/heic` のまま保存する
+    （`processUploadedPhoto.ts`）。
+  - **10〜20MB の写真**: 証明書写真は 1 枚 20MB まで受け付ける（`uploadHandler.ts` の `MAX_FILE_BYTES`）。点検写真・部品の納品書も 10MB を超える上限を持つ。
+  - **証明書の動画**（`certificateMedia`、mp4/quicktime）。
+  - **署名済み証明書 PDF**（`src/lib/signature/pdfUtils.ts` の `regenerateSignedPdf`）。保存に失敗すると早期 return するので、
+    **`certificates.signed_at` も記録されない**（PDF が無いだけでは済まない）。
+- 本番の実害（2026-10-10 集計）: `assets` のオブジェクトは画像 438 件のみ（webp 288・jpeg 144・png 6）、HEIC・動画・PDF は 0 件。
+  `signature_sessions` は 0 件。弾かれた試行があったかは記録が無く【要確認】。
+- 選択肢: 許可する MIME に HEIC・動画・PDF を足し、上限を 20MB 以上にする（動画の上限は別途判断）/ HEIC は保存前に JPEG に変換する /
+  動画・PDF は別の非公開バケットに分ける / 署名済み PDF の保存失敗で `signed_at` の記録まで止めない。
+- 公開区分: 非公開
 
 ## 証明書 PDF の冒頭文が、記録の刻印を無条件に書いている（2026-10-09）
 
