@@ -170,6 +170,16 @@ describe("合算請求書と元の請求書の二重計上を防ぐ（元請求�
     expect(mocks.admin.calls.update).toBeUndefined();
   });
 
+  it("更新で合算元の ID を差し替えさせない（作成時に合算条件を確かめた ID のまま）", async () => {
+    const meta = { source_document_ids: ["a", "b"] };
+    mocks.userClient = client({ documents: { doc_type: "consolidated_invoice", status: "sent", meta_json: meta } });
+    mocks.admin = client({});
+
+    await PUT(req("PUT", { id: DOC_ID, meta_json: { source_document_ids: ["paid-or-other-customer"] } }));
+
+    expect(mocks.admin.calls.update.meta_json).toEqual(meta);
+  });
+
   it("meta_json を丸ごと送る更新でも、まとめ先（戻すための印）を消さない", async () => {
     const meta = { consolidated_into: "cinv-1", status_before_consolidation: "sent" };
     mocks.userClient = client({ documents: { doc_type: "invoice", status: "cancelled", meta_json: meta } });
@@ -437,6 +447,8 @@ describe("POST /api/admin/documents（合算請求書の明細を元帳票の明
       { ...SOURCES[1], customer_id: "33333333-3333-4333-8333-333333333333" },
       { ...SOURCES[1], doc_type: "staff_invoice" },
       { ...SOURCES[1], status: "cancelled" },
+      // 入金済を合算すると、払い終えた金額をもう一度請求する
+      { ...SOURCES[1], status: "paid" },
     ]) {
       mocks.admin = client({ tenants: { registration_number: null }, documents: [SOURCES[0], bad] });
       const res = await POST(req("POST", body));
@@ -444,6 +456,14 @@ describe("POST /api/admin/documents（合算請求書の明細を元帳票の明
       expect(mocks.admin.calls.insert).toBeUndefined();
       expect(mocks.sync).not.toHaveBeenCalled();
     }
+    // 入金記録だけで払い終えた（ステータスは送付済のままの）元帳票も拒否する
+    mocks.admin = client({
+      tenants: { registration_number: null },
+      documents: SOURCES,
+      payment_entries: [{ id: "pe1" }],
+    });
+    expect((await POST(req("POST", body))).status).toBe(400);
+    expect(mocks.admin.calls.insert).toBeUndefined();
     // 見つからない元帳票（他テナント・削除済み）が混じっていても拒否する
     mocks.admin = client({ tenants: { registration_number: null }, documents: [SOURCES[0]] });
     expect((await POST(req("POST", body))).status).toBe(400);

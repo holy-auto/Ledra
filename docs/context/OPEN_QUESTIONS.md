@@ -70,8 +70,6 @@
 - **元の請求書の古い決済リンク**: 合算で取消扱いにした請求書に Stripe/LINE の決済リンクを既に送っていた場合、顧客がそちらで払うと
   webhook は取消の帳票を閉じない（既存の防壁）ので、入金が記帳されず合算請求書は未入金のまま督促が続く。
   合算請求書に入金として付け替えるか、合算時に元のリンクを無効にするかを決める。件数【要確認】。
-- **一部入金のある元請求書**: 合算請求書の金額は入金前の合計のままなので、残高が入金分だけ多く出る。合算前に弾くか、差し引くかを決める。
-- **入金済の請求書も合算に入れられる**（`isConsolidatableDoc`）。弾くかどうか。
 - **納品書を合算したあと、その納品書を請求書に変換できる**ため、同じ金額の請求書がもう1枚できる（この PR 以前からある）。
 - **合算元の ID が消えた合算請求書**（上の 2026-10-06 の項目）は元請求書と紐付けられないので、この対策が効かず二重のまま残る。
 - **合算請求書の作成時の同期が失敗すると**ログだけ残って二重のまま（再試行の仕組みは無い）。
@@ -116,26 +114,29 @@
 - 選択肢: (a) 気づいた分だけ削除して作り直す（今回から送付後でも削除可）。(b) 備考の番号から ID を引き直して meta_json に戻す移行を書く。
   件数が少なければ (a) で足りる。
 
-## staging（Ledra-staging）の残作業（2026-10-05）
+## staging（Ledra-staging）の残作業（2026-10-05 起票・2026-10-10 更新）
 
-スキーマ投入と DB 層の確認までは済んだ（DECISION_LOG 2026-10-05）。残りは次のとおり。
+スキーマ投入・DB 層の確認（DECISION_LOG 2026-10-05）に続き、**2026-10-10 に Vercel の `staging` ブランチをつなぎ、
+アプリ経由の E2E（手順書の B）が 9/9 合格**した（DECISION_LOG 2026-10-10）。残りは次のとおり。
 
-- **アプリ経由の E2E が未実施**。手順書（`docs/operations/certificate-photo-e2e-checklist.md`）の B（HTTP）を流すには、
-  Vercel の Preview（`staging` ブランチ）の環境変数を `Ledra-staging` の URL・anon キー・service_role キーに向け、staff の
-  テストユーザーを作る必要がある。Vercel のダッシュボード作業なので代表の操作が要る。
-- **マイグレーションの適用履歴が無い**。スキーマはダンプで入れたので、`supabase_migrations.schema_migrations` が空。この状態で
-  `supabase db push` すると 520 本を最初から流し直そうとする。使う前に `supabase migration repair --status applied` で履歴を
-  合わせるか、staging を作り直す（未実施。コマンドの挙動は要確認）。
-- **main との差が1本**。staging は 520 本の時点（48b4a4e5）。`20261005140000_require_delivery_consent.sql` が未適用。
-- **作業用の残骸**: `public._schema_loader`（中身はスキーマ定義のみ、anon の権限は外した）、空の `_probe_c` 〜 `_probe_f`、
-  関数 `_probe_fn`。私の接続からは DROP が確認待ちのまま止まるので消せていない。SQL エディタで
-  `drop table public._schema_loader, public._probe_c, public._probe_d, public._probe_e, public._probe_f; drop function public._probe_fn();`
+- **実機の E2E（手順書の A）が未実施**。カメラの強制起動・端末への保存は実機でしか確かめられない。
+- **マイグレーションの適用履歴がほぼ空**。スキーマはダンプで入れたので、`supabase_migrations.schema_migrations` には
+  後から当てた2本（`require_delivery_consent` / `delivery_consent_requests`）しか無い。この状態で `supabase db push` すると
+  残りを最初から流し直そうとする。使う前に `supabase migration repair --status applied` で履歴を合わせるか、staging を
+  作り直す（未実施。コマンドの挙動は要確認）。
+- **main の新しいマイグレーションは手で当てている**。2026-10-10 時点で main の 524 本のうち、データ修正の
+  `20261009003803_supersede_consolidated_source_invoices` と、staging に無い storage ポリシーを消す
+  `20261009091905_drop_cross_tenant_assets_policy` は、空の staging では何もしないので当てていない。
+- **`staging` ブランチは main より空コミット1つ進んでいる**（本番のビルドの使い回しを避けるため）。以後は早送りでなく
+  マージで更新する。
+- **staging に残っているもの**: 作業用の `public._schema_loader`・空の `_probe_c` 〜 `_probe_f`・関数 `_probe_fn`
+  （私の接続からは DROP が確認待ちで止まるので消せていない。SQL エディタで
+  `drop table public._schema_loader, public._probe_c, public._probe_d, public._probe_e, public._probe_f; drop function public._probe_fn();`）。
+  E2E 用のテナント「E2E Staging Tenant」・staff ユーザー `e2e-staff@ledra-staging.test`・テスト証明書と写真（staging のデータなので害はない）。
 - **pooler の認証が通らなかった原因**が不明（英数字のパスワードにリセットしても `password authentication failed`）。
-  ダッシュボードのリセットが反映されていなかったのか、別の理由かは未確認。staging の DB パスワードはチャットに出たので、
-  原因を調べるときに一緒にリセットする。
-- **staging の作り方を Branching に切り替えるか**。独立プロジェクトは環境変数・バケット・マスタデータを手で揃える必要がある。
-  Supabase の Branching ならプレビュー分岐が自動で作られる。本番の `assets` バケットがマイグレーションに無い点（手作業で作られた）も
-  含めて、どちらに寄せるか未決。
+  staging の DB パスワードはチャットに出たので、原因を調べるときに一緒にリセットする。
+- **staging の作り方を Branching に切り替えるか**。独立プロジェクトは環境変数・バケット・マスタデータ・ビルドの使い回し
+  対策を手で揃える必要がある。本番の `assets` バケットがマイグレーションに無い点（手作業で作られた）も含めて未決。
 
 ## C2PA 本番証明書を ssl.com の無料枠で取る: 残る確認（2026-10-05）
 
