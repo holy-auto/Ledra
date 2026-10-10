@@ -16,10 +16,11 @@ const SUPERSEDABLE_STATUSES = ["draft", "sent", "overdue"];
 export function keepConsolidationKeys(
   clientMeta: Record<string, unknown>,
   existingMeta?: unknown,
+  alsoKeep: string[] = [],
 ): Record<string, unknown> {
   const out = { ...clientMeta };
   const prev = (existingMeta as Record<string, unknown> | null) ?? {};
-  for (const k of [CONSOLIDATED_INTO_KEY, PRIOR_STATUS_KEY]) {
+  for (const k of [CONSOLIDATED_INTO_KEY, PRIOR_STATUS_KEY, ...alsoKeep]) {
     if (k in prev) out[k] = prev[k];
     else delete out[k];
   }

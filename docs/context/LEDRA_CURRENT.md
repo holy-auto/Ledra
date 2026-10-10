@@ -20,11 +20,12 @@
 > `certificate_anchor_batches` はいずれも 0 件（2026-10-07 に service role で件数確認）。ブロックチェーン証明は本番ではまだ1件も作られていない。
 > デモテナントには撮影用ヒーロー車両（LEDRA-DEMO-0017〜0027、NFC タグ付き）を追加した（RELEASE_LOG 2026-10-07）。
 
-> 2026-10-05 追記（**staging を作った**）: Supabase に独立プロジェクト `Ledra-staging` を作り、`main` から `staging` ブランチを
-> 作った。スキーマは本番と同じ構成（520 本時点。テーブル 279・関数 145・RLS ポリシー 665）で、写真の保存先 `assets` バケットも
-> 本番と同じ設定で作った。証明書写真の流れは **DB 層まで確認済み**（10 項目すべて期待どおり）。**アプリ経由の E2E はまだ**で、
-> Vercel の Preview をこの Supabase につなぐ設定が残っている。マイグレーションの適用履歴が無いので、`db push` を使う前に
-> 履歴を合わせる必要がある（OPEN_QUESTIONS「staging（Ledra-staging）の残作業」）。
+> 2026-10-10 更新（**staging でアプリ経由の E2E が通った**）: Supabase の独立プロジェクト `Ledra-staging` と、Vercel の
+> `staging` ブランチ（`https://ledra-git-staging-yusuke-horikoshis-projects.vercel.app`、プレビュー保護あり）をつないだ。
+> 証明書写真の流れ（作成→写真なしの発行ブロック→施工前後の撮影送信→DB 記録→発行→ダウンロード）が **9/9 合格**。
+> **実機の確認（カメラの強制起動・端末保存）はまだ**。staging は本番と同じコミットだと Vercel が本番のビルドを使い回すので、
+> `staging` ブランチには空コミットを1つ載せてある。マイグレーションの適用履歴がほぼ空なので `db push` は使えない
+> （OPEN_QUESTIONS「staging（Ledra-staging）の残作業」）。
 
 > 2026-10-05 追記（**C2PA 署名に時刻証明（RFC 3161）を付けられるようにした**）: `C2PA_TSA_URL` を設定すると、Ledra の
 > claim 署名に TSA のタイムスタンプが入る。付いていないと、署名証明書の期限が切れた日から、それまでに署名した写真が
@@ -245,7 +246,6 @@
 > **未確認**: ログインが要る画面のため実ブラウザでの動作は未確認（自動テスト・E2E の CI は緑）。
 > **残課題**: 他の admin ページ10件が選択中テナントを見ずに最初の所属で引いている（別タスクで提案済み）。
 
-
 > 2026-09-23 追記: **保険会社ポータルの6エンドポイントを本番で復旧した**（#1135・`5b34c562`・
 > マイグレーション `20260923141500` / `20260923141600`）。`insurer_access_logs_action_check` が
 > `view`/`search`/`download_pdf`/`export_csv` の4値しか許さず、アプリが書く残り 16 種を弾いていた。
@@ -290,7 +290,6 @@
 > `workshop_capability_profiles` の select/insert/update、`ft-evidence` バケットが**すべて本番に実在**。
 > `20260922000000`（RLS 修復）と `20260922140000`（通知表）は適用記録だけでなく実体も確認＝
 > recorded-but-not-applied ドリフトは無し。
-
 
 > 2026-09-23 追記: **本番から制約を写すときは、その制約が見る列の定義も一緒に写す**（#1124、
 > 本番適用済み・run #86）。`20260922123100` で本番の CHECK を取り込んだが、同じ列の
@@ -647,7 +646,6 @@
 > #1046（react-native 0.87 を含む mobile 28件）は代表判断待ちで OPEN_QUESTIONS に起票。
 > C2PA 適合性ゲートがフェイルソフトである件、および Stripe Terminal beta.32 が
 > Tap to Pay の起動順を変える件も同様に起票した。
-
 
 > 2026-09-13 追記: **価値仮説フレームワーク分析を正式化した**（PR #965）。
 > `docs/startup-value-target-hypothesis-2026-08.md` に独自性検証・Lv.1→5定義・
@@ -1726,7 +1724,6 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   全 6 軸を 6 言語化、自動車翻訳用語集（~28 用語）、`WithTranslations<T>` UGC 翻訳分離型を新設。
   vi/id/fil/hi 翻訳は推定（正式検証は IMP-051）。画面移行・ルーティング変更・DB マイグレーションなし。
 
-
 - **IMP-010（デザイントークン & 共有コンポーネント基盤）完了**: 不足 UI プリミティブ8つ
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
@@ -1971,8 +1968,6 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （`expo-image-picker` は導入済みなので再ビルド不要。iOS の HEIC は
   `preferredAssetRepresentationMode: "compatible"` で JPEG に変換させる）。
   詳細は DECISION_LOG / RELEASE_LOG 2026-08-23。
-
-
 
 ## 直近の開発フォーカス（git log 直近30件より、2026-07 時点）
 
