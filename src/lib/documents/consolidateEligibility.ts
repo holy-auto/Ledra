@@ -2,16 +2,18 @@ import type { DocumentRow } from "@/types/document";
 
 type EligibilityDoc = Pick<DocumentRow, "doc_type" | "status" | "customer_id">;
 
+/** 合算の元にできるステータス（未入金のもの）。許可リストにして、増えたステータスは既定で弾く。 */
+const CONSOLIDATABLE_STATUSES = new Set(["draft", "sent", "accepted", "overdue"]);
+
 /** 合算請求書の元にできるのは納品書・請求書のみ（見積書や領収書等は対象外）で、
  *  顧客が紐づいておりキャンセル・却下・入金済でないもの。入金済を入れると、払い終えた金額を
- *  合算請求書でもう一度請求し、入金も二重に記帳される（2026-10-09 に本番で発生）。 */
+ *  合算請求書でもう一度請求し、入金も二重に記帳される（2026-10-09 に本番で発生）。
+ *  入金記録だけで払い終えた（ステータスが送付済のままの）帳票は、作成 API が payment_entries で弾く。 */
 export function isConsolidatableDoc(doc: EligibilityDoc): boolean {
   return (
     (doc.doc_type === "delivery" || doc.doc_type === "invoice") &&
     !!doc.customer_id &&
-    doc.status !== "cancelled" &&
-    doc.status !== "rejected" &&
-    doc.status !== "paid"
+    CONSOLIDATABLE_STATUSES.has(doc.status)
   );
 }
 

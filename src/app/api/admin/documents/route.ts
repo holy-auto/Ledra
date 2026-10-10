@@ -287,6 +287,20 @@ export const POST = withCaller(
     ) {
       return apiValidationError("合算できるのは、同じ顧客の納品書・請求書（キャンセル・却下・入金済を除く）のみです。");
     }
+    // 入金記録（一部入金を含む）がある帳票は、ステータスが送付済のままでも払い済みの分がある。
+    // 合算請求書は元帳票の合計で請求するので、入れると払い済みの分をもう一度請求する。
+    if (sourceIds.length > 0) {
+      const { data: paidRows, error: paidErr } = await admin
+        .from("payment_entries")
+        .select("id")
+        .eq("tenant_id", caller.tenantId)
+        .in("document_id", sourceIds)
+        .limit(1);
+      if (paidErr) return apiInternalError(paidErr, "documents POST source payments");
+      if ((paidRows ?? []).length > 0) {
+        return apiValidationError("入金記録（一部入金を含む）がある帳票は合算できません。");
+      }
+    }
 
     // 合算請求書で内訳を1枚目に入れる指定なら、明細を元帳票の明細（車両ごとの見出し＋明細行＋小計）で組み直す。
     // 元帳票をサーバで読み直すので、クライアントが送った要約行（1帳票=1行）は使わない。まとめられない
@@ -553,9 +567,11 @@ export const PUT = withCaller(
     if (body.delivery_date !== undefined) updates.delivery_date = body.delivery_date;
     if (body.template_id !== undefined) updates.template_id = body.template_id || null;
     if (body.meta_json !== undefined)
+      // 合算元の ID は作成時（POST）に合算条件を確かめたものだけ。更新で差し替えさせない
       updates.meta_json = keepConsolidationKeys(
         stripClientIntegritySeal(body.meta_json as Record<string, unknown> | undefined),
         existing?.meta_json,
+        ["source_document_ids"],
       );
 
     if (body.items !== undefined) {
@@ -576,6 +592,7 @@ export const PUT = withCaller(
       const baseMeta = keepConsolidationKeys(
         stripClientIntegritySeal(body.meta_json as Record<string, unknown> | undefined),
         existing?.meta_json,
+        ["source_document_ids"],
       );
       updates.meta_json = { ...existingMeta, ...baseMeta, is_tax_inclusive: isTaxInclusive };
     }
