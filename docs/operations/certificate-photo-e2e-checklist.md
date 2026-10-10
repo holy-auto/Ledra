@@ -3,8 +3,8 @@
 対象: モバイルの「証明書写真キャプチャ → WEB 真正性パイプライン統一」機能
 （撮影 → アップロード → 有効化ゲート → 端末保存 → WEB DL）。導入は PR #905。
 
-> 記載のエンドポイント・DB列・ゲート条件・段階値は `main`（`e3a3d997`, 2026-10-05 時点）の
-> 実コードで確認済み。コードが変わったら本書も同一 PR で更新すること。
+> 記載のエンドポイント・DB列・ゲート条件・段階値は `main`（`e3a3d997`, 2026-10-05 時点）のコードから書いた。
+> B の呼び出し方は 2026-10-10 に staging で実際に通して直した。コードが変わったら本書も同一 PR で更新すること。
 
 ---
 
@@ -49,48 +49,51 @@
 
 ---
 
-## B. 半自動 サーバーパイプライン検証（プレビュー/ステージング + テストトークン）
+## B. 半自動 サーバーパイプライン検証（staging + テストユーザー）
 
-実機カメラ・OS権限・端末保存（A3/A8）以外のサーバー側全経路を、curl/スクリプトで検証できる。
+実機カメラ・OS権限・端末保存（A3/A8）以外のサーバー側全経路を、HTTP で検証できる。
 **実機が無くてもここまでは自動で通せる。**
 
-前提: `BASE`（プレビュー/ステージングURL）、`TOKEN`（staff の Bearer）、`test.jpg`（適当なJPEG）。
+> **実施記録**: 2026-10-10 に staging（`Ledra-staging` / Vercel の `staging` ブランチ）で実施し、**9/9 合格**。
+> DB を直接見て、証明書が `active`、写真2枚（施工前・施工後）に時刻証明（TSA）と位置情報除去が付き、撮影 nonce が
+> 消費済み、`assets` バケットに実ファイル2つ、を確認した。自動化に使った Node スクリプトはテスト用の認証情報を含むので
+> リポジトリには入れていない（手順は下と同じ）。
+>
+> 2026-10-05 版のこの節の curl 例は、写真の項目名・nonce のメソッド・必須項目が実物と違っていた
+> （MISTAKE_LEDGER `M-20261010-e2e-checklist-claimed-verified-calls`）。下は 2026-10-10 に staging で通った形。
 
 ```bash
-BASE="https://<preview-or-staging>"      # 本番URLは使わない
-TOKEN="<staff bearer token>"
-AUTH=(-H "Authorization: Bearer $TOKEN")
+BASE="https://ledra-git-staging-yusuke-horikoshis-projects.vercel.app"  # staging のブランチ用URL（常に最新）。本番URLは使わない
+BYPASS="<Vercel の Protection Bypass for Automation の合言葉>"         # プレビュー保護を通す（秘密。共有しない）
+SB="https://<staging の ref>.supabase.co"; ANON="<staging の anon キー>"
 
-# B1. 下書き作成（body は certCreateJsonSchema / モバイル new.tsx のフォーム項目に合わせる）
-CREATE=$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
-  -H "Idempotency-Key: e2e-$(date +%s)-$RANDOM" \
-  -d '{ /* 顧客・車両・service_type 等を certCreateJsonSchema 通りに */ }' \
+# B0. staff でログインして access_token を得る（staging の Supabase に直接）
+TOKEN=$(curl -s "$SB/auth/v1/token?grant_type=password" -H "apikey: $ANON" -H 'Content-Type: application/json' \
+  -d '{"email":"<staff のメール>","password":"<パスワード>"}' | jq -r .access_token)
+AUTH=(-H "Authorization: Bearer $TOKEN" -H "x-vercel-protection-bypass: $BYPASS")
+
+# B1. 下書き作成。顧客名・車両（メーカーか車種）・走行距離が必須
+CREATE=$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -H "Idempotency-Key: e2e-$(date +%s)-$RANDOM" \
+  -d '{"customer_name":"E2E 顧客","vehicle_maker":"トヨタ","model":"プリウス","mileage_km":12345,"status":"draft"}' \
   "$BASE/api/mobile/certificates")
-ID=$(jq -r .id <<<"$CREATE")            # 詳細/写真は uuid で引く
-echo "created: $CREATE"
+ID=$(jq -r .id <<<"$CREATE"); PUBLIC_ID=$(jq -r .public_id <<<"$CREATE")
 
-# B2. 写真ゼロで有効化 → 400 + 写真必須メッセージを期待（ゲートが効いていることの証明）
-curl -s -o /dev/null -w "%{http_code}\n" "${AUTH[@]}" -X POST \
-  "$BASE/api/mobile/certificates/$ID/activate"   # => 400 期待
+# B2. 写真ゼロで有効化 → 400「施工写真が1枚以上必要です」を期待
+curl -s -o /dev/null -w "%{http_code}\n" "${AUTH[@]}" -X POST "$BASE/api/mobile/certificates/$ID/activate"
 
-# B3. capture-nonce 取得
-NONCE=$(curl -s "${AUTH[@]}" "$BASE/api/mobile/certificates/$ID/capture-nonce" | jq -r .capture_nonce)
+# B3. 撮影 nonce の取得は POST
+NONCE=$(curl -s "${AUTH[@]}" -X POST "$BASE/api/mobile/certificates/$ID/capture-nonce" | jq -r .capture_nonce)
 
-# B4. 単一 multipart でアップロード（撮影セッション相当。nonce はリクエストにつき1回消費）
-curl -s "${AUTH[@]}" -X POST \
-  -F "files=@test.jpg;type=image/jpeg" \
-  -F "stage=intake_before" \
-  -F "capture_nonce=$NONCE" \
-  -F "device_token=<attestation-or-empty>" \
-  -F "device_provider=<play_integrity|app_attest|none>" \
-  "$BASE/api/mobile/certificates/images/upload"   # => {"uploaded":1} 期待
+# B4. アップロード。証明書は public_id で指定、写真の項目名は photos。nonce は1リクエストで1回消費
+curl -s "${AUTH[@]}" -X POST -F "public_id=$PUBLIC_ID" -F "stage=intake_before" -F "capture_nonce=$NONCE" \
+  -F "photos=@test.jpg;type=image/jpeg" "$BASE/api/mobile/certificates/images/upload"   # => {"ok":true,"uploaded":1,...}
+# 施工後も B3→B4 を stage=after で繰り返す（nonce は取り直す）
 ```
 
-- **B5. DB 確認**（Supabase）: `certificate_images` に該当 `certificate_id` の行があり、
-  `storage_path` / `stage` / `authenticity_grade` / `sha256` が入っていること。
-- **B6. 走行距離**: `maintenance_json` に走行距離を入れる（未入力だと B7 が走行距離要求で止まる）。
-- **B7. 有効化**: `POST /api/mobile/certificates/$ID/activate` → 200 + `status:active` を期待。
-- **B8. WEB DL**: `certificate_images.storage_path` を `assets` バケットの公開/署名URLに変換してGET→200。
+- **B5. DB 確認**: `certificate_images` に `stage`（intake_before / after）・`storage_path`・`sha256`・`authenticity_grade`
+  が入っていること。本人の access_token で `$SB/rest/v1/certificate_images?certificate_id=eq.$ID` を読める。
+- **B6. 有効化**: `POST /api/mobile/certificates/$ID/activate` → 200 + `certificate.status = active`。
+- **B7. ダウンロード**: `$SB/storage/v1/object/public/assets/<storage_path>` → 200 + `image/jpeg`。
 
 ### B が検証できること / できないこと
 
@@ -106,6 +109,11 @@ curl -s "${AUTH[@]}" -X POST \
 
 ## 失敗時の切り分け
 
+- アプリに届かず `302 → vercel.com/sso-api` → Vercel のプレビュー保護。`x-vercel-protection-bypass` を付ける（保護は外さない）。
+- ログインは通るのに B1 が 401 → アプリが staging の Supabase を見ていない。Vercel の環境変数が「Preview・`staging` ブランチ」
+  限定で入っているか、**本番と同じコミットで Vercel が本番のビルドを使い回していないか**を見る（`docs/staging-environment.md`）。
+- B1 が 400 `vehicle_required` / `mileage_required` → 車両（メーカーか車種）・走行距離を送っていない。
+- アップロードが 403「Uploads must arrive through the TLS 1.3 edge.」→ `CF_ORIGIN_SECRET` のある環境に `*.vercel.app` 直で送った。
 - アップロードが 401/403 → トークンのロールが staff 未満か失効。
 - `uploaded:0` / 4xx → nonce 期限切れ/二重消費（撮影セッションごとに取り直す）、または `stage` 不正
   （`intake_before`/`in_progress`/`after` 以外は `unspecified` に正規化される）。
@@ -117,7 +125,8 @@ curl -s "${AUTH[@]}" -X POST \
 
 ## 未確定 / 要確認
 
-- プレビュー/ステージング環境と、そこで使えるテスト用テナント・staff トークンの有無。
-- `device_token` を空で送ったときにアップロードが通るか（アテステーション必須化の有無）。
-  実装上グレードは basic 想定だが、拒否されるか通るかは実挙動で確認が要る。
+- ~~staging とテストユーザーの有無~~ → 2026-10-10 に用意済み（`docs/staging-environment.md`）。
+- ~~`device_token` を空で送ったときに通るか~~ → 2026-10-10 実測: 通る。`authenticity_grade=basic`、
+  `capture_binding_reason=attestation_failed`。
+- **A（実機）は未実施**。カメラの強制起動・端末への保存は実機でしか確かめられない。
 - coating/ppf を対象にするなら `certificate_media`（Before/After）投入経路も B に足す必要がある。
