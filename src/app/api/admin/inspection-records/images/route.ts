@@ -94,7 +94,7 @@ export const POST = withCaller(
     try {
       const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-      // 1 枚を read → magic 判定 → GPS/EXIF 除去 → Storage 保存し公開 URL を返す。
+      // 1 枚を read → magic 判定 → GPS/EXIF 除去 → Storage 保存し保存パスを返す（公開 URL は返さない）。
       const uploadOne = async (file: File): Promise<string> => {
         const raw = Buffer.from(await file.arrayBuffer());
         // クライアント申告の MIME ではなくマジックバイトで判定する。
@@ -123,6 +123,7 @@ export const POST = withCaller(
       // Storage に孤児として残り得る（全ロールバックはしない）。ただし保存されるのは
       // GPS 除去済みのバイトのみ（漏洩なし）。クライアントは保存確定時に一括アップロード
       // するため発生は稀。増えるようなら未参照 blob を回収する GC cron を追加する。
+      // 応答のキーは互換のため `urls` だが、中身は保存パス（表示時に signAssetPaths で署名する）
       const urls: string[] = [];
       for (let i = 0; i < files.length; i += UPLOAD_CONCURRENCY) {
         const chunk = files.slice(i, i + UPLOAD_CONCURRENCY);

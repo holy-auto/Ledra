@@ -186,7 +186,7 @@ export default function InspectionRecordForm({
     setFormError(null);
     setSubmitting(true);
     try {
-      // 1) 写真があれば先に Storage へアップロードして URL を得る（保存確定時に一括）。
+      // 1) 写真があれば先に Storage へアップロードして保存パスを得る（保存確定時に一括。キー名は互換のため urls / photo_urls）。
       let photoUrls: string[] = [];
       if (photos.length > 0) {
         const form = new FormData();

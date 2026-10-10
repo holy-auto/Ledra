@@ -9,8 +9,12 @@
 - 内容: 点検記録の外観写真のアップロード（`/api/admin/inspection-records/images`）が公開 URL を返し、フォームがそれを `inspection_records.photo_urls` に
   そのまま保存していた。保存先（`assets` バケット）を非公開にすると開けなくなるので、保存パスを返す（＝保存する）形に変えた。点検写真を画像として表示している
   画面は無い（作業詳細は枚数を数えるだけ）ので、表示時の署名は表示を作るときに `signAssetPaths` で行う。本番の点検記録は 0 件で、移行は不要。
-- 検査: Web・モバイルのコードに Storage の公開 URL を作る呼び出し（`.getPublicUrl(`）が 1 つも無いことを確かめるテスト（`noPublicAssetUrls.test.ts`）を追加。
-  元の公開 URL の行を戻すとテストが落ちることを確認。本番 DB に `assets` の公開 URL が保存されている列が無いことも確認（ロゴ等はパスで保存）。
+- 書き込みの検証: 保存パスは表示時に service-role で署名するので、点検記録の作成・更新（POST / PATCH）で `photo_urls` が
+  **自テナントの点検写真のパス**（`inspections/<テナントID>/<uuid>.<jpg|png|webp>`）だけかを確かめる（`inspectionPhotoPathError`）。
+  他テナントのパスや URL・data URL を書かせない（書けると、表示を作った時点で他店の写真の署名 URL が作れてしまう）。
+- 検査: Web・モバイル・scripts のコードに、Storage の公開 URL を作る書き方（`getPublicUrl`、`/object/public/assets` の組み立て）が無いことを
+  確かめるテスト（`noPublicAssetUrls.test.ts`、コメントは除いて照合）を追加。元の公開 URL の行・文字列での組み立て・分割代入のどれを入れても
+  テストが落ちることを確認。本番 DB に `assets` の公開 URL が保存されている列が無いことも確認（ロゴ等はパスで保存）。
 
 ## 2026-10-09 施工写真の表示を署名 URL に切り替える（写真の非公開化 ①②）
 
