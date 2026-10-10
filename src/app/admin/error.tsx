@@ -1,11 +1,19 @@
 "use client";
 
 import * as Sentry from "@sentry/nextjs";
+import { unstable_isUnrecognizedActionError } from "next/navigation";
 import { useEffect } from "react";
 import Link from "next/link";
 
 export default function AdminError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
+    // デプロイ前に開いた画面から Server Action を送ると、ID が新ビルドに無く 404 になる（login/error.tsx と同じ）。
+    // reset() では古い ID のままなので読み直す。保存されたと思われないよう、読み直す前に知らせる。
+    if (unstable_isUnrecognizedActionError(error)) {
+      window.alert("アプリが更新されたため、ページを読み直します。保存されていないので、もう一度入力してください。");
+      window.location.reload();
+      return;
+    }
     Sentry.captureException(error);
   }, [error]);
 

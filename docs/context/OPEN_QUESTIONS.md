@@ -3,6 +3,25 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 本番 cron ログの赤 3 種のうち、コードで閉じられなかった 2 つ（2026-10-09）
+
+**1. Stripe の詰まり 3 件が 83 日放置のまま、5 分ごとにエラーを出し続けている。**
+本番 `stripe_processed_events` の `processed_at IS NULL` は 2026-09-11 の記録（下の同名項目）と同じ 3 件のまま
+（`account.updated`・`attempts=0`・`error_message`/`payload` とも NULL、作成 2026-07-18 / 08-02 / 08-18）。
+最古 `evt_1TuU3B5Xnr8CA2kqPkNn9A1Y` は 119833 分＝83日5時間13分（07-18 08:56 UTC → 10-09 14:10 UTC をカレンダーで数えても 83日+5:13 で一致）。
+**運営の判断待ち**: Stripe ダッシュボードで 3 イベントを確認し、(a) 後続の `account.updated` で追いついていれば
+`UPDATE stripe_processed_events SET processed_at = now() WHERE event_id IN (...3件)` で閉じる、(b) 追いついていなければ Stripe から Resend する。
+本番データの書き換えなので、このセッションでは実行していない。閉じない限り 288 回/日 Sentry とログに出続け、本物の詰まりが埋もれる。
+
+**2. `polygon-signer` は一度も成功していない。**
+`cron_failure_streaks` で `consecutive_failures=4305`、`last_success_at=NULL`（2026-10-09 14:00 UTC 時点）。
+現在のエラーは `rpc-amoy.polygon.technology` への `fetch failed`。原因候補は (i) 2026-10-02 の TLS 1.3 限定（`tls13HttpsFetch`）に Amoy 公開 RPC が非対応、
+(ii) 公開 RPC 側の遮断・不調、(iii) DNS。この環境からは当該ホストに接続できず切り分けられなかった。
+今回 `cause` の連鎖をログに出すようにしたので、**デプロイ後の次の実行のログ（または `last_error` の先頭 `[cause: ...]`）で決まる**。
+あわせて【要確認】本番の `POLYGON_NETWORK` が `amoy`（テストネット）になっている。本番のアンカーをテストネットに打つ運用で良いのか、
+アンカリング自体を止める（`POLYGON_ANCHOR_ENABLED` を外す）のかは代表判断。また Vercel cron（GET）とは別に、
+`www.ledra.co.jp` 宛ての POST でも毎時叩かれている（外部スケジューラ。出所未確認）。
+
 ## Codex の「利用上限」メッセージが掛かるスコープと回復条件（2026-10-09）
 
 - 状況: 2026-10-09 に #1278 の ready 化で Codex が「You have reached your Codex usage limits for code reviews」を返し
@@ -400,6 +419,19 @@ opt-in `tenants.require_inspector_qualification`・既定 false）。残って�
      Vercel の資料（Builds の Limits）ではキャッシュ上限が Standard 機で 1.5 GB、Elastic はその回に割り当てた機械の上限に従う。
      手元から vercel.com を開けず原文は未確認【要確認】。正しければ、8 GB（Standard）の回は 1.5 GB を超えると捨てられ、
      今の 1.24 GB は上限まで約 0.26 GB しか余裕がない。
+     **2026-10-09 手元で実測**（Next 16.3.8、4 コア / 15GB、本番の環境変数なしのためページデータ収集の手前まで。ピークは全プロセスの RSS 合計）:
+     - 全部ビルド（キャッシュ無し）: ピーク約 7.2 GB（Sentry のソースマップありでも 7.3 GB）。キャッシュあり: 約 2.4〜2.7 GB。
+       変更の大きいコミットではキャッシュありでも 4.2〜6.4 GB。→ **キャッシュを残せば 8 GB 機でも収まる**ことが分かった。
+     - Turbopack のビルドキャッシュを切る（`turbopackFileSystemCacheForBuild: false`）と、毎回ピーク 6.3〜7.9 GB。案として不採用。
+     - キャッシュの中身: `.next/cache/turbopack` が新品で約 0.86〜0.90 GB。実際のコミット 11 個を順にビルドすると 0.94〜1.11 GB の間で増減し、
+       設定を変えたビルドの後は 1.18 GB まで増えた。gzip 換算で node_modules 約 0.56 GB ＋ .next/cache 約 0.65〜0.95 GB で、
+       新品時の合計（約 1.2〜1.3 GB）は成功ログの 1.24 GB とほぼ合う（Vercel が node_modules と .next/cache を保存するという前提の推定）。
+       育つと 1.5 GB に届き、捨てられる、という見立てと合う。
+     - **Next を上げると、古い版のキャッシュ（`v16.3.x-<hash>/`、約 0.9 GB）が消えずに残る**ことを確認（20 日前の日付にした古い版を置いて
+       ビルドしても Turbopack は消さなかった）。上げるたびにキャッシュがほぼ倍になり、次のビルドで捨てられる。
+     **2026-10-09 実装**: `npm run build` の後に `scripts/prune-build-cache.mjs` で古い版を消し、キャッシュと node_modules の大きさを
+     `[build-cache]` としてビルドログに出す（今の版は消さない）。残る課題は「今の版が育つこと」で、これはまだ止められていない。
+     減らせる候補: 動画書き出し用の `@remotion/cli` 一式（gzip 約 74 MB）をアプリの依存から外し、`render-video.yml` でだけ入れる。
 - 起票日: 2026-10-02
 - 判断者: 代表（対策の選択・`1200421` のログの確認）。実装は開発（Claude）
 

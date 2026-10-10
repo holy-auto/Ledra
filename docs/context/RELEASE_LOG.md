@@ -21,6 +21,18 @@
 - 戻し方: `update storage.buckets set public = true where id = 'assets';`
 - 代表の端末のアプリは、署名 URL を使う版（#1285 以降）に入れ替える必要がある（それより前の版は写真が出なくなる）。
 
+## 2026-10-09 LINE 未返信アラート・前日リマインド・停滞フローの cron が毎回 500 で落ちていたのを直した＋Polygon 残高監視の失敗原因をログに残す
+
+- 内容: `unanswered-alerts`（30分毎）・`reservation-reminders`（毎日）・`flow-nudges`（毎日）が、opt-in テナントの走査を
+  `.gt("tenant_id", "")` から始めていた。`tenant_id` は uuid 列なので Postgres が `22P02 invalid input syntax for type uuid: ""` を返し、
+  discovery の時点で毎回 throw → 500。**3本とも通知を1件も出せていなかった**（本番 DB で同じ比較を実行して 22P02 を確認）。
+  初回は条件を付けない形（既存の `followUp.ts` と同じ）に直した。
+- `polygon-signer`: viem の `HTTP request failed ... fetch failed` は本当の原因（TLS ハンドシェイク失敗 / DNS / タイムアウト）を `cause` に隠すため、
+  cause の連鎖をメッセージ先頭に付けてログと `cron_failure_streaks.last_error` に残すようにした。原因そのものはまだ未特定（OPEN_QUESTIONS 参照）。
+- 検証: 新テスト `src/app/api/cron/__tests__/tenantDiscoveryUuid.test.ts`（修正前 3 件失敗 → 修正後 3 件成功）、polygon-signer のテストに cause 表示の 1 件追加。tsc・eslint・prettier 緑。
+- 対象: LINE 連携で AI 自動化を opt-in しているテナント（全業種）。
+
+
 ## 2026-10-10 入金済の納品書・請求書を合算請求書に入れられないようにした
 
 - 内容: 合算の元にできる条件（`src/lib/documents/consolidateEligibility.ts`）を許可リストにして入金済を外した。帳票一覧の合算ボタンは入金済を選ぶと押せなくなり、
@@ -39,6 +51,16 @@
 - 検証: ローカル（next dev）で送信の `Next-Action` を存在しない ID に差し替え、修正前は同じ失敗画面
   （エラーIDなし）を再現、修正後は 404 → 自動で再取得 → ログイン画面に戻ることを確認。
   本番のログ（Sentry）は見られていないので、本番の失敗がこの原因だけかは【要確認】。
+- 追記（同日）: 管理画面（`src/app/admin/error.tsx`）にも同じ対策を入れた。管理画面には Server Action を持つファイルが5つ
+  （証明書作成・サイト掲載の作成/更新/削除/公開切替・店舗設定・ロゴ印影・車両への証明書紐付け）あり、
+  デプロイ前に開いた画面から保存すると同じ失敗になる。入力途中のことがあるので、**読み直す前に
+  「保存されていないので、もう一度入力してください」と知らせる**（黙って読み直すと保存できたと誤解される）。
+  検証は一時的な検証ページ（/admin 配下・コミットしていない）で、古い ID で送信 → 404 → 知らせ → 再取得を確認。
+- 追記（同日・根本対策）: ID がビルドごとに変わるのは、Next.js が `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` 未設定時に鍵を
+  ビルドごとに作り、それを ID の材料にするため。最小の Next アプリで実測: 鍵なしの新規ビルド2回で ID が別、
+  同じ鍵を与えた2回で ID が一致。**Vercel の環境変数にこの鍵を固定すれば、デプロイ後も古い画面から
+  そのまま送れて入力も残る。** `.env.example` に追記。Vercel への設定は代表の作業【要確認: 設定済みか】。
+  この日は 13:20〜13:29 の約10分で本番デプロイが3回あった（#1298・#1297・#1299）。
 
 
 ## 2026-10-10 点検記録の写真は公開 URL ではなく保存パスで持つ（写真の非公開化の前段）
@@ -238,6 +260,16 @@
   （`backfill-demo-image-placeholders.ts` も同じ）。整備の履歴タイトルに「施工」を付けないようにした。
 - 作らなかったもの: ブロックチェーンのアンカー・`vehicle_passports`（DECISION_LOG 2026-10-07）。
 
+## 2026-10-09 Next を上げた後に残る古いビルドキャッシュを消す
+
+- 内容: Vercel のビルドキャッシュが大きすぎて捨てられ、全部ビルド（手元実測でピーク約 7.2 GB）になって 8 GB 機で OOM になるのを減らす。
+  Next を上げると、Turbopack の古い版のキャッシュ（約 0.9 GB）が消えずに残り、キャッシュがほぼ倍になっていた。
+- 実装: `scripts/prune-build-cache.mjs`。`npm run build` を `next build && node scripts/prune-build-cache.mjs` にし、
+  `.next/cache/turbopack/` のうち今の Next の版（`v<版>-`）以外のディレクトリを消す。今の版に当たるものが無いときは何も消さない。
+  `.next/cache`・turbopack・node_modules の大きさを `[build-cache]` でビルドログに出す。失敗してもビルドは落とさない。
+- 検証: テスト 5 件（古い版だけ消す／当たる版が無ければ消さない／16.3.8 と 16.3.80 を取り違えない／実ディレクトリでの削除と
+  ログ／初回ビルドで落ちない）。削除処理を外すと 3 件落ちることを確認。手元で古い版を置いてビルドし、Turbopack 自身は消さないこと、
+  このスクリプトで 909 MB 消えることを確認。計測の詳細は OPEN_QUESTIONS「Vercel のビルド機（Elastic）…」。
 
 ## 2026-10-08 ロゴ・印影を Storage API から直接書き換えられるポリシーを外す
 
