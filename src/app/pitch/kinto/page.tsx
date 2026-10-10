@@ -203,19 +203,16 @@ const S4 = (
       <div className="grid grid-cols-3 gap-4 flex-1">
         {[
           {
-            icon: "🔒",
             tag: "加入者スイッチングコスト",
             title: "施工履歴がKINTOに蓄積",
             body: "Ledra × KINTOで蓄積した施工証明は他社では再現できない資産になる。スイッチングコストが有機的に形成される。",
           },
           {
-            icon: "📉",
             tag: "保険収益性の改善",
             title: "施工実績 = 車両状態の客観指標",
             body: "PPF・コーティング施工済み車両は傷・劣化リスクが低い。証明可能なケア実績は保険査定の客観的根拠になり、合理的な料率設計が可能になる。",
           },
           {
-            icon: "🏆",
             tag: "市場差別化",
             title: "「施工証明付き」KINTOブランド",
             body: "「KINTOを使えば施工実績がブロックチェーンで証明される」という付加価値は他のモビリティサービスにはない独自ポジション。",
@@ -223,7 +220,6 @@ const S4 = (
         ].map((item) => (
           <div key={item.tag} className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-5 flex flex-col gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-2xl">{item.icon}</span>
               <Chip color="violet">{item.tag}</Chip>
             </div>
             <h3 className="text-sm font-bold text-white leading-snug">{item.title}</h3>

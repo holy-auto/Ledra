@@ -140,7 +140,7 @@ export default function ServicePackagesClient() {
               className="btn-secondary text-sm"
               title="ガラスコーティング・PPF・ディテーリングなどの標準テンプレートを一括投入します"
             >
-              {seedBusy ? "投入中…" : "🎁 標準テンプレートを一括投入"}
+              {seedBusy ? "投入中…" : "標準テンプレートを一括投入"}
             </button>
             <Link href="/admin/service-packages/new" className="btn-primary">
               + 新規パッケージ
@@ -173,7 +173,6 @@ export default function ServicePackagesClient() {
 
       {data && (data.packages?.length ?? 0) === 0 && (
         <EmptyStateGuide
-          icon="📦"
           title="施工パッケージで作業を 1 クリック化"
           description="ガラスコーティング・PPF・ヘッドライト磨きなど、業界でよく使う標準テンプレートを 10+ 件まとめて投入できます。後から自由に編集・削除可能です。"
           steps={[
@@ -191,7 +190,7 @@ export default function ServicePackagesClient() {
             },
           ]}
           primaryAction={{
-            label: seedBusy ? "投入中…" : "🎁 標準テンプレートを一括投入",
+            label: seedBusy ? "投入中…" : "標準テンプレートを一括投入",
             onClick: handleSeed,
           }}
           secondaryAction={{

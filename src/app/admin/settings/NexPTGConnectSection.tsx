@@ -121,9 +121,7 @@ export default function NexPTGConnectSection() {
       {/* Revealed key (one-time) */}
       {revealedKey && (
         <div className="rounded-xl border border-warning/30 bg-warning-dim px-4 py-3 space-y-2">
-          <div className="text-xs font-semibold text-warning">
-            ⚠ このキーは今回のみ表示されます。必ず控えてください。
-          </div>
+          <div className="text-xs font-semibold text-warning">このキーは今回のみ表示されます。必ず控えてください。</div>
           <div className="flex items-center gap-2">
             <code className="flex-1 text-xs font-mono bg-[var(--bg-inset)] border border-border-subtle rounded-lg px-3 py-2 text-secondary break-all">
               {revealedKey}

@@ -257,9 +257,6 @@ export default function AgentMaterialsPage() {
         className="block rounded-2xl border border-accent/30 bg-accent-dim/20 p-5 hover:border-accent/50 hover:bg-accent-dim/30 transition-colors"
       >
         <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent text-white text-2xl">
-            📘
-          </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-semibold tracking-[0.18em] text-accent">BUILT-IN GUIDE</span>
@@ -281,9 +278,6 @@ export default function AgentMaterialsPage() {
       {/* Auto-generated resources — always reflect the latest product content */}
       <div className="rounded-2xl border border-emerald-300/40 bg-emerald-50/40 dark:bg-emerald-500/[0.06] p-5 shadow-sm">
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-white text-lg">
-            ♻️
-          </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-semibold tracking-[0.18em] text-emerald-700 dark:text-emerald-400">

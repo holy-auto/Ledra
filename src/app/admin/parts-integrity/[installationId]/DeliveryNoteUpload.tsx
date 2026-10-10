@@ -56,7 +56,7 @@ export default function DeliveryNoteUpload({ installationId }: { installationId:
             アップロード中…
           </>
         ) : (
-          <>📄 納品書をアップロード</>
+          <>納品書をアップロード</>
         )}
         <input
           ref={inputRef}

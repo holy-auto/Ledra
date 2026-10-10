@@ -108,7 +108,7 @@ export default function ThicknessAiAnomalyPanel({ reportId }: { reportId: string
     <section className={`rounded-xl border px-4 py-3 space-y-3 ${SEVERITY_TONE[anomaly.severity]}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-semibold">
-          <span>✨ AI 異常検知:</span>
+          <span>AI 異常検知:</span>
           <span>{SEVERITY_LABEL[anomaly.severity]}</span>
         </div>
         <div className="text-[11px] opacity-80">

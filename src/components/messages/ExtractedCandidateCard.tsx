@@ -81,7 +81,7 @@ export function ExtractedCandidateCard({
       }`}
     >
       <div className="flex items-center gap-1.5">
-        <span className={`font-semibold ${handled ? "text-muted" : "text-accent"}`}>✨ AI 抽出</span>
+        <span className={`font-semibold ${handled ? "text-muted" : "text-accent"}`}>AI 抽出</span>
         <span className="rounded-full bg-accent/10 text-accent px-1.5 py-0">{INTENT_LABEL[result.intent]}</span>
         <span className="text-muted">{Math.round(result.confidence * 100)}%</span>
         {result.source === "history_import" && (

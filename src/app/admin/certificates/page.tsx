@@ -149,7 +149,6 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
 
       {isFirstUse ? (
         <EmptyStateGuide
-          icon="🪪"
           title="最初の証明書を発行してみましょう"
           description="施工内容と写真を記録して、QRコード付きのデジタル証明書を発行します。発行した証明書は顧客にURLで共有でき、保険会社からも検索できます。"
           steps={[

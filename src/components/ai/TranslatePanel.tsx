@@ -103,7 +103,7 @@ export default function TranslatePanel({ getText, kind = "general", onReplace }:
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-medium text-accent hover:bg-accent/10 rounded-xl transition-colors"
       >
-        <span>✨ 多言語翻訳</span>
+        <span>多言語翻訳</span>
         <span className="ml-auto text-muted text-xs">{open ? "▲" : "▼"}</span>
       </button>
 

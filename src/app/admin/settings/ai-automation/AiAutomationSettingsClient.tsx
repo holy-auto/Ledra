@@ -183,7 +183,7 @@ export default function AiAutomationSettingsClient({ role, initialSettings, cost
     <div className="space-y-6">
       {!loadedFromDb && (
         <div className="rounded-xl border border-warning/30 bg-warning-dim px-4 py-3 text-xs text-warning">
-          ⚠ AI 自動入力設定テーブルがまだ未作成です。デフォルト値で表示しています。 マイグレーション (
+          AI 自動入力設定テーブルがまだ未作成です。デフォルト値で表示しています。 マイグレーション (
           <code>20260528000003_ai_automation_settings.sql</code>) を適用すると保存できるようになります。
         </div>
       )}
@@ -374,7 +374,7 @@ export default function AiAutomationSettingsClient({ role, initialSettings, cost
         </div>
 
         <div className="rounded-lg border border-warning/30 bg-warning-dim px-3 py-2 text-[11px] text-warning">
-          🔒 壁3: <b>証明書の発行・請求/見積の送付・課金・新規顧客(本人)の自動作成</b>は、設定に関わらず
+          壁3: <b>証明書の発行・請求/見積の送付・課金・新規顧客(本人)の自動作成</b>は、設定に関わらず
           自動化されません。必ず人の確認を挟みます。
         </div>
 

@@ -349,7 +349,7 @@ export default function MessagesInboxClient() {
                         className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent"
                         title="AI が抽出した予定候補があります（未確認）"
                       >
-                        ✨ 予定候補{t.candidate_count > 1 ? ` ${t.candidate_count}` : ""}
+                        予定候補{t.candidate_count > 1 ? ` ${t.candidate_count}` : ""}
                       </span>
                     )}
                   </div>
@@ -495,7 +495,7 @@ export default function MessagesInboxClient() {
                       disabled={!canSend || sendBusy || !draft.trim()}
                       className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
                     >
-                      {sendBusy ? "送信中…" : "📤 送信"}
+                      {sendBusy ? "送信中…" : "送信"}
                     </button>
                     <input
                       ref={imageInputRef}
@@ -514,7 +514,7 @@ export default function MessagesInboxClient() {
                       className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
                       title="JPEG / PNG (10MBまで) をLINEで送信"
                     >
-                      📷 画像
+                      画像
                     </button>
                     <button
                       type="button"
@@ -523,7 +523,7 @@ export default function MessagesInboxClient() {
                       className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
                       title="直近のやり取りから返信文を AI が下書きします (送信は手動)"
                     >
-                      {aiBusy ? "生成中…" : "✨ AI下書き"}
+                      {aiBusy ? "生成中…" : "AI下書き"}
                     </button>
                     <button
                       type="button"
@@ -532,7 +532,7 @@ export default function MessagesInboxClient() {
                       className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
                       title="担当外でも把握できるよう、会話の用件・経緯・次の一手を AI が要約します (送信しません)"
                     >
-                      {summaryBusy ? "要約中…" : "🧾 会話を要約"}
+                      {summaryBusy ? "要約中…" : "会話を要約"}
                     </button>
                   </div>
                 </div>
@@ -540,7 +540,7 @@ export default function MessagesInboxClient() {
                 {summary && summary.key === activeKey && (
                   <div className="mt-2 rounded-md border border-default bg-subtle p-3 text-xs">
                     <div className="mb-1 flex items-center justify-between">
-                      <span className="font-semibold text-secondary">🧾 会話の要約（引き継ぎ用・社内メモ）</span>
+                      <span className="font-semibold text-secondary">会話の要約（引き継ぎ用・社内メモ）</span>
                       <button
                         type="button"
                         onClick={() => setSummary(null)}
@@ -633,7 +633,7 @@ function LinkCustomerControl({
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} className="btn-secondary text-xs shrink-0">
-        🔗 顧客に紐付け
+        顧客に紐付け
       </button>
     );
   }

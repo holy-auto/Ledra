@@ -85,9 +85,6 @@ export default function CustomerNextActionPanel({
       {summary && (
         <div className="rounded-xl border border-accent/30 bg-accent-dim px-4 py-3">
           <div className="flex items-start gap-2">
-            <span aria-hidden className="text-base leading-none">
-              🤖
-            </span>
             <p className="text-sm text-primary leading-relaxed">{summary}</p>
           </div>
         </div>

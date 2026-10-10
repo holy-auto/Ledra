@@ -203,7 +203,7 @@ export default function WorkflowStepper({
                   className={`text-sm font-medium ${isActive ? "text-accent-text" : isDone ? "text-secondary" : "text-muted"}`}
                 >
                   {step.label}
-                  {step.is_customer_visible && <span className="ml-1.5 text-[10px] text-accent">📱</span>}
+                  {step.is_customer_visible && <span className="ml-1.5 text-[10px] text-accent">通知</span>}
                 </div>
                 {isActive && currentLog?.started_at && !isCompleted && (
                   <div className="text-[11px] text-accent-text">
@@ -284,7 +284,7 @@ export default function WorkflowStepper({
               }`}
               title="メモを追加"
             >
-              ✏️
+              メモ
             </button>
           </div>
           {currentStep && !nextStep && (
@@ -295,7 +295,7 @@ export default function WorkflowStepper({
 
       {isCompleted && (
         <div className="flex items-center justify-center gap-2 rounded-xl bg-success-dim border border-success/30 py-3">
-          <span className="text-success-text text-sm font-medium">✅ すべての工程が完了しました</span>
+          <span className="text-success-text text-sm font-medium">すべての工程が完了しました</span>
         </div>
       )}
     </div>

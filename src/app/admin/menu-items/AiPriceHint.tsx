@@ -67,7 +67,7 @@ export default function AiPriceHint({ menuItemId, onApply }: Props) {
         className="text-[10px] underline text-muted hover:text-accent"
         title="自店過去販売 + 業界中央値 + 車両サイズで推奨価格を算出"
       >
-        {loading ? "..." : "✨ AI 推奨"}
+        {loading ? "..." : "AI 推奨"}
       </button>
     );
   }

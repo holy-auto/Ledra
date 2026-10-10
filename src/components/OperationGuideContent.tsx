@@ -39,9 +39,6 @@ export default function OperationGuideContent({
                 id={`guide-${guide.id}`}
               >
                 <div className="flex items-start gap-4 mb-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent-dim text-2xl">
-                    <span aria-hidden>{guide.icon}</span>
-                  </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-[11px] font-semibold tracking-[0.16em] text-muted">
                       {String(groupIdx + 1).padStart(2, "0")}-{String(guideIdx + 1).padStart(2, "0")}

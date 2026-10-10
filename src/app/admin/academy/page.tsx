@@ -65,7 +65,6 @@ export default async function AcademyPage() {
       {/* ヘッダー */}
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
-          <span className="text-3xl">🎓</span>
           <h1 className="text-2xl font-bold text-primary">Ledra Academy</h1>
           <span className="px-2 py-1 text-xs font-medium bg-accent-dim text-accent rounded-full border border-accent/20">
             {planTier.toUpperCase()}
@@ -76,7 +75,6 @@ export default async function AcademyPage() {
 
       {!isAiEnabled && (
         <div className="mb-6 p-4 bg-warning-dim border border-warning/30 rounded-xl flex items-start gap-3">
-          <span className="text-warning text-lg mt-0.5">⚠️</span>
           <div>
             <p className="text-sm font-medium text-warning">AI機能はStandard/Proプランで利用できます</p>
             <p className="text-xs text-warning/70 mt-1">基本品質チェックは現在のプランでもご利用いただけます</p>
@@ -110,7 +108,6 @@ export default async function AcademyPage() {
           }`}
         >
           <div className="flex items-center gap-3 mb-3">
-            <span className="text-2xl">💬</span>
             <div>
               <div className="font-semibold text-primary group-hover:text-accent transition-colors">QAアシスタント</div>
               <div className="text-xs text-muted">Standard以上</div>
@@ -130,7 +127,6 @@ export default async function AcademyPage() {
           }`}
         >
           <div className="flex items-center gap-3 mb-3">
-            <span className="text-2xl">✏️</span>
             <div>
               <div className="font-semibold text-primary group-hover:text-accent transition-colors">証明書AI添削</div>
               <div className="text-xs text-muted">Standard以上</div>
@@ -145,7 +141,6 @@ export default async function AcademyPage() {
         {/* 施工事例 */}
         <Link href="/admin/academy/cases" className="group glass-card p-5 hover:border-accent/40 transition-all">
           <div className="flex items-center gap-3 mb-3">
-            <span className="text-2xl">📚</span>
             <div>
               <div className="font-semibold text-primary group-hover:text-accent transition-colors">
                 施工事例ライブラリ
@@ -159,7 +154,6 @@ export default async function AcademyPage() {
         {/* オンライン学習 */}
         <Link href="/admin/academy/learn" className="group glass-card p-5 hover:border-accent/40 transition-all">
           <div className="flex items-center gap-3 mb-3">
-            <span className="text-2xl">📖</span>
             <div>
               <div className="font-semibold text-primary group-hover:text-accent transition-colors">オンライン学習</div>
               <div className="text-xs text-muted">入門は全プラン / 基礎以上はStarter以上</div>
@@ -173,7 +167,6 @@ export default async function AcademyPage() {
         {/* 学習進捗 */}
         <Link href="/admin/academy/progress" className="group glass-card p-5 hover:border-accent/40 transition-all">
           <div className="flex items-center gap-3 mb-3">
-            <span className="text-2xl">📈</span>
             <div>
               <div className="font-semibold text-primary group-hover:text-accent transition-colors">学習進捗</div>
               <div className="text-xs text-muted">全プラン</div>
@@ -187,7 +180,6 @@ export default async function AcademyPage() {
         {/* Ledra Standard 達成状況 */}
         <div className="glass-card p-5">
           <div className="flex items-center gap-3 mb-3">
-            <span className="text-2xl">🏆</span>
             <div>
               <div className="font-semibold text-primary">Ledra Standard 達成状況</div>
               <div className="text-xs text-muted">品質基準</div>
@@ -219,9 +211,7 @@ export default async function AcademyPage() {
 
       {/* 学習パス */}
       <div className="mt-8 glass-card p-6 border-accent/20 bg-accent/5">
-        <h2 className="font-semibold text-primary mb-4 flex items-center gap-2">
-          <span>📋</span> 学習パス
-        </h2>
+        <h2 className="font-semibold text-primary mb-4 flex items-center gap-2">学習パス</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
             { level: "Lv.1 入門", desc: "証明書の書き方・必須写真・材料記載", done: true },

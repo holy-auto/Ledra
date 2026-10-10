@@ -183,7 +183,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
         kind: "reservation_update",
       });
       if (r.queued) {
-        setErr(`📡 オフラインです。進行を保留し、ネット復帰後に自動同期します。`);
+        setErr(`オフラインです。進行を保留し、ネット復帰後に自動同期します。`);
         return;
       }
       if (!r.ok && r.response) {
@@ -221,7 +221,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
         kind: "reservation_update",
       });
       if (r.queued) {
-        setErr(`📡 オフラインです。変更を保留し、ネット復帰後に自動同期します。`);
+        setErr(`オフラインです。変更を保留し、ネット復帰後に自動同期します。`);
         return;
       }
       if (!r.ok && r.response) {
@@ -248,7 +248,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
         kind: "reservation_update",
       });
       if (r.queued) {
-        setErr(`📡 オフラインです。担当者変更を保留し、ネット復帰後に自動同期します。`);
+        setErr(`オフラインです。担当者変更を保留し、ネット復帰後に自動同期します。`);
         return;
       }
       if (!r.ok && r.response) {
@@ -275,7 +275,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
         kind: "reservation_update",
       });
       if (r.queued) {
-        setErr(`📡 オフラインです。担当変更を保留し、ネット復帰後に自動同期します。`);
+        setErr(`オフラインです。担当変更を保留し、ネット復帰後に自動同期します。`);
         return;
       }
       if (!r.ok && r.response) {
@@ -302,7 +302,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
         kind: "reservation_update",
       });
       if (r.queued) {
-        setErr(`📡 オフラインです。ブース変更を保留し、ネット復帰後に自動同期します。`);
+        setErr(`オフラインです。ブース変更を保留し、ネット復帰後に自動同期します。`);
         return;
       }
       if (!r.ok && r.response) {
@@ -424,7 +424,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
         {currentStatus === "in_progress" && (
           <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-accent/20 bg-accent-dim px-3 py-2.5">
             <span className="text-xs text-accent-text">
-              📷 完了後は証跡を残しづらい作業もあります。作業中の様子も撮っておくと安心です。
+              完了後は証跡を残しづらい作業もあります。作業中の様子も撮っておくと安心です。
             </span>
             <Link href={inProgressPhotoUrl} className="btn-secondary text-xs px-3 py-1.5 ml-auto whitespace-nowrap">
               作業中の写真を撮る
@@ -509,7 +509,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
                   title={aiTopCandidate.reason}
                   className="rounded-full border border-accent/40 bg-accent-dim px-2.5 py-1 text-[11px] font-medium text-accent-text transition-colors hover:border-accent disabled:opacity-50"
                 >
-                  🤖 AI提案: {aiTopCandidate.staff_name} を割当
+                  AI提案: {aiTopCandidate.staff_name} を割当
                 </button>
               </MutationGuard>
             )}
@@ -549,7 +549,6 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
             <div className="flex items-center gap-2">
               <span className="font-semibold tracking-[0.12em] text-muted uppercase">作業時間</span>
               <span className={`tabular-nums ${currentStatus === "completed" ? "text-success-text" : "text-accent"}`}>
-                {currentStatus === "in_progress" ? "⏱️ " : "✅ "}
                 {workDurationText}
               </span>
               {currentStatus === "in_progress" && <span className="text-muted">(計測中)</span>}
@@ -632,27 +631,27 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
                 href={certificateNewUrl}
                 className={`${currentStatus === "completed" ? "btn-primary" : "btn-secondary"} text-sm px-4 py-2`}
               >
-                🪪 証明書を発行
+                証明書を発行
               </Link>
             )}
             {currentStatus === "completed" && (
               <Link href={invoiceNewUrl} className="btn-secondary text-sm px-4 py-2">
-                💰 請求書を作成
+                請求書を作成
               </Link>
             )}
             {customerId && (
               <Link href={`/admin/customers/${customerId}`} className="btn-secondary text-sm px-4 py-2">
-                👤 顧客詳細
+                顧客詳細
               </Link>
             )}
             {vehicleId && (
               <Link href={`/admin/vehicles/${vehicleId}`} className="btn-secondary text-sm px-4 py-2">
-                🚗 車両詳細
+                車両詳細
               </Link>
             )}
             {currentStatus !== "completed" && (
               <Link href={`/admin/reservations?focus=${reservation.id}`} className="btn-secondary text-sm px-4 py-2">
-                📅 予約画面で編集
+                予約画面で編集
               </Link>
             )}
           </div>

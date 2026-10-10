@@ -131,7 +131,6 @@ export default function PartsOrdersClient() {
 
       {data && orders.length === 0 && (
         <div className="glass-card p-8 text-center">
-          <div className="text-3xl">📦</div>
           <div className="mt-2 text-sm font-medium text-primary">該当する発注はありません</div>
           <p className="mt-1 text-xs text-muted">「+ 部品を発注」から案件に紐づく部品の発注を登録できます。</p>
         </div>

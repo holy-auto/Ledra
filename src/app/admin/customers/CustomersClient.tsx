@@ -495,7 +495,6 @@ export default function CustomersClient() {
 
               {isFirstUse && !showForm && (
                 <EmptyStateGuide
-                  icon="👤"
                   title="最初の顧客を登録しましょう"
                   description="顧客情報を登録すると、車両・証明書・請求書を1人のお客様にひも付けて管理できます。同じ顧客が再来店したときも履歴をすぐ呼び出せます。"
                   steps={[

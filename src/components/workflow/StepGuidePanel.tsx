@@ -42,7 +42,7 @@ export default function StepGuidePanel({ guide, onTogglePhoto, onToggleCheck, pe
 
       {guide.photos.length > 0 && (
         <div className="space-y-1">
-          <div className="text-[11px] text-muted">📸 撮る写真</div>
+          <div className="text-[11px] text-muted">撮る写真</div>
           <div className="flex flex-wrap gap-1.5">
             {guide.photos.map((p) => (
               <button

@@ -177,7 +177,7 @@ export default function ReviewPrompt({ token, endpoint }: { token: string; endpo
       )}
 
       {status === "submitted" && (
-        <p className="text-sm text-emerald-400 mb-3">✅ 評価を送信しました。ありがとうございます！</p>
+        <p className="text-sm text-emerald-400 mb-3">評価を送信しました。ありがとうございます！</p>
       )}
 
       {offerGoogle && (
@@ -188,7 +188,7 @@ export default function ReviewPrompt({ token, endpoint }: { token: string; endpo
           onClick={recordGoogleRedirect}
           className="block w-full text-center py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-500 transition-colors"
         >
-          🌟 Google レビューにも投稿する
+          Google レビューにも投稿する
         </a>
       )}
 

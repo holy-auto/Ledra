@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import useSWR from "swr";
 import QRCode from "qrcode";
 import { fetcher } from "@/lib/swr";
+import { PAYMENT_METHODS } from "@/types/pos-constants";
 import { formatJpy, formatDate } from "@/lib/format";
 import Badge from "@/components/ui/Badge";
 import PageHeader from "@/components/ui/PageHeader";
@@ -104,14 +105,6 @@ type QrStep = "idle" | "creating" | "showing" | "paid" | "recording" | "error";
 /* ────────────────────────────────────────────── */
 /*  Constants                                     */
 /* ────────────────────────────────────────────── */
-
-const PAYMENT_METHODS = [
-  { value: "cash", label: "現金", icon: "💴" },
-  { value: "card", label: "カード", icon: "💳" },
-  { value: "qr", label: "QR決済", icon: "📱" },
-  { value: "bank_transfer", label: "振込", icon: "🏦" },
-  { value: "other", label: "その他", icon: "📋" },
-] as const;
 
 const RESERVATION_STATUS_MAP: Record<
   string,
@@ -1696,7 +1689,6 @@ export default function PosClient() {
                             : "border-border-subtle bg-surface text-secondary hover:border-border"
                         }`}
                       >
-                        <span className="block text-base">{pm.icon}</span>
                         {pm.label}
                       </button>
                     ))}

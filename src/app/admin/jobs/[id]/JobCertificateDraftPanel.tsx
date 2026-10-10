@@ -147,7 +147,7 @@ function DraftCard({
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <Link href={href} className="btn-primary text-sm">
-          🪪 {categoryLabel ? `${categoryLabel}の証明書を発行` : "この内容で証明書を発行"}
+          {categoryLabel ? `${categoryLabel}の証明書を発行` : "この内容で証明書を発行"}
         </Link>
       </div>
     </div>

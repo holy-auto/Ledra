@@ -123,7 +123,7 @@ export default function QuoteAiDraftPanel({ customerId, onApply }: Props) {
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-medium text-accent hover:bg-accent/10 rounded-xl"
       >
-        <span>✨ AI で見積書を起票</span>
+        <span>AI で見積書を起票</span>
         <span className="ml-auto text-muted text-xs">{open ? "▲" : "▼"}</span>
       </button>
 
@@ -160,7 +160,7 @@ export default function QuoteAiDraftPanel({ customerId, onApply }: Props) {
             disabled={loading || !vehicleId}
             className="rounded-xl border border-accent bg-accent/10 px-4 py-2 text-sm font-medium text-accent hover:bg-accent/20 disabled:opacity-50"
           >
-            {loading ? "起票中..." : "✨ 見積を起票"}
+            {loading ? "起票中..." : "見積を起票"}
           </button>
 
           {err && (

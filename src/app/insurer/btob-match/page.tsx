@@ -247,7 +247,7 @@ export default function BtobMatchPage() {
                 {/* AI 推薦文 */}
                 {r.recommendation && (
                   <div className="rounded-xl border border-accent/30 bg-accent-dim px-4 py-3 text-sm text-primary">
-                    🤖 {r.recommendation}
+                    {r.recommendation}
                   </div>
                 )}
               </div>

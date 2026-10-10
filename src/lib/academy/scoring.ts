@@ -30,7 +30,6 @@ export interface ProgressStats {
 export interface Badge {
   id: string;
   label: string;
-  emoji: string;
   description: string;
 }
 
@@ -42,22 +41,22 @@ export function computeBadges(stats: ProgressStats): Badge[] {
   const badges: Badge[] = [];
 
   if (stats.lessons_completed >= 1) {
-    badges.push({ id: "first_lesson", emoji: "🌱", label: "初学者", description: "初めてのレッスンを完了" });
+    badges.push({ id: "first_lesson", label: "初学者", description: "初めてのレッスンを完了" });
   }
   if (stats.lessons_completed >= 10) {
-    badges.push({ id: "lessons_10", emoji: "🔥", label: "学習中", description: "10 レッスンを完了" });
+    badges.push({ id: "lessons_10", label: "学習中", description: "10 レッスンを完了" });
   }
   if (stats.lessons_completed >= 30) {
-    badges.push({ id: "lessons_30", emoji: "🏆", label: "マスター", description: "30 レッスンを完了" });
+    badges.push({ id: "lessons_30", label: "マスター", description: "30 レッスンを完了" });
   }
   if (stats.cases_submitted >= 1) {
-    badges.push({ id: "first_case", emoji: "📝", label: "知識共有", description: "施工事例を1件公開" });
+    badges.push({ id: "first_case", label: "知識共有", description: "施工事例を1件公開" });
   }
   if (stats.cases_submitted >= 5) {
-    badges.push({ id: "cases_5", emoji: "💡", label: "ナレッジ提供者", description: "施工事例を5件公開" });
+    badges.push({ id: "cases_5", label: "ナレッジ提供者", description: "施工事例を5件公開" });
   }
   if (stats.total_score >= 500) {
-    badges.push({ id: "score_500", emoji: "⭐", label: "高得点", description: "学習スコア 500 以上" });
+    badges.push({ id: "score_500", label: "高得点", description: "学習スコア 500 以上" });
   }
 
   return badges;

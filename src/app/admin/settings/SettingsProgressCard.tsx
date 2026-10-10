@@ -47,7 +47,7 @@ export default function SettingsProgressCard(props: SettingsProgressCardProps) {
         <div>
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">設定の進捗</div>
           <div className="mt-0.5 text-base font-semibold text-primary">
-            {allDone ? "🎉 すべて入力済み" : "証明書・請求書に反映される項目"}
+            {allDone ? "すべて入力済み" : "証明書・請求書に反映される項目"}
           </div>
           <p className="mt-1 text-xs text-muted">
             {allDone

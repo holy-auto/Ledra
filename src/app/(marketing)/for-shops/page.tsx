@@ -89,7 +89,6 @@ const certFlowSteps = [
               v.selected ? "border-blue-500/40 bg-blue-500/10" : "border-white/[0.06] bg-white/[0.02]"
             }`}
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.06] text-base">🚗</div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-white truncate">{v.name}</p>
               <p className="text-[0.625rem] text-white font-mono">{v.plate}</p>
@@ -127,13 +126,8 @@ const certFlowSteps = [
         <div>
           <p className="mb-1.5 text-[0.594rem] text-white uppercase tracking-wide">施工写真</p>
           <div className="grid grid-cols-3 gap-1.5">
-            {["📸", "📸", "📸"].map((icon, i) => (
-              <div
-                key={i}
-                className="aspect-square rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center text-xl"
-              >
-                {icon}
-              </div>
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="aspect-square rounded-lg bg-white/[0.06] border border-white/[0.08]" />
             ))}
           </div>
         </div>
@@ -479,9 +473,6 @@ export default function ForShopsPage() {
         <ScrollReveal variant="fade-up">
           <div className="mx-auto max-w-3xl rounded-2xl border border-blue-500/20 bg-blue-500/[0.05] p-8 md:p-10">
             <div className="flex flex-col md:flex-row md:items-center gap-6">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-500/15 border border-blue-500/25 text-2xl">
-                🔗
-              </div>
               <div className="flex-1">
                 <p className="text-[0.688rem] uppercase tracking-widest text-blue-300 font-semibold mb-2">改ざん検知</p>
                 <h3 className="text-[1.125rem] font-bold text-white leading-snug">

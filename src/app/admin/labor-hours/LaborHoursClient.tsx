@@ -211,7 +211,7 @@ export default function LaborHoursClient() {
               busy ? "pointer-events-none opacity-50" : ""
             }`}
           >
-            📎 {busy ? "登録中…" : "ファイルを選んで登録"}
+            {busy ? "登録中…" : "ファイルを選んで登録"}
             <input
               type="file"
               accept=".xlsx,.csv,text/csv"

@@ -94,7 +94,7 @@ export default function InvoiceOcrButton({ disabled, onExtracted }: Props) {
           disabled || busy ? "pointer-events-none opacity-50" : ""
         }`}
       >
-        📷 {busy ? "取り込み中…" : "書類を撮影して取込"}
+        {busy ? "取り込み中…" : "書類を撮影して取込"}
         <input
           type="file"
           accept="image/jpeg,image/png,image/webp"

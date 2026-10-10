@@ -684,7 +684,7 @@ export default function ReservationsClient() {
               className="inline-flex items-center gap-2 rounded-xl border border-accent/30 bg-accent-dim px-4 py-2 text-sm font-semibold text-accent-text hover:bg-accent/10 transition-colors"
               title="予約なしで来店された案件を即座に開始"
             >
-              🏃 飛び込み案件
+              飛び込み案件
             </Link>
             <button
               onClick={openCreateForm}
@@ -702,12 +702,12 @@ export default function ReservationsClient() {
       {/* ── Gcal feedback ── */}
       {gcalFeedback === "connected" && (
         <div className="rounded-xl border border-accent/30 bg-accent-dim p-3 text-sm text-accent-text">
-          ✅ Googleカレンダーとの連携が完了しました！
+          Googleカレンダーとの連携が完了しました！
         </div>
       )}
       {gcalFeedback === "error" && (
         <div className="rounded-xl border border-danger/20 bg-danger-dim p-3 text-sm text-danger-text">
-          ❌ Googleカレンダーの連携に失敗しました。再度お試しください。
+          Googleカレンダーの連携に失敗しました。再度お試しください。
         </div>
       )}
 
@@ -717,7 +717,6 @@ export default function ReservationsClient() {
 
       {stats?.total === 0 && !showForm && (
         <EmptyStateGuide
-          icon="📅"
           title="最初の予約を登録しましょう"
           description="予約を登録すると、来店時のチェックイン・作業進捗・証明書発行・請求までを1つの案件として一気通貫で管理できます。"
           steps={[
@@ -736,7 +735,7 @@ export default function ReservationsClient() {
             },
           ]}
           primaryAction={{ label: "+ 最初の予約を登録", onClick: openCreateForm }}
-          secondaryAction={{ label: "🏃 飛び込み案件で開始", href: "/admin/jobs/new" }}
+          secondaryAction={{ label: "飛び込み案件で開始", href: "/admin/jobs/new" }}
         />
       )}
 
@@ -744,9 +743,9 @@ export default function ReservationsClient() {
       {presentation.showStatsCards ? (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
-            { label: "本日の予約", value: stats?.today_count ?? 0, icon: "📅", color: "from-blue-500 to-blue-600" },
-            { label: "進行中", value: stats?.active_count ?? 0, icon: "⚙️", color: "from-violet-500 to-violet-600" },
-            { label: "総予約数", value: stats?.total ?? 0, icon: "📋", color: "from-blue-500 to-blue-600" },
+            { label: "本日の予約", value: stats?.today_count ?? 0, color: "from-blue-500 to-blue-600" },
+            { label: "進行中", value: stats?.active_count ?? 0, color: "from-violet-500 to-violet-600" },
+            { label: "総予約数", value: stats?.total ?? 0, color: "from-blue-500 to-blue-600" },
           ].map((s) => (
             <div key={s.label} className="glass-card p-4 relative overflow-hidden">
               <div className={`absolute inset-0 bg-gradient-to-br ${s.color} opacity-5`} />
@@ -934,7 +933,7 @@ export default function ReservationsClient() {
               <div className="text-sm font-semibold text-primary">Googleカレンダー連携</div>
               <div className="text-xs text-muted mt-0.5">
                 {gcalConnected
-                  ? `✅ 連携中${gcalLastSynced ? ` — 最終同期: ${new Date(gcalLastSynced).toLocaleString("ja-JP")}` : ""}`
+                  ? `連携中${gcalLastSynced ? ` — 最終同期: ${new Date(gcalLastSynced).toLocaleString("ja-JP")}` : ""}`
                   : "連携するとGoogleカレンダーと予約を自動同期できます"}
               </div>
             </div>
@@ -1107,7 +1106,6 @@ export default function ReservationsClient() {
           )}
           {reservations.length === 0 ? (
             <div className="glass-card p-12 text-center">
-              <div className="text-4xl mb-3">📅</div>
               <p className="text-sm text-muted">条件に一致する予約がありません。</p>
               <button onClick={openCreateForm} className="mt-4 btn-primary text-sm px-5 py-2">
                 新規予約を作成
@@ -1166,7 +1164,7 @@ export default function ReservationsClient() {
                                     {/* Time / 終日 */}
                                     {r.all_day ? (
                                       <span className="text-xs font-semibold text-primary bg-surface-hover rounded-full px-2.5 py-0.5">
-                                        📅 終日
+                                        終日
                                       </span>
                                     ) : (
                                       r.start_time && (
@@ -1246,7 +1244,7 @@ export default function ReservationsClient() {
 
                                   {r.note && !isDense && (
                                     <p className="mt-1.5 text-xs text-muted bg-surface-hover rounded-lg px-2.5 py-1.5 truncate max-w-sm">
-                                      💬 {r.note}
+                                      {r.note}
                                     </p>
                                   )}
                                   {r.cancel_reason && (
@@ -1264,7 +1262,7 @@ export default function ReservationsClient() {
                                     className={`font-semibold rounded-lg border border-accent/30 bg-accent-dim text-accent-text hover:bg-accent/10 transition-colors whitespace-nowrap ${isDense ? "px-2 py-1 text-[10px]" : "px-2.5 py-1 text-[11px]"}`}
                                     title="案件ワークフローを別画面で開く"
                                   >
-                                    {isDense ? "開く" : "🧭 案件を開く"}
+                                    {isDense ? "開く" : "案件を開く"}
                                   </Link>
                                   {/* Quick actions toggle (edit / cancel / delete) — inline expando, not a workflow view */}
                                   <button
@@ -1297,7 +1295,7 @@ export default function ReservationsClient() {
                                       }}
                                       className="btn-secondary px-3 py-1.5 text-xs"
                                     >
-                                      ✏️ 編集
+                                      編集
                                     </button>
                                   )}
                                   {r.status !== "cancelled" && r.status !== "completed" && (
@@ -1309,7 +1307,7 @@ export default function ReservationsClient() {
                                       }}
                                       className="px-3 py-1.5 text-xs rounded-lg border border-danger/20 bg-danger-dim text-danger-text hover:bg-danger/10 transition-colors"
                                     >
-                                      🚫 取消
+                                      取消
                                     </button>
                                   )}
                                   {(r.status === "cancelled" || r.status === "completed") && (
@@ -1331,7 +1329,7 @@ export default function ReservationsClient() {
                                       }}
                                       className="px-3 py-1.5 text-xs rounded-lg border border-danger/20 bg-danger-dim text-danger-text hover:bg-danger/10 transition-colors"
                                     >
-                                      🗑️ 削除
+                                      削除
                                     </button>
                                   )}
                                   {r.menu_items_json?.length > 0 && (

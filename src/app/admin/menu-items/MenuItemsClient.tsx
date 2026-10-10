@@ -300,7 +300,7 @@ export default function MenuItemsClient() {
       });
       if (r.queued) {
         setEditingId(null);
-        setSaveMsg({ text: "📡 オフラインで保留しました。復帰後に同期されます。", ok: true });
+        setSaveMsg({ text: "オフラインで保留しました。復帰後に同期されます。", ok: true });
         mutate();
         return;
       }
@@ -487,7 +487,6 @@ export default function MenuItemsClient() {
 
       {data && data.stats.total === 0 && !showForm && !showCsv && (
         <EmptyStateGuide
-          icon="📋"
           title="最初の品目を登録しましょう"
           description="よく使う施工メニュー (例: ガラスコーティング、PPF施工、ヘッドライト磨きなど) を登録すると、請求書作成が劇的に速くなります。"
           steps={[
@@ -563,7 +562,7 @@ export default function MenuItemsClient() {
                     URL.revokeObjectURL(url);
                   }}
                 >
-                  📥 見本CSVダウンロード
+                  見本CSVダウンロード
                 </button>
               </div>
               <div className="space-y-2">

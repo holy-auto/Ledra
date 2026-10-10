@@ -126,7 +126,6 @@ export default function AgentSignClient({ token }: { token: string }) {
     return (
       <Shell>
         <StatusCard
-          icon="❌"
           title="リンクが見つかりません"
           message={errorMsg || "この署名リンクは無効です。本部にお問い合わせください。"}
         />
@@ -138,7 +137,6 @@ export default function AgentSignClient({ token }: { token: string }) {
     return (
       <Shell>
         <StatusCard
-          icon="⏰"
           title="有効期限切れ"
           message="この署名リンクの有効期限が切れています。本部に再送を依頼してください。"
         />
@@ -149,7 +147,7 @@ export default function AgentSignClient({ token }: { token: string }) {
   if (phase === "already_signed") {
     return (
       <Shell>
-        <StatusCard icon="✅" title="署名済み" message="この契約書はすでに署名されています。" />
+        <StatusCard title="署名済み" message="この契約書はすでに署名されています。" />
       </Shell>
     );
   }
@@ -159,7 +157,6 @@ export default function AgentSignClient({ token }: { token: string }) {
       <Shell>
         <div className="space-y-4">
           <div className="text-center py-4">
-            <div className="text-5xl mb-3">✅</div>
             <h2 className="text-white text-2xl font-bold mb-2">署名が完了しました</h2>
             <p className="text-gray-200 text-sm">電子署名法に基づく電子署名が正常に記録されました</p>
           </div>
@@ -258,7 +255,7 @@ export default function AgentSignClient({ token }: { token: string }) {
                 署名処理中...
               </span>
             ) : (
-              "✍️ 署名する"
+              "署名する"
             )}
           </button>
 
@@ -292,10 +289,9 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function StatusCard({ icon, title, message }: { icon: string; title: string; message: string }) {
+function StatusCard({ title, message }: { title: string; message: string }) {
   return (
     <div className="text-center py-16">
-      <div className="text-5xl mb-4">{icon}</div>
       <h2 className="text-white text-2xl font-bold mb-3">{title}</h2>
       <p className="text-gray-200 text-base leading-relaxed">{message}</p>
       <p className="mt-8 text-gray-600 text-sm">

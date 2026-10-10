@@ -138,7 +138,7 @@ export default function JobDetailTabs({
     { key: "summary", label: "サマリ" },
     { key: "parties", label: "顧客・車両" },
     { key: "certificates", label: "証明書", count: certificates.length },
-    { key: "photos", label: "📸 写真" },
+    { key: "photos", label: "写真" },
     { key: "inspection", label: "点検" },
     { key: "parts", label: "部品" },
     { key: "billing", label: "請求・見積", count: invoices.length + estimates.length },

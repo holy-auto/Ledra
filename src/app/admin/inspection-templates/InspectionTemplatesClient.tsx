@@ -104,7 +104,6 @@ export default function InspectionTemplatesClient() {
 
       {data && templates.length === 0 && (
         <div className="glass-card p-8 text-center">
-          <div className="text-3xl">📋</div>
           <div className="mt-2 text-sm font-medium text-primary">点検テンプレートはまだありません</div>
           <p className="mt-1 text-xs text-muted">
             「+ テンプレート」から入庫点検 / 納車前点検などのチェックリストを作成できます。

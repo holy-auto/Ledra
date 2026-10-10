@@ -25,10 +25,10 @@ interface Props {
 }
 
 const AUDIENCE_OPTIONS = [
-  { value: "customer", label: "顧客向け", icon: "👤", desc: "親しみやすく、安心感を重視した説明" },
-  { value: "insurer", label: "保険会社向け", icon: "🏢", desc: "正確・フォーマルな技術記録" },
-  { value: "internal", label: "社内向け", icon: "🔧", desc: "実務的・簡潔な作業記録" },
-  { value: "sales", label: "営業提案向け", icon: "📊", desc: "他車への価値訴求" },
+  { value: "customer", label: "顧客向け", desc: "親しみやすく、安心感を重視した説明" },
+  { value: "insurer", label: "保険会社向け", desc: "正確・フォーマルな技術記録" },
+  { value: "internal", label: "社内向け", desc: "実務的・簡潔な作業記録" },
+  { value: "sales", label: "営業提案向け", desc: "他車への価値訴求" },
 ];
 
 export default function AiExplainPanel({ certificateId }: Props) {
@@ -78,7 +78,6 @@ export default function AiExplainPanel({ certificateId }: Props) {
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-medium text-purple-700 hover:bg-purple-500/10 rounded-xl transition-colors"
       >
-        <span className="text-base">📝</span>
         <span>AI説明変換（受け手別）</span>
         <span className="ml-auto text-muted text-xs">{open ? "▲ 閉じる" : "▼ 開く"}</span>
       </button>
@@ -105,7 +104,6 @@ export default function AiExplainPanel({ certificateId }: Props) {
                     : "border-border-default bg-surface text-secondary hover:bg-surface-hover"
                 }`}
               >
-                <span className="text-base">{opt.icon}</span>
                 <div>
                   <div className="font-medium">{opt.label}</div>
                   <div className="text-muted text-[10px]">{opt.desc}</div>
@@ -127,9 +125,7 @@ export default function AiExplainPanel({ certificateId }: Props) {
                 生成中…
               </>
             ) : (
-              <>
-                {selectedAudience?.icon} {selectedAudience?.label}向けに変換
-              </>
+              <>{selectedAudience?.label}向けに変換</>
             )}
           </button>
 
@@ -181,14 +177,14 @@ export default function AiExplainPanel({ certificateId }: Props) {
               {/* CTA */}
               {result.callToAction && (
                 <div className="rounded-lg bg-purple-400/10 border border-purple-400/30 px-3 py-2 text-xs text-purple-300">
-                  📣 {result.callToAction}
+                  {result.callToAction}
                 </div>
               )}
 
               {/* 警告フラグ */}
               {result.warningFlags && result.warningFlags.length > 0 && (
                 <div className="rounded-lg bg-warning-dim border border-warning/30 px-3 py-2">
-                  <p className="text-xs font-medium text-warning mb-1">⚠️ 注意フラグ</p>
+                  <p className="text-xs font-medium text-warning mb-1">注意フラグ</p>
                   <ul className="space-y-0.5">
                     {result.warningFlags.map((f, i) => (
                       <li key={i} className="text-xs text-warning-text/80">
@@ -202,7 +198,7 @@ export default function AiExplainPanel({ certificateId }: Props) {
               {/* 内部メモ（社内向けのみ） */}
               {result.internalMemo && (
                 <div className="rounded-lg bg-inset border border-border-subtle px-3 py-2">
-                  <p className="text-xs font-medium text-secondary mb-1">📋 内部メモ</p>
+                  <p className="text-xs font-medium text-secondary mb-1">内部メモ</p>
                   <p className="text-xs text-muted">{result.internalMemo}</p>
                 </div>
               )}
@@ -214,7 +210,7 @@ export default function AiExplainPanel({ certificateId }: Props) {
                   onClick={copyToClipboard}
                   className="flex-1 rounded-xl border border-border-default bg-surface px-3 py-2 text-xs font-medium text-secondary hover:bg-surface-hover transition-colors"
                 >
-                  {copied ? "✅ コピーしました" : "📋 テキストをコピー"}
+                  {copied ? "コピーしました" : "テキストをコピー"}
                 </button>
                 {result.shareableUrl && (
                   <a
@@ -223,7 +219,7 @@ export default function AiExplainPanel({ certificateId }: Props) {
                     rel="noopener noreferrer"
                     className="rounded-xl border border-accent bg-accent/10 px-3 py-2 text-xs font-medium text-accent hover:bg-accent/20 transition-colors"
                   >
-                    🔗 証明書URL
+                    証明書URL
                   </a>
                 )}
               </div>

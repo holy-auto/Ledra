@@ -463,7 +463,7 @@ function WebhooksSection({ onToast }: { onToast: (m: string, k?: "ok" | "err") =
                   </td>
                   <td className="px-3 py-2 text-xs text-muted">
                     {fmtDate(h.last_delivery_at)}
-                    {h.last_delivery_status === "errored" && <span className="ml-1 text-danger">⚠</span>}
+                    {h.last_delivery_status === "errored" && <span className="ml-1 text-danger">(失敗)</span>}
                   </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     <button className="btn-ghost px-2 py-1 text-xs" onClick={() => toggleActive(h)}>

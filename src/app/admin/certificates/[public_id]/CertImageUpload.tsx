@@ -78,7 +78,7 @@ export default function CertImageUpload({ publicId, remaining, maxPhotos }: Prop
 
           if (r.queued) {
             setMessage(null);
-            setError("📡 オフラインのため写真をキューに保存しました。通信復帰後に自動でアップロードされます。");
+            setError("オフラインのため写真をキューに保存しました。通信復帰後に自動でアップロードされます。");
             // queued=true でループは継続せず終了 (残りの写真もオフラインのはず)
             return;
           }

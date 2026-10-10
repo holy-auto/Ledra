@@ -38,7 +38,6 @@ export default function OperationGuidePage() {
                     {group.guides.map((g) => (
                       <li key={g.id}>
                         <a href={`#guide-${g.id}`} className="hover:text-accent hover:underline">
-                          <span className="mr-1.5">{g.icon}</span>
                           {g.title}
                         </a>
                       </li>

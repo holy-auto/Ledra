@@ -124,19 +124,18 @@ export default function SignatureClient({ token }: { token: string }) {
 
   if (phase === "loading") return <LoadingScreen />;
 
-  if (phase === "error") return <StatusScreen icon="❌" title="エラー" message={errorMsg} />;
+  if (phase === "error") return <StatusScreen title="エラー" message={errorMsg} />;
   if (phase === "expired")
     return (
       <StatusScreen
-        icon="⏰"
         title="有効期限切れ"
         message="この署名リンクの有効期限が切れています。施工店に再送を依頼してください。"
       />
     );
   if (phase === "already_signed")
-    return <StatusScreen icon="✅" title="署名済み" message="この証明書はすでに署名されています。" />;
+    return <StatusScreen title="署名済み" message="この証明書はすでに署名されています。" />;
   if (phase === "cancelled")
-    return <StatusScreen icon="🚫" title="無効なリンク" message="このリンクはキャンセルされています。" />;
+    return <StatusScreen title="無効なリンク" message="このリンクはキャンセルされています。" />;
   if (phase === "complete" && completeData) return <CompleteScreen data={completeData} token={token} />;
 
   // 署名フォーム
@@ -175,7 +174,6 @@ export default function SignatureClient({ token }: { token: string }) {
             rel="noopener noreferrer"
             className="mt-4 flex items-center gap-2 text-blue-400 text-sm hover:underline"
           >
-            <span>📄</span>
             <span>証明書PDFを確認する（別タブで開く）</span>
           </a>
         )}
@@ -241,7 +239,7 @@ export default function SignatureClient({ token }: { token: string }) {
               署名処理中...
             </span>
           ) : (
-            "✍️ 署名する"
+            "署名する"
           )}
         </button>
 
@@ -274,11 +272,10 @@ function LoadingScreen() {
   );
 }
 
-function StatusScreen({ icon, title, message }: { icon: string; title: string; message: string }) {
+function StatusScreen({ title, message }: { title: string; message: string }) {
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-md text-center">
-        <div className="text-5xl mb-4">{icon}</div>
         <h1 className="text-white text-2xl font-bold mb-3">{title}</h1>
         <p className="text-gray-200 text-base leading-relaxed">{message}</p>
         <div className="mt-8 text-gray-600 text-sm">
@@ -303,7 +300,6 @@ function CompleteScreen({ data, token }: { data: CompleteData; token: string }) 
       <div className="w-full max-w-md">
         {/* 完了ヘッダー */}
         <div className="text-center mb-6">
-          <div className="text-5xl mb-3">✅</div>
           <h1 className="text-white text-2xl font-bold mb-2">署名が完了しました</h1>
           <p className="text-gray-200 text-sm">電子署名法に基づく電子署名が正常に記録されました</p>
         </div>
@@ -329,7 +325,7 @@ function CompleteScreen({ data, token }: { data: CompleteData; token: string }) 
             className="w-full py-2.5 rounded-lg border border-gray-700 text-gray-300 text-sm
                        hover:bg-gray-800 transition-colors"
           >
-            {copied ? "✅ コピーしました" : "🔗 検証URLをコピー"}
+            {copied ? "コピーしました" : "検証URLをコピー"}
           </button>
         </div>
 

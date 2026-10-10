@@ -78,7 +78,7 @@ export default function RaiseConcernButton({ sourceType, sourceToken, variant = 
             : "border-gray-300 text-gray-600 hover:bg-gray-50"
         }`}
       >
-        ⚠️ 気になる点を伝える
+        気になる点を伝える
       </button>
     );
   }
@@ -92,7 +92,7 @@ export default function RaiseConcernButton({ sourceType, sourceToken, variant = 
             : "border-green-200 bg-green-50 text-green-800"
         }`}
       >
-        ✅ ご連絡ありがとうございます。施工店が内容を確認いたします。
+        ご連絡ありがとうございます。施工店が内容を確認いたします。
       </div>
     );
   }
@@ -107,7 +107,7 @@ export default function RaiseConcernButton({ sourceType, sourceToken, variant = 
     <div
       className={`rounded-xl border p-4 ${isDark ? "border-amber-800 bg-amber-950/30" : "border-amber-200 bg-amber-50"}`}
     >
-      <h3 className={`mb-3 font-semibold ${isDark ? "text-amber-300" : "text-amber-800"}`}>⚠️ 気になる点を伝える</h3>
+      <h3 className={`mb-3 font-semibold ${isDark ? "text-amber-300" : "text-amber-800"}`}>気になる点を伝える</h3>
 
       <div className="flex flex-col gap-3">
         {/* カテゴリ */}

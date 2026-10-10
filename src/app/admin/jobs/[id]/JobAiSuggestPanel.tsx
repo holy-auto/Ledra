@@ -174,7 +174,7 @@ export default function JobAiSuggestPanel({
   return (
     <section aria-label="AI 提案" className="rounded-xl border border-accent/30 bg-accent/5 p-4 space-y-3">
       <div className="flex items-center gap-2 text-xs font-semibold tracking-[0.18em] text-accent">
-        <span>✨ AI 提案</span>
+        <span>AI 提案</span>
         <span className="text-muted text-[10px] font-normal">
           自動入力ポリシーで一部を非表示にできます (
           <a href="/admin/settings/ai-automation" className="underline">
@@ -231,7 +231,7 @@ export default function JobAiSuggestPanel({
           }`}
         >
           <div className="font-medium">
-            ⏱ タイマー乖離: {timer.deviationRatio > 0 ? "+" : ""}
+            タイマー乖離: {timer.deviationRatio > 0 ? "+" : ""}
             {Math.round(timer.deviationRatio * 100)}%
           </div>
           <div className="mt-0.5">{timer.message}</div>

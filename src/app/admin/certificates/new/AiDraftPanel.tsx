@@ -81,7 +81,6 @@ export default function AiDraftPanel({ vehicleId, hearingId, templateCategory, o
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-medium text-accent hover:bg-accent/10 rounded-xl transition-colors"
       >
-        <span className="text-base">✨</span>
         <span>AI下書き生成（β）</span>
         <span className="ml-auto text-muted text-xs">{open ? "▲ 閉じる" : "▼ 開く"}</span>
       </button>
@@ -105,7 +104,7 @@ export default function AiDraftPanel({ vehicleId, hearingId, templateCategory, o
                 生成中…
               </>
             ) : (
-              <>✨ 下書きを生成</>
+              <>下書きを生成</>
             )}
           </button>
 
@@ -134,7 +133,7 @@ export default function AiDraftPanel({ vehicleId, hearingId, templateCategory, o
               {/* 不足情報警告 */}
               {draft.missingInfo.length > 0 && (
                 <div className="rounded-lg border border-warning/30 bg-warning-dim px-3 py-2">
-                  <p className="text-xs font-medium text-warning mb-1">⚠ 不足情報</p>
+                  <p className="text-xs font-medium text-warning mb-1">不足情報</p>
                   <ul className="text-xs text-warning/80 space-y-0.5">
                     {draft.missingInfo.map((m, i) => (
                       <li key={i}>• {m}</li>

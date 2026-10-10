@@ -327,7 +327,7 @@ export default function IntakeClient({ shortId }: { shortId: string }) {
           onClick={() => setOcrOpen((v) => !v)}
           className="w-full rounded-xl border border-border-default bg-surface-hover px-3 py-2.5 text-sm text-primary"
         >
-          {ocrOpen ? "OCR を閉じる" : "📷 身分証で自動入力 (任意)"}
+          {ocrOpen ? "OCR を閉じる" : "身分証で自動入力 (任意)"}
         </button>
       )}
 

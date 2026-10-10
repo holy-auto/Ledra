@@ -123,10 +123,7 @@ export default function PhotoTamperingPanel({
       {autoResult && (
         <div className={`rounded-xl border px-4 py-3 ${VERDICT_STYLE[autoResult.verdict].badge}`}>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-sm font-semibold">
-              {autoResult.verdict === "suspicious" ? "⚠️ " : autoResult.verdict === "clear" ? "✅ " : ""}
-              自動審査: {VERDICT_STYLE[autoResult.verdict].label}
-            </span>
+            <span className="text-sm font-semibold">自動審査: {VERDICT_STYLE[autoResult.verdict].label}</span>
             {autoResult.checked_at && (
               <span className="text-[11px] opacity-70">{new Date(autoResult.checked_at).toLocaleString("ja-JP")}</span>
             )}
@@ -167,7 +164,6 @@ export default function PhotoTamperingPanel({
                 : "border-emerald-400/30 bg-emerald-400/10 text-emerald-500"
             }`}
           >
-            {result.any_flagged ? "⚠️ " : "✅ "}
             {result.summary}
           </div>
 

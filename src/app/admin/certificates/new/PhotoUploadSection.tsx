@@ -118,7 +118,6 @@ const PhotoUploadSection = forwardRef<PhotoUploadHandle, Props>(function PhotoUp
           src/lib/anchoring/providers/c2pa.ts (CREATED_ACTION). */}
       {!full && (
         <div className="rounded-xl border-2 border-dashed border-border-default bg-inset px-4 py-6 text-center hover:border-border-strong hover:bg-surface-hover transition-colors">
-          <div className="text-2xl text-muted">📷</div>
           <div className="mt-2 text-sm font-medium text-secondary">写真を撮影</div>
           <div className="mt-1 text-xs text-muted">
             JPG / PNG / WebP / HEIC · 最大 20MB/枚 · あと {maxPhotos - count} 枚

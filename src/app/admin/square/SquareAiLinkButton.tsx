@@ -66,7 +66,7 @@ export default function SquareAiLinkButton({ orderId, onPick }: Props) {
   if (!best && alternatives.length === 0 && !err) {
     return (
       <button type="button" onClick={run} disabled={loading} className="text-xs underline text-accent hover:opacity-80">
-        {loading ? "候補を探しています..." : "✨ AI で候補を提案"}
+        {loading ? "候補を探しています..." : "AI で候補を提案"}
       </button>
     );
   }
@@ -105,7 +105,7 @@ export default function SquareAiLinkButton({ orderId, onPick }: Props) {
   return (
     <div className="rounded-lg border border-accent/20 bg-accent/5 px-3 py-2 space-y-2">
       <div className="flex items-center justify-between text-[11px] text-accent font-semibold">
-        <span>✨ AI 候補 ({method})</span>
+        <span>AI 候補 ({method})</span>
         <button type="button" onClick={run} className="underline opacity-80">
           再評価
         </button>

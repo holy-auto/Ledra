@@ -18,7 +18,6 @@ export type GuideStep = {
 
 export type Guide = {
   id: string;
-  icon: string;
   title: string;
   /** 当該操作を行う画面への内部リンク (admin) — 公開ページでは表示しない */
   href?: string;
@@ -41,7 +40,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
     guides: [
       {
         id: "issue_certificate",
-        icon: "🪪",
         title: "施工証明書を発行する",
         href: "/admin/certificates/new",
         steps: [
@@ -63,7 +61,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
       },
       {
         id: "register_vehicle",
-        icon: "🚗",
         title: "車両を登録する",
         href: "/admin/vehicles/new",
         steps: [
@@ -85,7 +82,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
       },
       {
         id: "register_customer",
-        icon: "👤",
         title: "顧客を登録する",
         href: "/admin/customers",
         steps: [
@@ -97,13 +93,12 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
           {
             title: "車両・証明書を紐付け",
             description:
-              "顧客詳細画面の各タブから「+ 車両登録」「🪪 証明書発行」「💰 請求書作成」へ顧客IDを保ったまま進めます。",
+              "顧客詳細画面の各タブから「+ 車両登録」「証明書発行」「請求書作成」へ顧客IDを保ったまま進めます。",
           },
         ],
       },
       {
         id: "create_invoice",
-        icon: "🧾",
         title: "請求書を作成する",
         href: "/admin/invoices",
         steps: [
@@ -120,7 +115,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
       },
       {
         id: "create_reservation",
-        icon: "📅",
         title: "予約を登録する",
         href: "/admin/reservations",
         steps: [
@@ -138,7 +132,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
       },
       {
         id: "walkin_job",
-        icon: "🏃",
         title: "飛び込み案件を開始する",
         href: "/admin/jobs/new",
         steps: [
@@ -158,7 +151,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
       },
       {
         id: "job_workflow",
-        icon: "🧭",
         title: "案件ワークフローで業務を進める",
         steps: [
           {
@@ -178,7 +170,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
       },
       {
         id: "pos_register",
-        icon: "🧮",
         title: "POSレジで会計する",
         href: "/admin/pos",
         steps: [
@@ -206,7 +197,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
     guides: [
       {
         id: "shop_info",
-        icon: "🏬",
         title: "店舗情報を設定する",
         href: "/admin/settings",
         steps: [
@@ -226,7 +216,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
       },
       {
         id: "logo",
-        icon: "🎨",
         title: "ロゴをアップロードする",
         href: "/admin/logo",
         steps: [
@@ -246,7 +235,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
       },
       {
         id: "bank_invoice",
-        icon: "💳",
         title: "振込先・インボイス番号を設定する",
         href: "/admin/settings",
         steps: [
@@ -262,7 +250,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
       },
       {
         id: "stripe_connect",
-        icon: "💰",
         title: "Stripe Connect を連携する",
         href: "/admin/settings",
         steps: [
@@ -283,7 +270,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
       },
       {
         id: "invite_member",
-        icon: "👥",
         title: "スタッフを招待する",
         href: "/admin/members",
         steps: [
@@ -303,7 +289,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
       },
       {
         id: "menu_items_master",
-        icon: "📋",
         title: "品目マスタを登録する",
         href: "/admin/menu-items",
         steps: [
@@ -323,7 +308,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
       },
       {
         id: "coating_brands_master",
-        icon: "🧴",
         title: "コーティング剤マスターを登録する",
         href: "/admin/settings/brands",
         steps: [
@@ -343,7 +327,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
       },
       {
         id: "two_factor_auth",
-        icon: "🔐",
         title: "2要素認証 (2FA) を有効にする",
         href: "/admin/settings/security",
         steps: [
@@ -363,7 +346,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
       },
       {
         id: "billing_plan",
-        icon: "💳",
         title: "プランを変更・解約する",
         href: "/admin/billing",
         steps: [
@@ -390,7 +372,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
     guides: [
       {
         id: "command_palette",
-        icon: "⌨️",
         title: "Cmd+K で素早く移動・検索",
         steps: [
           { title: "どの画面でも Cmd+K (Mac) / Ctrl+K (Win)", description: "コマンドパレットが開きます。" },
@@ -403,7 +384,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
       },
       {
         id: "service_timeline",
-        icon: "🕒",
         title: "車両の施工履歴を一覧で見る",
         steps: [
           { title: "車両詳細を開く", description: "/admin/vehicles/[id] へ移動します。" },
@@ -419,7 +399,6 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
       },
       {
         id: "customer_360",
-        icon: "🧭",
         title: "顧客の360°ビューで横断管理",
         steps: [
           { title: "顧客詳細を開く", description: "/admin/customers/[id] へ移動します。" },
@@ -430,7 +409,7 @@ export const OPERATION_GUIDE_GROUPS: GuideGroup[] = [
           {
             title: "右上のクイックアクション",
             description:
-              "「+ 車両登録」「🪪 証明書発行」「💰 請求書作成」「🏃 飛び込み案件」を顧客コンテキストを保ったまま起動。",
+              "「+ 車両登録」「証明書発行」「請求書作成」「飛び込み案件」を顧客コンテキストを保ったまま起動。",
           },
         ],
       },

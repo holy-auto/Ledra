@@ -37,12 +37,12 @@ interface ContactSchedule {
 type TabKey = "today" | "week" | "future";
 
 // ─── 表示メタ ─────────────────────────────────────────────────────
-const TYPE_META: Record<ContactType, { icon: string; label: string }> = {
-  call: { icon: "📞", label: "架電" },
-  visit: { icon: "🚗", label: "訪問" },
-  email: { icon: "✉️", label: "メール" },
-  sms: { icon: "💬", label: "SMS" },
-  line: { icon: "💚", label: "LINE" },
+const TYPE_META: Record<ContactType, { label: string }> = {
+  call: { label: "架電" },
+  visit: { label: "訪問" },
+  email: { label: "メール" },
+  sms: { label: "SMS" },
+  line: { label: "LINE" },
 };
 
 const STATUS_META: Record<ContactStatus, { label: string; cls: string }> = {
@@ -287,11 +287,6 @@ export default function ContactSchedulesClient() {
             return (
               <div key={s.id} className="glass-card rounded-xl p-4">
                 <div className="flex items-start gap-3">
-                  {/* 種別アイコン */}
-                  <div className="w-11 h-11 rounded-lg bg-inset flex items-center justify-center text-xl shrink-0">
-                    <span aria-hidden>{type.icon}</span>
-                  </div>
-
                   {/* 本文 */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -562,7 +557,6 @@ function AddDialog({
                       : "border-border-default text-secondary hover:bg-surface-hover"
                   }`}
                 >
-                  <span aria-hidden>{TYPE_META[t].icon}</span>
                   {TYPE_META[t].label}
                 </button>
               ))}

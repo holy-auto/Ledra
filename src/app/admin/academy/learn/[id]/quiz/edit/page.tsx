@@ -182,9 +182,7 @@ export default function QuizEditorPage({ params }: { params: Promise<{ id: strin
         <Link href={`/admin/academy/learn/${id}`} className="text-sm text-accent hover:underline">
           ← レッスン詳細
         </Link>
-        <h1 className="text-xl font-bold text-primary mt-2 flex items-center gap-2">
-          <span>📝</span> クイズを編集
-        </h1>
+        <h1 className="text-xl font-bold text-primary mt-2 flex items-center gap-2">クイズを編集</h1>
         <p className="text-sm text-muted mt-1">理解度チェック用の質問を作成・並び替え。70% 以上で合格 → 完了マーク。</p>
       </div>
 

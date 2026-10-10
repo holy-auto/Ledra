@@ -99,14 +99,14 @@ export default async function AdminReviewsPage() {
 
       {!aiAvailable && (
         <div className="rounded-xl border border-warning/30 bg-warning-dim px-4 py-3 text-xs text-warning">
-          ⚠ AI 解析列が未作成のため、評価とコメントのみ表示しています。マイグレーション (
+          AI 解析列が未作成のため、評価とコメントのみ表示しています。マイグレーション (
           <code>20260531000002_signature_reviews_ai.sql</code>) を適用すると感情解析が表示されます。
         </div>
       )}
 
       {aiAvailable && actionableCount > 0 && (
         <div className="rounded-xl border border-danger/30 bg-danger-dim px-4 py-3 text-sm text-danger-text">
-          🔔 要対応のレビューが <strong>{actionableCount}</strong> 件あります（AI が改善余地ありと判定）。
+          要対応のレビューが <strong>{actionableCount}</strong> 件あります（AI が改善余地ありと判定）。
         </div>
       )}
 

@@ -42,7 +42,6 @@ export default function RecordAnchorBadge({ publicId }: { publicId: string }) {
           className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs font-bold text-secondary"
           title={state.tooltip}
         >
-          <span aria-hidden>⛓</span>
           {state.label}
         </span>
       </div>
@@ -53,7 +52,6 @@ export default function RecordAnchorBadge({ publicId }: { publicId: string }) {
     "inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent-dim px-2.5 py-1 text-xs font-bold text-accent-text";
   const content = (
     <>
-      <span aria-hidden>⛓</span>
       {state.label}
       {state.href ? (
         <span aria-hidden className="ml-1 opacity-70">

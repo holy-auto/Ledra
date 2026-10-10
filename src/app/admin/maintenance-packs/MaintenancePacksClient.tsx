@@ -174,7 +174,6 @@ export default function MaintenancePacksClient() {
 
       {data && packs.length === 0 && (
         <div className="glass-card p-8 text-center">
-          <div className="text-3xl">🎟️</div>
           <div className="mt-2 text-sm font-medium text-primary">
             {tab === "active" ? "アクティブなメンテパックはありません" : "該当するメンテパックはありません"}
           </div>

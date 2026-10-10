@@ -73,7 +73,7 @@ export default function MarketVehicleAiDescButton({ vehicleId, photoUrls, onAppl
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-medium text-accent hover:bg-accent/10 rounded-xl"
       >
-        <span>✨ AI 説明文を生成</span>
+        <span>AI 説明文を生成</span>
         <span className="ml-auto text-muted text-xs">{open ? "▲" : "▼"}</span>
       </button>
 
@@ -97,7 +97,7 @@ export default function MarketVehicleAiDescButton({ vehicleId, photoUrls, onAppl
             disabled={loading}
             className="rounded-xl border border-accent bg-accent/10 px-4 py-2 text-sm font-medium text-accent hover:bg-accent/20 disabled:opacity-50"
           >
-            {loading ? "生成中..." : "✨ 説明文を生成"}
+            {loading ? "生成中..." : "説明文を生成"}
           </button>
 
           {err && (

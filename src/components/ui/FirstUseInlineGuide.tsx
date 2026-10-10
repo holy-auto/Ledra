@@ -95,9 +95,6 @@ export default function FirstUseInlineGuide({
 
       <div className="pr-8">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-base" aria-hidden>
-            💡
-          </span>
           <span className="text-sm font-semibold text-primary">{title}</span>
         </div>
         {description && <p className="text-xs text-muted leading-relaxed mb-3">{description}</p>}

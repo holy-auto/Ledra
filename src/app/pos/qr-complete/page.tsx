@@ -20,9 +20,6 @@ export const metadata = {
 export default function PosQrCompletePage() {
   return (
     <main className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
-      <div className="text-5xl" aria-hidden>
-        ✅
-      </div>
       <h1 className="text-xl font-bold text-primary">お手続きが完了しました</h1>
       <p className="text-sm text-muted">
         店舗の画面で会計の完了をご確認ください。この画面は閉じていただいて構いません。

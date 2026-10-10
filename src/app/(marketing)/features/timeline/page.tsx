@@ -35,7 +35,6 @@ const timelineEvents = [
   {
     type: "cert",
     color: "rgba(59,130,246,",
-    icon: "📋",
     label: "施工証明書",
     date: "2024-11-15",
     title: "ガラスコーティング 5年",
@@ -46,7 +45,6 @@ const timelineEvents = [
   {
     type: "reservation",
     color: "rgba(168,85,247,",
-    icon: "📅",
     label: "予約",
     date: "2025-03-01",
     title: "コーティングメンテナンス 予約",
@@ -57,7 +55,6 @@ const timelineEvents = [
   {
     type: "cert",
     color: "rgba(59,130,246,",
-    icon: "📋",
     label: "施工証明書",
     date: "2025-03-01",
     title: "コーティングメンテナンス",
@@ -68,7 +65,6 @@ const timelineEvents = [
   {
     type: "nfc",
     color: "rgba(34,197,94,",
-    icon: "📡",
     label: "NFC書込",
     date: "2025-03-01",
     title: "NFCタグを更新",
@@ -79,7 +75,6 @@ const timelineEvents = [
   {
     type: "cert",
     color: "rgba(245,158,11,",
-    icon: "📋",
     label: "施工証明書",
     date: "2025-06-10",
     title: "PPF フロントフード",
@@ -183,9 +178,6 @@ export default function TimelinePage() {
             {/* Vehicle header */}
             <div className="rounded-2xl border border-white/[0.1] bg-white/[0.03] p-5 mb-6">
               <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-500/10 border border-blue-500/20 text-2xl">
-                  🚗
-                </div>
                 <div>
                   <p className="text-base font-bold text-white">トヨタ アルファード</p>
                   <p className="text-xs text-white font-mono mt-0.5">品川 300 あ 12-34</p>
@@ -217,14 +209,12 @@ export default function TimelinePage() {
                   <div key={i} className="flex items-start gap-4">
                     {/* Dot */}
                     <div
-                      className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-base"
+                      className="relative z-10 mt-3 h-4 w-4 shrink-0 rounded-full border"
                       style={{
                         background: `${event.color}0.12)`,
                         borderColor: `${event.color}0.3)`,
                       }}
-                    >
-                      {event.icon}
-                    </div>
+                    />
 
                     {/* Content */}
                     <div className="flex-1 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4">

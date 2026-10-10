@@ -222,7 +222,6 @@ export default function Customer360Page() {
                       key={v.plate}
                       className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3"
                     >
-                      <div className="text-xl">🚗</div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-white truncate">{v.name}</p>
                         <p className="text-[0.625rem] text-white font-mono">{v.plate}</p>

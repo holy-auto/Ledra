@@ -110,7 +110,7 @@ export default function MessageExtractPanel({ onApply }: Props) {
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-medium text-accent hover:bg-accent/10 rounded-xl transition-colors"
       >
-        <span>✨ 受信メッセージから AI 抽出</span>
+        <span>受信メッセージから AI 抽出</span>
         <span className="ml-auto text-muted text-xs">{open ? "▲" : "▼"}</span>
       </button>
 
@@ -152,7 +152,7 @@ export default function MessageExtractPanel({ onApply }: Props) {
               disabled={loading}
               className="rounded-xl border border-accent bg-accent/10 px-4 py-2 text-sm font-medium text-accent hover:bg-accent/20 disabled:opacity-50"
             >
-              {loading ? "解析中…" : "✨ AI 抽出"}
+              {loading ? "解析中…" : "AI 抽出"}
             </button>
             {result && (
               <button
