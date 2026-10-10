@@ -235,7 +235,7 @@ export async function customerFacingDeliveryBlock(
 
 /**
  * 使用者本人の承諾を記録する（顧客ポータル・承諾依頼リンクの共通処理）。 [G3 / 第２ ４（３）]
- * 既に承諾済みなら何もしない（店舗が記録した承諾＝誰がいつ取ったかを上書きしない）。
+ * 本人の承諾が既にあれば何もしない。店舗が記録した承諾は本人の承諾で置き換える（誰が記録していたかは監査ログに残す）。
  * 本人の承諾は granted_by=null で表す（店舗の記録は必ず granted_by=操作者）。method は「示した交付方法」の列なので
  * 入れず、示した文言は consent_version / consent_text_hash で特定する。撤回後の再承諾は同じ行を上書きするので、
  * 撤回の記録と経路（via）・接続元（IP/UA）は監査ログに残す（G4 の証跡）。
@@ -255,13 +255,20 @@ export async function grantDeliveryConsentAsCustomer(
 > {
   const { data: current, error: readErr } = await db
     .from("delivery_consents")
-    .select("status, revoked_at, revoked_via")
+    .select("status, granted_by, revoked_at, revoked_via")
     .eq("tenant_id", p.tenantId)
     .eq("customer_id", p.customerId)
     .maybeSingle();
   if (readErr) return { ok: false, error: readErr };
-  const prev = current as { status: string; revoked_at: string | null; revoked_via: string | null } | null;
-  if (prev?.status === "granted") return { ok: true, alreadyGranted: true };
+  const prev = current as {
+    status: string;
+    granted_by?: string | null;
+    revoked_at: string | null;
+    revoked_via: string | null;
+  } | null;
+  // 本人の承諾が既にあれば何もしない。店舗が記録した承諾（granted_by あり）は本人の承諾で置き換える
+  // （本人の操作の方が証跡として強い。店舗の記録が押し間違いでも、本人の承諾が消えないように。誰が記録していたかは監査ログに残す）。
+  if (prev?.status === "granted" && !prev.granted_by) return { ok: true, alreadyGranted: true };
   // リンクを渡した後に撤回された（お客様が断った）なら、その古いリンクで承諾に戻さない（規制(4)）。
   if (p.request && revokedSinceRequest(prev, p.request.createdAt)) return { ok: false, revokedAfterRequest: true };
 
@@ -281,8 +288,8 @@ export async function grantDeliveryConsentAsCustomer(
     revoked_via: null,
     updated_at: now,
   };
-  // 「承諾済みは上書きしない」を書き込み側の条件にも持たせる（読んでから書くまでに店舗の記録や二重送信が
-  // 割り込んでも、店舗の記録を本人承諾で上書きしない・監査ログを2回書かない）。
+  // 「本人の承諾は上書きしない」を書き込み側の条件にも持たせる（読んでから書くまでに二重送信が割り込んでも、
+  // 監査ログを2回書かない）。
   // ponytail: 読んでから書くまでの間の「撤回」は拾わない（同じ顧客で撤回と承諾がミリ秒単位で重なる場合だけ）。
   if (prev) {
     const { data: updated, error } = await db
@@ -290,7 +297,7 @@ export async function grantDeliveryConsentAsCustomer(
       .update(row)
       .eq("tenant_id", p.tenantId)
       .eq("customer_id", p.customerId)
-      .neq("status", "granted")
+      .or("status.neq.granted,granted_by.not.is.null")
       .select("customer_id");
     if (error) return { ok: false, error };
     if (!Array.isArray(updated) || updated.length === 0) return { ok: true, alreadyGranted: true };
@@ -311,6 +318,7 @@ export async function grantDeliveryConsentAsCustomer(
       ...(p.request ? { request_id: p.request.id, sent_via: p.request.sentVia } : {}),
       consent_version: DELIVERY_CONSENT_VERSION,
       previous_status: prev?.status ?? "none",
+      previous_granted_by: prev?.granted_by ?? null,
       previous_revoked_at: prev?.revoked_at ?? null,
       previous_revoked_via: prev?.revoked_via ?? null,
     },
