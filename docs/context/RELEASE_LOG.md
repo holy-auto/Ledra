@@ -4,6 +4,18 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-10 ヒアリング→顧客連携のエラー握り潰しを直した（3件）
+
+- 内容: `src/app/api/admin/hearings/route.ts` の `action: "link_customer"` で捨てていたエラーを3件とも扱う。
+  ヒアリング取得の DB エラーは 500（0行の `PGRST116` だけ 404）、車両 insert の失敗は `vehicle_error` を返して
+  `HearingClient` が画面に出す（顧客連携自体は完遂させる）、ヒアリング更新の失敗は 500。
+  `logger.error` にヒアリング ID と顧客 ID を残すので、どの行が車両なしで残ったか後から引ける。
+- あわせて直した: PUT の部分更新で**送っていない18列が `null` で消える**原因（`src/lib/validations/hearing.ts` の
+  `.optional().transform((v) => v || null)`）を外した。現状これを踏む呼び出し元は無い（実測 2026-10-10）が、`status` を1つ直せば発火する。
+- 検証: 新規テスト `src/app/api/admin/hearings/__tests__/link-customer.test.ts`（5件）。
+  修正前のコードに対して**5件のうち4件が落ちる**ことを確認（残り1件は正常系）。ほかに tsc / eslint / prettier。
+- 直っていないこと: 同じ形（戻り値を受け取らない DB 書き込み）が `src/` に 276 件ある（OPEN_QUESTIONS 2026-10-10）。
+
 ## 2026-10-10 入金済の納品書・請求書を合算請求書に入れられないようにした
 
 - 内容: 合算の元にできる条件（`src/lib/documents/consolidateEligibility.ts`）を許可リストにして入金済を外した。帳票一覧の合算ボタンは入金済を選ぶと押せなくなり、

@@ -3,6 +3,41 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## `hearings.status` の語彙が3箇所で食い違い、ブランディングの「完了」ボタンは常に失敗している（2026-10-10）
+
+- 状況（すべて実測 2026-10-10）: 同じ `hearings.status` に3つの違う語彙がある。
+  - 本番 DB の CHECK: `draft` / `completed` / `linked`（`select pg_get_constraintdef` で確認）
+  - zod（`src/lib/validations/hearing.ts`）: `draft` / `confirmed` / `linked` / `archived`
+  - 画面のラベル（`HearingClient.tsx` と `branding/BrandingHearingClient.tsx` の `statusLabel`）: `draft` / `completed` / `linked`
+- 実害: `BrandingHearingClient.handleComplete` は `status: "completed"` を送るので zod が 400 で弾く。
+  **導入ヒアリングの「完了」ボタンは一度も通っていない**（画面には「更新に失敗しました」が出る）。
+  逆に zod だけが持つ `confirmed` / `archived` を送ると、今度は DB の CHECK に弾かれて 500 になる。
+- 直していない理由: 稼働中の既存語彙の置き換え・対応付けは IMP-015 の範囲（CLAUDE.md「ドメイン状態語彙ルール」）。
+  どれに揃えるかは実運用の意味を決める話で、zod に `completed` を足すだけだと「完了」と「連携済み」の違いを
+  決めないまま値を増やすことになる。
+- 選択肢: (a) DB と画面に合わせて zod を `draft` / `completed` / `linked` にする（最小・今の運用に一致）、
+  (b) 正準語彙（`src/lib/domain/states.ts`）側に寄せ、DB の CHECK とデータを移行する（IMP-015 本体）、
+  (c) ヒアリングに状態を持たせるのをやめ、顧客連携済みかどうか（`customer_id` の有無）だけで表示する。
+- 次のアクション: 代表判断。(a) なら即日直せる。
+- 公開区分: 公開可
+- 起票日: 2026-10-10
+
+## 戻り値を受け取らない DB 書き込みが `src/` に 276 件ある（2026-10-10）
+
+- 状況: ヒアリング連携の握り潰し（DECISION_LOG 2026-10-10）と同じ形
+  —— `await supabase.from(...).update/insert/upsert/delete(...)` の結果を受け取らない文 —— を `src/` 全体で数えたら **276 件**
+  （`__tests__` を除く。検出器は修正前の `hearings/route.ts` を1件として検出し、修正後は0件になることで当たりを取った）。
+- 注意: 276 件は**同じ形の件数**であって、276 件すべてが実害ではない。監査ログ・通知のように
+  「落ちても本処理は続けたい」書き込みが多く含まれる。見分けるには1件ずつ読む必要がある。
+- 影響: 本処理の成否を決める書き込みがこの中にあると、ヒアリングと同じ「画面は成功、DB は未更新」が起きる。
+  今回の PR では範囲外（ヒアリング連携の3件のみ修正）。
+- 選択肢: (a) 1件ずつ棚卸しして「落ちても続ける」ものにだけ理由コメントを付け、残りはエラーを扱う、
+  (b) 先に lint ルール（結果を使わない書き込みを禁止、例外はコメントで明示）を書いて、以後の増加を止める、
+  (c) 実害が出た経路だけ直す（現状）。
+- 次のアクション: 判断待ち。(b) を先にやる場合、既存 276 件の扱い（一括で例外登録するか）を決める必要がある。
+- 公開区分: 公開可
+- 起票日: 2026-10-10
+
 ## Codex の「利用上限」メッセージが掛かるスコープと回復条件（2026-10-09）
 
 - 状況: 2026-10-09 に #1278 の ready 化で Codex が「You have reached your Codex usage limits for code reviews」を返し

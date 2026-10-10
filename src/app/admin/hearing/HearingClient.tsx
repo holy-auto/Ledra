@@ -195,6 +195,9 @@ export default function HearingClient() {
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? "連携に失敗しました");
       await fetchHearings();
+      // 顧客は登録できたが車両だけ落ちた場合（API が vehicle_error を返す）。
+      // 黙って一覧を読み直すと、車両が無いことに誰も気づかない。
+      if (j.vehicle_error) alert(j.vehicle_error);
       // 連携後、証明書作成に遷移するかリロード
       if (j.vehicle_id) {
         router.push(`/admin/certificates/new?vehicle_id=${j.vehicle_id}`);

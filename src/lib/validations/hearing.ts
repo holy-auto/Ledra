@@ -1,13 +1,22 @@
 import { z } from "zod";
 
-const textField = (max: number) =>
-  z
-    .string()
-    .trim()
-    .max(max)
-    .nullable()
-    .optional()
-    .transform((v) => v || null);
+/**
+ * 自由入力の1列。**`.transform()` を付けてはいけない。**
+ *
+ * かつて `.optional().transform((v) => v || null)` だった。transform は
+ * ZodOptional の外側に乗るので **キーを送らなくても走り**、`undefined || null`
+ * で `null` になる。PUT の通常更新は「`undefined` のキーは触らない」
+ * （`route.ts` の `if (v !== undefined)`）で部分更新を実現しているため、
+ * 省いた列が全部 `null` で上書きされる —— 18列分の入力が消える。
+ *
+ * 今これを踏む呼び出し元は無い（PUT を叩くのは `link_customer` と、
+ * `status: "completed"` を送って zod に 400 で弾かれている
+ * `BrandingHearingClient.handleComplete` の2つだけ。実測 2026-10-10）。
+ * つまり踏んでいないだけで、`status` を1つ直せば発火する。
+ *
+ * 空文字→null の詰め替えは POST 側の `toEmpty` が担う（DB の既存慣例は空文字）。
+ */
+const textField = (max: number) => z.string().trim().max(max).nullable().optional();
 
 const hearingStatuses = ["draft", "confirmed", "linked", "archived"] as const;
 
