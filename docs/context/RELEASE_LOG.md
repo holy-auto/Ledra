@@ -230,6 +230,16 @@
   （`backfill-demo-image-placeholders.ts` も同じ）。整備の履歴タイトルに「施工」を付けないようにした。
 - 作らなかったもの: ブロックチェーンのアンカー・`vehicle_passports`（DECISION_LOG 2026-10-07）。
 
+## 2026-10-09 Next を上げた後に残る古いビルドキャッシュを消す
+
+- 内容: Vercel のビルドキャッシュが大きすぎて捨てられ、全部ビルド（手元実測でピーク約 7.2 GB）になって 8 GB 機で OOM になるのを減らす。
+  Next を上げると、Turbopack の古い版のキャッシュ（約 0.9 GB）が消えずに残り、キャッシュがほぼ倍になっていた。
+- 実装: `scripts/prune-build-cache.mjs`。`npm run build` を `next build && node scripts/prune-build-cache.mjs` にし、
+  `.next/cache/turbopack/` のうち今の Next の版（`v<版>-`）以外のディレクトリを消す。今の版に当たるものが無いときは何も消さない。
+  `.next/cache`・turbopack・node_modules の大きさを `[build-cache]` でビルドログに出す。失敗してもビルドは落とさない。
+- 検証: テスト 5 件（古い版だけ消す／当たる版が無ければ消さない／16.3.8 と 16.3.80 を取り違えない／実ディレクトリでの削除と
+  ログ／初回ビルドで落ちない）。削除処理を外すと 3 件落ちることを確認。手元で古い版を置いてビルドし、Turbopack 自身は消さないこと、
+  このスクリプトで 909 MB 消えることを確認。計測の詳細は OPEN_QUESTIONS「Vercel のビルド機（Elastic）…」。
 
 ## 2026-10-08 ロゴ・印影を Storage API から直接書き換えられるポリシーを外す
 
