@@ -6,6 +6,11 @@
 
 最終更新: 2026-10-10
 
+> 2026-10-10 追記（**Server Action の鍵を固定した**）: Vercel（Production・Preview）に `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` を設定済み（代表）。
+> デプロイをまたいでも、開いたままのログイン画面・管理画面からそのまま送信できる（アクション自体を書き換えたデプロイを除く）。
+> 鍵の形が不正なら `next.config.ts` がビルドを止める（#1302）。古い画面からの送信で ID が見つからないときは、ログイン画面は読み直し、
+> 管理画面は「保存されていません」と知らせてから読み直す（#1298・#1301）。2026-10-10 に代表のログイン不可（`/login?reason=idle`）を解消。
+
 > 2026-10-10 追記（**写真の保存先 `assets` バケットを非公開にする**）: 表示はすべて署名 URL か service-role の download に切り替え済みで、
 > バケットを `public = false` にするマイグレーション（`20261010130513_make_assets_bucket_private.sql`）を本番に適用した（#1300、RELEASE_LOG 2026-10-10）。
 > 以後、保存パスから組み立てた公開 URL（`/object/public/assets/...`）は開けない。staging（Ledra-staging）の `assets` は作成時の本番設定（公開）のままなので、
