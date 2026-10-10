@@ -4,6 +4,17 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-09 LINE 未返信アラート・前日リマインド・停滞フローの cron が毎回 500 で落ちていたのを直した＋Polygon 残高監視の失敗原因をログに残す
+
+- 内容: `unanswered-alerts`（30分毎）・`reservation-reminders`（毎日）・`flow-nudges`（毎日）が、opt-in テナントの走査を
+  `.gt("tenant_id", "")` から始めていた。`tenant_id` は uuid 列なので Postgres が `22P02 invalid input syntax for type uuid: ""` を返し、
+  discovery の時点で毎回 throw → 500。**3本とも通知を1件も出せていなかった**（本番 DB で同じ比較を実行して 22P02 を確認）。
+  初回は条件を付けない形（既存の `followUp.ts` と同じ）に直した。
+- `polygon-signer`: viem の `HTTP request failed ... fetch failed` は本当の原因（TLS ハンドシェイク失敗 / DNS / タイムアウト）を `cause` に隠すため、
+  cause の連鎖をメッセージ先頭に付けてログと `cron_failure_streaks.last_error` に残すようにした。原因そのものはまだ未特定（OPEN_QUESTIONS 参照）。
+- 検証: 新テスト `src/app/api/cron/__tests__/tenantDiscoveryUuid.test.ts`（修正前 3 件失敗 → 修正後 3 件成功）、polygon-signer のテストに cause 表示の 1 件追加。tsc・eslint・prettier 緑。
+- 対象: LINE 連携で AI 自動化を opt-in しているテナント（全業種）。
+
 ## 2026-10-10 入金済の納品書・請求書を合算請求書に入れられないようにした
 
 - 内容: 合算の元にできる条件（`src/lib/documents/consolidateEligibility.ts`）を許可リストにして入金済を外した。帳票一覧の合算ボタンは入金済を選ぶと押せなくなり、

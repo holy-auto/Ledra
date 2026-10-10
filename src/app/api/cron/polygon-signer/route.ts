@@ -227,12 +227,21 @@ export async function GET(req: NextRequest) {
 
     return apiJson(summary);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+    // viem の "fetch failed" は undici の本当の原因（TLS ハンドシェイク失敗 / DNS / タイムアウト）を cause に隠すので、
+    // 連鎖を辿って末尾に付ける。これが無いと TLS 1.3 非対応か RPC 側の障害かを区別できない。
+    // cause を先頭に置くのは、tracker の last_error が 500 字で切られても残すため。
+    const causes: string[] = [];
+    for (let c = (e as { cause?: unknown })?.cause, i = 0; c && i < 5; c = (c as { cause?: unknown }).cause, i++) {
+      const ce = c as { code?: string; message?: string };
+      causes.push(`${ce.code ? `${ce.code}: ` : ""}${ce.message ?? String(c)}`);
+    }
+    const base = e instanceof Error ? e.message : String(e);
+    const msg = causes.length ? `[cause: ${causes.join(" <- ")}] ${base}` : base;
     console.error("[cron/polygon-signer] balance check failed:", msg);
 
     // RPC 連続失敗を tracker に記録 (3 回以上で運営にメール通知)
     const trackerSupabase = createServiceRoleAdmin("polygon-signer cron failure tracker");
-    await recordCronFailure(trackerSupabase, "polygon-signer", e, { threshold: 3 });
+    await recordCronFailure(trackerSupabase, "polygon-signer", msg, { threshold: 3 });
 
     const summary: SignerSummary = {
       timestamp: now.toISOString(),
