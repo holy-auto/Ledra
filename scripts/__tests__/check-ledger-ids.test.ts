@@ -296,6 +296,100 @@ describe("checkLedger（陰性対照 — 検査8: 索引の逆向き）", () => 
   });
 });
 
+describe("checkLedger（陰性対照 — /code-review 2026-10-10 の13件）", () => {
+  /** 型表の行を1つ書き換える。 */
+  function editRow(text: string, type: string, fn: (row: string) => string): string {
+    const lines = text.split("\n");
+    const i = lines.findIndex((l) => l.startsWith(`| **${type}. `));
+    if (i < 0) throw new Error(`型 ${type} の行が無い`);
+    const before = lines[i];
+    lines[i] = fn(before);
+    if (lines[i] === before) throw new Error("書き換えが当たっていない");
+    return lines.join("\n");
+  }
+
+  it("末尾のパイプが落ちた行は名指しで落ちる（以前は undefined.matchAll で死んでいた）", () => {
+    // TYPE_ROW_RE には当たるので 6-a/6-b を通り抜ける。pre-commit がスタックトレースで
+    // 死ぬと、何が悪いのか読めないままリポジトリ全体のコミットが止まる。
+    const r = checkLedger(editRow(real, "H", (row) => row.replace(/ \|$/, "")));
+    expect(r.error).toContain("「該当」列が読めない");
+    expect(r.error).toContain("**H.");
+  });
+
+  it("列が1つだけになった行も落ちる", () => {
+    // 型の名前のセルだけ残す（空行にすると表のブロックが途中で切れて別の検査が落ちる）。
+    const r = checkLedger(editRow(real, "H", (row) => row.replace(/^(\| [^|]*)\|.*$/, "$1")));
+    expect(r.error).toContain("「該当」列が読めない");
+  });
+
+  it("中身のセルにパイプが入っても誤検出しない（列を決め打ちしない）", () => {
+    // `split("|")[3]` だと列がずれ、その型の全エントリが「未掲載」になって
+    // しかも --fix が直せない状態になる。
+    const r = checkLedger(
+      editRow(real, "G", (row) => {
+        const cells = row.split("|");
+        cells[2] = `${cells[2]} \`a|b\` の例`; // 中身のセルにパイプを足す
+        return cells.join("|");
+      }),
+    );
+    expect(r.error, "正しい表編集が落ちている").toBe(null);
+  });
+
+  it("同じ型を2度名乗っても1件として数える（`型 A／A`）", () => {
+    const text = withEntry("## M-20260915-twice 同じ型を2度（2026-09-15・型 A／A）");
+    expect(checkLedger(text).error).toContain("組が 1 件");
+    // 補完も1回だけ。2回入れると該当セルに同じ ID が並ぶ。
+    expect(fixLedger(text).added).toEqual(["M-20260915-twice → 型 A"]);
+  });
+
+  it("`型 E、併せて型 A` の2つ目も宣言として読む（実物にある形）", () => {
+    // 前のアンカーを `[一-龥ぁ-んァ-ンA-Za-z]` に広げたら、`て`（かな）で2つ目が消えた。
+    // 全見出しで突き合わせたら、アンカー無しと「漢字のみ除外」はどちらも 222 組で一致し、
+    // 広げた版は 216 組だった（実データを6件落とす）。
+    const r = checkLedger(withEntry("## M-20260915-awasete 2軸（2026-09-15・型 E、併せて型 A）"));
+    expect(r.error).toContain("M-20260915-awasete → 型 E");
+    expect(r.error, "「併せて型 A」が宣言として読まれていない").toContain("M-20260915-awasete → 型 A");
+  });
+
+  it("`新型 Bug` のような本文を型の宣言として読まない", () => {
+    const r = checkLedger(withEntry("## M-20260915-phantom 偽陽性（2026-09-15・型 A・新型 Bug を踏んだ）"));
+    expect(r.error, "型 A は本当に未掲載なので赤でよい").toContain("M-20260915-phantom → 型 A");
+    expect(r.error, "新型 Bug を型 B の宣言として読んでいる").not.toContain("→ 型 B");
+  });
+
+  it("本文で型表のヘッダを引用しても0行にならない", () => {
+    // 行の引用には対処していたが、**ヘッダの引用**を見ていなかった。
+    // 0行になると検査6-b の床が落ちて、正しい文書が全コミットを止める。
+    // **引用の後ろに本文が続く形**にする。`slice(h + 2)` がその本文に当たって
+    // 行が0本になり、候補を1つしか試さない実装はそこで諦める（変異で確認済み）。
+    const quoted = real.replace(
+      "| 型 | 中身 | 該当 |",
+      "表の形は次のとおり。\n\n| 型 | 中身 | 該当 |\n\nこの3列で書く。\n\n| 型 | 中身 | 該当 |",
+    );
+    expect(quoted, "置換が当たっていない").not.toBe(real);
+    const r = checkLedger(quoted);
+    expect(r.error, "正しい文書が落ちている").toBe(null);
+    expect(r.typeRows).toBeGreaterThanOrEqual(MIN_TYPE_ROWS);
+  });
+
+  it("表の行が重複している間は kind が unindexed にならない（--fix に書かせない）", () => {
+    // 重複した行に補完すると、同じ ID を両方の行に入れて壊れを深くする。
+    // 2026-10-07 に実際に起きた形（M-20261007-merge-duplicated-the-ledger-type-row-…）。
+    const lines = real.split("\n");
+    const i = lines.findIndex((l) => l.startsWith("| **A. "));
+    lines.splice(i + 1, 0, lines[i]);
+    const r = checkLedger(lines.join("\n"));
+    expect(r.error).toContain("型表の行が重複している");
+    expect(r.kind, "--fix が書き込んでしまう").not.toBe("unindexed");
+  });
+
+  it("置き先の行が無い型は、赤になるが補完できない（呼び出し側が見分けられる）", () => {
+    const text = withEntry("## M-20260915-bogus-type2 型の誤記（2026-09-15・型 Z）");
+    expect(checkLedger(text).kind).toBe("unindexed");
+    expect(fixLedger(text).added, "置けないのに置いたと言っている").toEqual([]);
+  });
+});
+
 describe("fixLedger（補完器）", () => {
   it("足し忘れを埋めると検査が通る", () => {
     const broken = withEntry("## M-20260915-not-indexed 表に足し忘れた（2026-09-15・型 A）");
@@ -325,10 +419,12 @@ describe("fixLedger（補完器）", () => {
     // 実際にあることを先に固定する。
     expect(after.length, "末尾に積まれている（後ろに日付 ID が無い）").toBeGreaterThan(0);
     expect(after.every((i: string) => i.slice(2, 10) >= "20260915"), `後ろに古い日付がある: ${after[0]}`).toBe(true);
-    expect(
-      before.every((i: string) => i.slice(2, 10) <= "20260915"),
-      `前に新しい日付がある: ${before.at(-1)}`,
-    ).toBe(true);
+    // **`before.every(…<= 20260915)` は findIndex の定義から必ず真で、何も見ていない。**
+    // 片方（after）の空振りを変異で直したのに、鏡像をそのまま残していた（型 J・/code-review 指摘）。
+    // 隣を名指しで固定する: 直前の日付 ID は「20260915 以下の中でいちばん新しいもの」。
+    const expectedPrev = [...before].filter((i: string) => i.slice(2, 10) <= "20260915").at(-1);
+    expect(before.at(-1), "直前が、20260915 以下でいちばん新しい ID になっていない").toBe(expectedPrev);
+    expect(before.length, "前に日付 ID が1つも無い（実物の A 行なら必ずある）").toBeGreaterThan(0);
   });
 
   it("フェンス外で引用された表の行は書き換えない（本文を壊さない）", () => {
