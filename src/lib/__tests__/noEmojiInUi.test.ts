@@ -32,11 +32,15 @@ describe("UI に絵文字を出さない", () => {
 
   it("画面のソースに絵文字が無い", () => {
     expect(files.length).toBeGreaterThan(100);
-    const hits = files.flatMap((p) =>
-      stripComments(readFileSync(p, "utf8"), p)
+    // ponytail: パーサ（stripComments）は重いので、生テキストで当たったファイルだけ通す。
+    // 全ファイルを通すと CI で 5 秒を超える（M-20260913-ci-test-timeout と同じ形）。
+    const hits = files.flatMap((p) => {
+      const raw = readFileSync(p, "utf8");
+      if (!UI_EMOJI.test(raw)) return [];
+      return stripComments(raw, p)
         .split("\n")
-        .flatMap((line, i) => (UI_EMOJI.test(line) ? [`${p.slice(root.length + 1)}:${i + 1}: ${line.trim()}`] : [])),
-    );
+        .flatMap((line, i) => (UI_EMOJI.test(line) ? [`${p.slice(root.length + 1)}:${i + 1}: ${line.trim()}`] : []));
+    });
     expect(hits).toEqual([]);
   });
 });
