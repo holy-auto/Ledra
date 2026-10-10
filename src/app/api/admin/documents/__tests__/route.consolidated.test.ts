@@ -437,6 +437,8 @@ describe("POST /api/admin/documents（合算請求書の明細を元帳票の明
       { ...SOURCES[1], customer_id: "33333333-3333-4333-8333-333333333333" },
       { ...SOURCES[1], doc_type: "staff_invoice" },
       { ...SOURCES[1], status: "cancelled" },
+      // 入金済を合算すると、払い終えた金額をもう一度請求する
+      { ...SOURCES[1], status: "paid" },
     ]) {
       mocks.admin = client({ tenants: { registration_number: null }, documents: [SOURCES[0], bad] });
       const res = await POST(req("POST", body));
