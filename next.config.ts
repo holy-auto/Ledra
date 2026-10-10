@@ -17,6 +17,18 @@ const withBundleAnalyzer: (cfg: NextConfig) => NextConfig =
       require("@next/bundle-analyzer")({ enabled: true })
     : (c: NextConfig) => c;
 
+// Server Action の鍵は AES 鍵の base64（16/24/32 バイト）でないと、ビルドは通るのに実行時に
+// 「Invalid key length」でログイン・保存が全部失敗する。ビルドで止めて、本番を前の版のまま残す。
+const actionKey = process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY;
+if (
+  actionKey &&
+  (!/^[A-Za-z0-9+/]+={0,2}$/.test(actionKey) || ![16, 24, 32].includes(Buffer.from(actionKey, "base64").length))
+) {
+  throw new Error(
+    "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY は 32 バイトの base64（44 文字、`openssl rand -base64 32`）にしてください。",
+  );
+}
+
 const nextConfig: NextConfig = {
   reactCompiler: true,
   compress: true,
@@ -78,8 +90,7 @@ const nextConfig: NextConfig = {
       //   /tora の告知も 19:00 以降のみ行うため、公開前に踏まれて 404 になる導線は無い。
       {
         source: "/tora",
-        destination:
-          "/news/2026-07-25-reiwa-no-tora?utm_source=tora&utm_medium=broadcast&utm_campaign=reiwa-tora-2026",
+        destination: "/news/2026-07-25-reiwa-no-tora?utm_source=tora&utm_medium=broadcast&utm_campaign=reiwa-tora-2026",
         permanent: false,
       },
     ];
@@ -193,8 +204,6 @@ const sentryBuildOptions = {
 // Apply Sentry wrapper only at build time (CI/deploy), not during dev.
 // withSentryConfig modifies Webpack/Turbopack and can cause path issues in dev worktrees.
 const sentryWrapped =
-  withSentryConfig && process.env.SENTRY_AUTH_TOKEN
-    ? withSentryConfig(nextConfig, sentryBuildOptions)
-    : nextConfig;
+  withSentryConfig && process.env.SENTRY_AUTH_TOKEN ? withSentryConfig(nextConfig, sentryBuildOptions) : nextConfig;
 
 export default withBundleAnalyzer(sentryWrapped);
