@@ -1,7 +1,11 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 import { apiJson, apiError, apiValidationError, apiInternalError } from "@/lib/api/response";
-import { inspectionRecordCreateSchema, inspectionRecordUpdateSchema } from "@/lib/validations/inspection";
+import {
+  inspectionPhotoPathError,
+  inspectionRecordCreateSchema,
+  inspectionRecordUpdateSchema,
+} from "@/lib/validations/inspection";
 import { retentionUntilYears, isRetentionExpired } from "@/lib/retention";
 import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 import { changedFields } from "@/lib/inspection/auditDiff";
@@ -76,6 +80,8 @@ export const POST = withCaller(
         inspector_staff_id: rest.inspector_staff_id,
       });
       if (refError) return apiValidationError(refError);
+      const photoError = inspectionPhotoPathError(caller.tenantId, rest.photo_urls);
+      if (photoError) return apiValidationError(photoError);
 
       // 完成検査（指定整備記録簿）の実施者資格ゲート（G1/#1）。テナントが opt-in していれば
       // 実施者が有効な自動車検査員であることを必須化（fail-closed）。実施者の資格は実施時点の
@@ -183,6 +189,8 @@ export const PATCH = withCaller(
         inspector_staff_id: sentKeys.has("inspector_staff_id") ? (rest.inspector_staff_id ?? null) : null,
       });
       if (refError) return apiValidationError(refError);
+      const photoError = inspectionPhotoPathError(caller.tenantId, rest.photo_urls);
+      if (photoError) return apiValidationError(photoError);
 
       // 部分更新: 送信された（かつ undefined でない）キーだけを書く。
       const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
