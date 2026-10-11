@@ -15,6 +15,7 @@ const NAV = [
   { href: "/manufacturer/tenants", label: "認定施工店" },
   { href: "/manufacturer/certificates", label: "発行履歴" },
   { href: "/manufacturer/quality", label: "品質チェック" },
+  { href: "/manufacturer/report-samples", label: "連携レポート見本" },
   { href: "/manufacturer/templates", label: "デザインテンプレート" },
   { href: "/manufacturer/audit", label: "操作ログ" },
 ];
