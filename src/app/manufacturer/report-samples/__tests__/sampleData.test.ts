@@ -7,7 +7,6 @@ import {
   minivanDamage,
   oemMaint,
   oemMileage,
-  oemModels,
   ppfCars,
   ppfFilmRows,
   sum,
@@ -19,8 +18,16 @@ describe("連携レポート見本のダミーデータ", () => {
     expect(sum(coatAge.map((x) => x[1]))).toBe(coatTotal);
     expect(sum(ppfFilmRows.map((r) => sum(r[1])))).toBe(ppfCars);
     expect(sum(oemMileage.map((x) => x[1]))).toBe(oemMaint);
-    expect(sum(minivanDamage.map((p) => p[3]))).toBe(oemModels.find((m) => m[0] === "ミニバン-B")![1][3]);
     expect(sum(ftShops.map((s) => s[1] + s[2] + s[3]))).toBe(60);
+  });
+
+  it("傷マーカーの座標は証明書と同じ 0..1 正規化に収まる", () => {
+    for (const [, x, y] of minivanDamage) {
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThanOrEqual(1);
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(y).toBeLessThanOrEqual(1);
+    }
   });
 
   it("業種タブの id が重複しない", () => {

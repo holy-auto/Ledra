@@ -38,7 +38,7 @@ export type SampleReport = {
 };
 
 export const sum = (a: number[]) => a.reduce((s, x) => s + x, 0);
-const fmt = (n: number) => n.toLocaleString("ja-JP");
+export const fmt = (n: number) => n.toLocaleString("ja-JP");
 const pct = (n: number, d: number) => (d ? ((n / d) * 100).toFixed(1) : "0");
 const F: Src[] = ["field"];
 const FV: Src[] = ["field", "vehicle"];
@@ -112,18 +112,22 @@ export const oemModels: [string, number[]][] = [
 ];
 const oemTotal = sum(oemModels.map((m) => sum(m[1])));
 export const oemMaint = sum(oemModels.map((m) => m[1][2]));
-// ミニバン-B の鈑金記録の傷の位置（展開図 300x340 座標）
-export const minivanDamage: [string, number, number, number][] = [
-  ["フロントバンパー", 150, 22, 31],
-  ["ボンネット", 150, 80, 6],
-  ["左Fフェンダー", 58, 92, 7],
-  ["右Fフェンダー", 242, 92, 9],
-  ["ルーフ", 150, 175, 1],
-  ["左スライドドア", 50, 200, 12],
-  ["右スライドドア", 250, 200, 14],
-  ["サイドステップ", 150, 245, 4],
-  ["リアゲート・バンパー", 150, 312, 18],
+// ミニバン-B の鈑金塗装の証明書に置かれた傷マーカーの数。座標は damage_map_json と同じ 0..1 正規化で、
+// 作成画面・PDF・公開ページ共通の車両図（DAMAGE_DIAGRAM）に重ねる。1件の証明書に複数のマーカーが置かれうる。
+// 部位名は見本用の振り分け（実データのマーカーは座標だけで部位を持たない）。
+export const minivanDamage: [label: string, x: number, y: number, markers: number][] = [
+  ["フロントバンパー", 0.5, 0.075, 31],
+  ["ボンネット", 0.5, 0.17, 6],
+  ["左Fフェンダー", 0.29, 0.21, 7],
+  ["右Fフェンダー", 0.71, 0.21, 9],
+  ["ルーフ", 0.5, 0.48, 1],
+  ["左スライドドア", 0.28, 0.56, 12],
+  ["右スライドドア", 0.72, 0.56, 14],
+  ["左サイドステップ", 0.27, 0.71, 4],
+  ["リアゲート・バンパー", 0.5, 0.9, 18],
 ];
+const slideDoors = sum(minivanDamage.filter((p) => p[0].includes("スライドドア")).map((p) => p[3]));
+const peakLabel = (items: Pair[]) => items.reduce((a, b) => (b[1] > a[1] ? b : a))[0];
 export const oemMileage: Pair[] = [
   ["〜1万km", 140],
   ["1〜3万", 310],
@@ -191,7 +195,7 @@ export const SAMPLE_REPORTS: SampleReport[] = [
           title: "車種別の施工件数",
           src: FV,
           charts: [{ kind: "bars", items: coatModels, total: coatTotal }],
-          note: "上位8車種で全体の約3分の2。大型SUV・ミニバンが上位で、1台あたりの使用量が多い層に偏っている。",
+          note: `上位8車種で全体の${pct(sum(coatModels.slice(0, 8).map((x) => x[1])), coatTotal)}%。大型SUV・ミニバンが上位で、1台あたりの使用量が多い層に偏っている。`,
         },
         {
           title: "車齢別の施工件数",
@@ -272,7 +276,7 @@ export const SAMPLE_REPORTS: SampleReport[] = [
           title: "部位別の施工率（1台あたり）",
           src: F,
           charts: [{ kind: "bars", items: ppfParts, total: ppfCars, max: ppfCars, tone: "emerald" }],
-          note: "フロント3点（バンパー・ボンネット・フェンダー）が主流。フルラッピングは約1割。",
+          note: `フロント3点（バンパー・ボンネット・フェンダー）が主流。フルラッピングは${pct(ppfParts[8][1], ppfCars)}%。`,
         },
         {
           title: "フィルムタイプ別",
@@ -349,17 +353,17 @@ export const SAMPLE_REPORTS: SampleReport[] = [
       ],
       [
         {
-          title: "ミニバン-B：鈑金塗装の傷の位置",
+          title: "ミニバン-B：鈑金塗装の傷の位置（マーカー）",
           src: FV,
           charts: [{ kind: "damage", points: minivanDamage }],
-          note: `円の大きさ＝件数。鈑金塗装 ${sum(minivanDamage.map((p) => p[3]))} 件の傷マーカーを展開図に重ねた集計。`,
+          note: `円の大きさ＝マーカー数。鈑金塗装の証明書に置かれた傷マーカー ${sum(minivanDamage.map((p) => p[3]))} 個を、証明書と同じ車両図に重ねた集計（1件に複数置かれることがある）。`,
         },
       ],
     ],
     insights: [
       [
         "設計・品質へのフィードバック",
-        "ミニバン-B はスライドドア周辺の傷が左右で 26 件。乗降時の接触が多い部位を特定できる。",
+        `ミニバン-B はスライドドア周辺の傷マーカーが左右で ${slideDoors} 個。乗降時の接触が多い部位を特定できる。`,
       ],
       ["認定中古車の付加価値", "施工・整備の履歴が車台番号に紐づくので、下取り・再販時に履歴を証明できる。"],
       ["ディーラー外の実態", "正規ディーラー以外でどんな施工・整備がされているかが見える。"],
@@ -367,7 +371,8 @@ export const SAMPLE_REPORTS: SampleReport[] = [
     sources: [
       ["車種別の施工内訳", "施工証明書（種別）", "メーカー・車種", true],
       ["走行距離帯", "整備記録", "走行距離の記録", true],
-      ["傷の位置の集計", "傷の位置マーカー（鈑金塗装）", "車種", true],
+      ["傷の位置の重ね合わせ", "傷の位置マーカー（座標）", "車種", true],
+      ["部位別の件数（座標から部位を判定）", "傷の位置マーカー（座標）", "車種", false],
       ["複数施工店をまたいだ集計の提供", "全施工店の記録", "貴社車両の抽出", false],
     ],
   },
@@ -414,7 +419,7 @@ export const SAMPLE_REPORTS: SampleReport[] = [
               ],
             },
           ],
-          note: "上: 全体の工程別。下: ボディサイズ別の入庫〜納車日数。最も長いのは「協定→鈑金開始」。",
+          note: `上: 全体の工程別。下: ボディサイズ別の入庫〜納車日数。最も長いのは「${peakLabel(paintStages)}」。`,
         },
       ],
     ],
@@ -449,7 +454,7 @@ export const SAMPLE_REPORTS: SampleReport[] = [
           title: "ブレーキパッド：交換時の走行距離",
           src: FV,
           charts: [{ kind: "columns", items: padMileage, highlight: 2 }],
-          note: `パッド交換 ${padTotal} 件。4〜6万km がピーク。`,
+          note: `パッド交換 ${padTotal} 件。${peakLabel(padMileage)} がピーク。`,
         },
         {
           title: "車種別の取付件数",

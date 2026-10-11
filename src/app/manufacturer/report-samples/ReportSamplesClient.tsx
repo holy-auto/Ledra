@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { SAMPLE_REPORTS, sum, type Chart, type Pair, type Section, type Src } from "./sampleData";
+import Tabs from "@/components/ui/Tabs";
+import { DAMAGE_DIAGRAM } from "@/lib/certificates/damageMap";
+import { SAMPLE_REPORTS, fmt, sum, type Chart, type Pair, type Section, type Src } from "./sampleData";
 
 const SERIES = ["var(--accent-blue)", "var(--accent-emerald)", "var(--text-muted)", "var(--accent-gold)"];
 const TONE = {
@@ -10,7 +12,6 @@ const TONE = {
   gold: "var(--accent-gold)",
   amber: "var(--accent-amber)",
 };
-const fmt = (n: number) => n.toLocaleString("ja-JP");
 
 function SrcTags({ src }: { src: Src[] }) {
   return (
@@ -84,58 +85,39 @@ function Damage({ points }: { points: [string, number, number, number][] }) {
   const m = Math.max(...points.map((p) => p[3]));
   const total = sum(points.map((p) => p[3]));
   const ranked = [...points].sort((a, b) => b[3] - a[3]).slice(0, 5);
+  const { width: W, height: H } = DAMAGE_DIAGRAM;
   return (
     <div className="grid items-center gap-4 sm:grid-cols-[minmax(0,240px)_1fr]">
+      {/* 証明書の作成画面・PDF・公開ページと同じ車両図に、正規化座標のまま重ねる */}
       <svg
-        viewBox="0 0 300 340"
+        viewBox={`0 0 ${W} ${H}`}
         role="img"
-        aria-label="傷の位置の集計（車両展開図）"
+        aria-label="傷の位置の集計（車両図）"
         className="mx-auto w-full max-w-[240px]"
       >
-        <rect
-          x="40"
-          y="10"
-          width="220"
-          height="320"
-          rx="46"
-          fill="var(--bg-inset)"
-          stroke="var(--border-default)"
-          strokeWidth="2"
-        />
-        <rect
-          x="72"
-          y="110"
-          width="156"
-          height="34"
-          rx="8"
-          fill="var(--bg-surface-solid)"
-          stroke="var(--border-default)"
-        />
-        <rect
-          x="72"
-          y="270"
-          width="156"
-          height="26"
-          rx="8"
-          fill="var(--bg-surface-solid)"
-          stroke="var(--border-default)"
-        />
-        <text x="150" y="131" textAnchor="middle" fontSize="10" fill="var(--text-muted)">
-          前
-        </text>
+        <path d={DAMAGE_DIAGRAM.body} fill="var(--bg-inset)" stroke="var(--border-default)" strokeWidth="2" />
+        <path d={DAMAGE_DIAGRAM.windshield} fill="var(--bg-surface-solid)" stroke="var(--border-default)" />
+        <path d={DAMAGE_DIAGRAM.rearWindow} fill="var(--bg-surface-solid)" stroke="var(--border-default)" />
         {points.map(([l, x, y, n]) => (
           <g key={l}>
             <circle
-              cx={x}
-              cy={y}
-              r={5 + Math.sqrt(n / m) * 19}
+              cx={x * W}
+              cy={y * H}
+              r={5 + Math.sqrt(n / m) * 11}
               fill="var(--accent-red)"
               fillOpacity={0.25 + (n / m) * 0.55}
               stroke="var(--accent-red)"
             >
-              <title>{`${l} ${n}件`}</title>
+              <title>{`${l} ${n}個`}</title>
             </circle>
-            <text x={x} y={y + 4} textAnchor="middle" fontSize="11" fill="var(--text-primary)" className="font-mono">
+            <text
+              x={x * W}
+              y={y * H + 4}
+              textAnchor="middle"
+              fontSize="11"
+              fill="var(--text-primary)"
+              className="font-mono"
+            >
               {n}
             </text>
           </g>
@@ -233,7 +215,8 @@ function ChartView({ chart }: { chart: Chart }) {
           </table>
         </div>
       );
-    case "thickness":
+    case "thickness": {
+      const tm = Math.max(...chart.items.map((x) => x[2])) * 1.1;
       return (
         <div className="grid gap-2.5">
           <Legend
@@ -251,7 +234,7 @@ function ChartView({ chart }: { chart: Chart }) {
                   [a, TONE.accent],
                 ].map(([v, c]) => (
                   <span key={c} className="h-2 overflow-hidden rounded-sm bg-surface-hover">
-                    <span className="block h-full" style={{ width: `${(Number(v) / 200) * 100}%`, background: c }} />
+                    <span className="block h-full" style={{ width: `${(Number(v) / tm) * 100}%`, background: c }} />
                   </span>
                 ))}
               </span>
@@ -262,9 +245,10 @@ function ChartView({ chart }: { chart: Chart }) {
           ))}
         </div>
       );
+    }
     case "timeline": {
       const t = sum(chart.items.map((s) => s[1]));
-      const cs = ["var(--text-muted)", TONE.gold, TONE.emerald, TONE.accent, "var(--text-muted)"];
+      const cs = ["var(--text-muted)", TONE.gold, TONE.emerald, TONE.accent, "var(--accent-violet)"];
       return (
         <div className="grid gap-2">
           <div
@@ -273,17 +257,10 @@ function ChartView({ chart }: { chart: Chart }) {
             aria-label={`工程別の平均日数 合計${t.toFixed(1)}日`}
           >
             {chart.items.map(([l, d], i) => (
-              <div
-                key={l}
-                title={`${l} ${d}日`}
-                className="grid place-items-center overflow-hidden whitespace-nowrap font-mono text-[11px] text-[var(--bg-surface-solid)]"
-                style={{ width: `${(d / t) * 100}%`, background: cs[i] }}
-              >
-                {d}日
-              </div>
+              <div key={l} title={`${l} ${d}日`} style={{ width: `${(d / t) * 100}%`, background: cs[i] }} />
             ))}
           </div>
-          <Legend items={chart.items.map(([l], i) => [l, cs[i]])} />
+          <Legend items={chart.items.map(([l, d], i) => [`${l} ${d}日`, cs[i]])} />
         </div>
       );
     }
@@ -339,29 +316,34 @@ export default function ReportSamplesClient() {
         ))}
       </div>
 
-      <div role="tablist" aria-label="メーカーの業種" className="flex flex-wrap gap-1.5">
-        {SAMPLE_REPORTS.map((x) => (
-          <button
-            key={x.id}
-            role="tab"
-            aria-selected={x.id === r.id}
-            onClick={() => setId(x.id)}
-            className={`grid rounded-lg border px-3.5 py-2 text-left text-[13px] leading-tight transition-colors ${
-              x.id === r.id
-                ? "border-accent bg-accent-dim text-primary"
-                : "border-border-subtle bg-surface text-secondary hover:bg-surface-hover"
-            }`}
-          >
-            {x.tab}
-            <small className="text-[11px] text-muted">{x.sub}</small>
-          </button>
-        ))}
-      </div>
+      <Tabs
+        ariaLabel="メーカーの業種"
+        value={r.id}
+        onChange={setId}
+        tabs={SAMPLE_REPORTS.map((x) => ({
+          key: x.id,
+          label: (
+            <>
+              {x.tab}
+              <small className="ml-1.5 text-[11px] text-muted">{x.sub}</small>
+            </>
+          ),
+        }))}
+      />
 
-      <article role="tabpanel" className="grid gap-7 rounded-2xl border border-border-subtle bg-surface p-5 lg:p-7">
+      <article
+        role="tabpanel"
+        aria-label={r.tab}
+        className="grid gap-7 rounded-2xl border border-border-subtle bg-surface p-5 lg:p-7"
+      >
         <header className="flex flex-wrap justify-between gap-x-6 gap-y-3 border-b-2 border-accent-gold pb-3.5">
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">Sample Report</div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">Sample Report</span>
+              <span className="rounded-full bg-warning-dim px-2 py-0.5 text-[11px] font-medium text-warning-text">
+                ダミーデータ（実在の企業・実績ではありません）
+              </span>
+            </div>
             <div className="font-serif text-xl font-semibold text-primary">{r.to}</div>
             <div className="text-[13px] text-secondary">{r.title}</div>
           </div>
@@ -432,7 +414,7 @@ export default function ReportSamplesClient() {
                           ok ? "bg-success-dim text-success-text" : "bg-warning-dim text-warning-text"
                         }`}
                       >
-                        {ok ? "記録済み" : "提携時に取り決め"}
+                        {ok ? "記録済み" : "提携時に用意"}
                       </span>
                     </td>
                   </tr>
@@ -442,7 +424,7 @@ export default function ReportSamplesClient() {
           </div>
           <p className="text-xs text-muted">
             「記録済み」は Ledra
-            に既にある項目。「提携時に取り決め」は、データの範囲・同意・連携方法を契約で決めてから出せる項目。
+            に既にある項目。「提携時に用意」は、集計の作り込み・データの範囲・同意・連携方法を提携時に決めてから出せる項目。
           </p>
         </section>
       </article>
