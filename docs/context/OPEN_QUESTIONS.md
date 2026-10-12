@@ -1825,6 +1825,12 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
     `C2PA_MODE=production` を入れた最初のビルドのログに
     `[check:c2pa-binary --traced] OK —` の行が出るかで分かる。出ていなければ env が
     Build に露出していないということなので、そこで露出させる。
+  - 【要確認】**「manifest に載っていれば関数に入る」は前提のままである。**
+    確かめたのは「trace manifest が `dist/index.node` を挙げているか」まで。Vercel のビルダーが
+    その列挙をもとにコピーする、という理解に乗っており、**ここから検証できない**。
+    実際に関数へ入ったかは、`C2PA_MODE=production` にしたあと本番で1枚アップロードして
+    `signer_unavailable` が出ないことを見る（＝デプロイ後のスモーク）しか道が無い。
+    オンにする日の手順に入れること。
   - 【要確認】**本番（Vercel）で `@contentauth/c2pa-node` が実際にビルドできているか。**
     できていなければ、`C2PA_MODE=production` にした瞬間に全アップロードが
     `signer_unavailable` で断られる。**オンにする前に本番環境での読み込み可否を確かめること。**
