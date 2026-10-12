@@ -19,7 +19,8 @@
 
 - 内容: `assets` バケットの許可形式（画像 5 種）に無かった `image/heic`・`video/mp4`・`video/quicktime`・`application/pdf` を足した
   （iPhone の HEIC 写真・証明書の動画・署名済み PDF が Storage に弾かれていた）。既存の一覧は置き換えずに足す。上限は 10MB → 20MB
-  （アプリが受け付ける画像の上限の最大）。`20261012131344_widen_assets_bucket_limits.sql`、マージで本番に適用。
+  （アプリが受け付ける画像の上限の最大）。`20261012131344_widen_assets_bucket_limits.sql`。#1321 のマージで本番に適用済み
+  （`db-migrate.yml` 2026-10-12 13:40:37Z 開始・13:41:00Z 成功。本番の storage.buckets で 20MB・9 形式・非公開のままを確認）。
   `assets` への書き込み口（src の 15 箇所）が付ける形式がすべて一覧に入ることを確認。使い捨ての Postgres で、足す・重複しない・
   「制限なし（null）」は触らない・他のバケットは触らない、を確認。
 - 署名日時: 証明書の `signed_at` は、署名 PDF の再生成の中で **PDF の保存に成功したときだけ** 記録されていた（しかも応答後に
