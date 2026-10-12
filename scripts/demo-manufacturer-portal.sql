@@ -242,7 +242,7 @@ begin
     (j7, c3, null,  88,   null, '2026-09-02 09:01+09')
   ) as x(job_id, cond, b, n, txt, at);
 
-  -- 証拠データ（ファイル本体は置かない。画面は種類・説明・日時を出す）
+  -- 証拠データ（ファイル本体は置かない。画面は種類・説明を出し、証拠タブは日時も出す）
   insert into ft_evidence (job_id, project_id, manufacturer_id, tenant_id, evidence_type, file_name, content_type, caption, metadata, captured_at, captured_by)
   select x.job_id, x.proj, m, t, x.typ, x.fname, x.ctype, x.caption, x.meta, x.at, tenant_owner
   from (values
@@ -311,17 +311,16 @@ begin
     verified_at = excluded.verified_at, verified_by = excluded.verified_by;
 
   -- ─── 通知（未読2・既読3）──────────────────────────────────────
+  -- メーカーに実際に届く通知は「証拠データの提出」だけ（ftNotify の notifyFtManufacturer の呼び出し元）なので、その種類だけを入れる
   delete from manufacturer_notifications where manufacturer_id = m;
   insert into manufacturer_notifications (manufacturer_id, user_id, notification_type, priority, title, body, link_path, read_at, created_at)
-  values
-    (m, null, 'ft_defect_reported', 'high', '不具合報告: ボトルのキャップ破損（2本）', 'Ledra Motors（デモ）から重大度「重大」の報告がありました。',
-     '/manufacturer/field-test/' || p1, null, now() - interval '1 day'),
-    (m, null, 'ft_application_received', 'normal', '冬季テストに応募がありました', 'Ledra Motors（デモ）が「冬季テスト 参加施工店募集」に応募しました。',
-     '/manufacturer/field-test/' || p2, null, now() - interval '2 days'),
-    (m, null, 'ft_evidence_submitted', 'normal', '証拠データが提出されました: FT-EX-004', 'CX-60（赤）ボディ全面 の施工前後の写真が提出されました。',
-     '/manufacturer/field-test/' || p1 || '/jobs/' || j4, now() - interval '10 days', now() - interval '18 days'),
-    (m, null, 'ft_inspection_completed', 'normal', '検査結果: FT-EX-007 不合格', '湿度条件外の施工による硬化不良。再施工を依頼しました。',
-     '/manufacturer/field-test/' || p1 || '/jobs/' || j7, now() - interval '30 days', now() - interval '37 days'),
-    (m, null, 'ft_agreement_accepted', 'normal', '契約の同意: NDA・参加規約', 'Ledra Motors（デモ）が「デモ セラミック EX 実証テスト」の NDA と参加規約に同意しました。',
-     '/manufacturer/field-test/' || p1, now() - interval '70 days', now() - interval '78 days');
+  select m, null, 'ft_evidence_submitted', 'normal', x.title, x.body,
+    '/manufacturer/field-test/' || x.proj || '/jobs/' || x.job, x.read_at, x.created_at
+  from (values
+    ('証拠データが提出されました: FT-EX-004', 'CX-60（赤）ボディ全面 の施工前後の写真が提出されました。', p1, j4, null::timestamptz, '2026-09-24 10:05+09'::timestamptz),
+    ('証拠データが提出されました: FT-EX-003', 'プリウス（白）ボディ全面 の施工記録シートが提出されました。検査の準備ができています。', p1, j3, null, '2026-09-10 10:35+09'),
+    ('証拠データが提出されました: FT-EX-002', 'アルファード（黒）ボディ全面＋ホイール の撥水動画が提出されました。', p1, j2, '2026-08-22 09:00+09', '2026-08-21 10:05+09'),
+    ('証拠データが提出されました: FT-EX-001', 'ハリアー（パール）ボディ全面 の膜厚測定データが提出されました。', p1, j1, '2026-08-07 09:00+09', '2026-08-06 10:35+09'),
+    ('証拠データが提出されました: FT-25-001', 'クラウン（黒）ボディ全面 の半年後の撥水写真が提出されました。', p3, j8, '2026-04-11 09:00+09', '2026-04-10 10:05+09')
+  ) as x(title, body, proj, job, read_at, created_at);
 end $$;

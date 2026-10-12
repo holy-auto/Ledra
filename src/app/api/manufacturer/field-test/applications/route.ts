@@ -49,13 +49,13 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query;
     if (error) return apiInternalError(error, "ft applications GET");
 
-    // 画面は tenant_name を読む（jobs / agreements と同じ形に平らにする）
+    // 応募タブは tenant_name を読む。approvedTenants()（applicationGate.ts）は tenants を読むので両方残す
     type TenantJoinRow = Record<string, unknown> & {
       tenants: { name: string | null } | { name: string | null }[] | null;
     };
     const applications = (data ?? []).map((r: TenantJoinRow) => {
       const tj = Array.isArray(r.tenants) ? r.tenants[0] : r.tenants;
-      return { ...r, tenant_name: tj?.name ?? null, tenants: undefined };
+      return { ...r, tenant_name: tj?.name ?? null };
     });
 
     return apiJson({ applications });

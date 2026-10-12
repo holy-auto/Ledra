@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { mergeConditionChecks } from "@/lib/fieldTest/conditionChecks";
 import {
   apiJson,
   apiUnauthorized,
@@ -47,18 +48,21 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     if (!job) return apiNotFound("案件が見つかりません。");
 
     // Fetch related data in parallel
-    const [checksRes, evidenceRes, inspectionsRes] = await Promise.all([
-      // 条件名・種類は ft_conditions 側にしか無いので結合する
+    const [conditionsRes, checksRes, evidenceRes, inspectionsRes] = await Promise.all([
+      // 施工条件はプロジェクトの定義順に全件出し、記録が無い条件は「未入力」にする（記録は ft_condition_checks）
       admin
-        .from("ft_condition_checks")
-        .select("*, ft_conditions(label, check_type)")
-        .eq("job_id", id)
-        .order("checked_at", { ascending: true }),
+        .from("ft_conditions")
+        .select("id, label, check_type, sort_order")
+        .eq("project_id", job.project_id as string)
+        .eq("manufacturer_id", manufacturerId)
+        .order("sort_order", { ascending: true }),
+      admin.from("ft_condition_checks").select("*").eq("job_id", id),
       admin
         .from("ft_evidence")
         .select("id, evidence_type, file_name, caption, captured_at, created_at")
         .eq("job_id", id)
         .eq("manufacturer_id", manufacturerId)
+        .order("captured_at", { ascending: true, nullsFirst: false })
         .order("created_at", { ascending: true }),
       admin
         .from("ft_inspections")
@@ -68,6 +72,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
         .order("created_at", { ascending: false }),
     ]);
 
+    if (conditionsRes.error) return apiInternalError(conditionsRes.error, "ft job GET conditions");
     if (checksRes.error) return apiInternalError(checksRes.error, "ft job GET checks");
     if (evidenceRes.error) return apiInternalError(evidenceRes.error, "ft job GET evidence");
     if (inspectionsRes.error) return apiInternalError(inspectionsRes.error, "ft job GET inspections");
@@ -79,13 +84,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
     return apiJson({
       job: { ...jobData, tenant_name: (tj as { name: string | null } | null)?.name ?? null },
-      condition_checks: (checksRes.data ?? []).map((c: Record<string, unknown> & { ft_conditions: unknown }) => {
-        const cond = (Array.isArray(c.ft_conditions) ? c.ft_conditions[0] : c.ft_conditions) as {
-          label: string | null;
-          check_type: string | null;
-        } | null;
-        return { ...c, label: cond?.label ?? null, check_type: cond?.check_type ?? null, ft_conditions: undefined };
-      }),
+      condition_checks: mergeConditionChecks(conditionsRes.data ?? [], checksRes.data ?? []),
       evidence: evidenceRes.data ?? [],
       inspections: inspectionsRes.data ?? [],
     });
