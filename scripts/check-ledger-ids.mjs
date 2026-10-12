@@ -81,7 +81,36 @@ export const MIN_ENTRIES = 105;
  * 緩いまま残るだけ）。範囲を `[A-Z]` にしてあるのは、`[A-I]` と書いて J/K/L を
  * 見逃す範囲にした前例があるため（MISTAKE_LEDGER の 2026-10-08 訂正）。
  */
-export const MIN_TYPE_ROWS = 12;
+/**
+ * 型を名乗る見出しの数の床（実測 212 件・2026-10-10）。
+ *
+ * **検査8には床が無かった。** 見出しの `型 X` の書き方が変わった日から
+ * `missingPairs` が0組を返し、**検査8は永久に緑**になる（/code-review 指摘・実測。
+ * `型 X` を `分類X` に置き換えたら ok:true）。他の検査に床を置いている理由と同じ形が
+ * ここだけ抜けていた。`MIN_ENTRIES` と同じく、実測より十分低く取る。
+ */
+export const MIN_TYPED_HEADINGS = 180;
+/**
+ * 旧番号の対応表の行数の床（実測 20 行＝10組×2・2026-10-10）。
+ *
+ * **こちらにも床が無かった。** ヘッダの表記ゆれ（`新 ID` → `新ID`）で
+ * `legacyTableBody` が0行になり、**検査7のこの表に対する被覆が黙って消えた**
+ * （/code-review 指摘・実測。植えた `M-9999` が素通りした）。型表には床が2つあるのに、
+ * 同じ検査が見るもう一方には無い、という非対称だった。
+ */
+export const MIN_LEGACY_ROWS = 16;
+/**
+ * 型表に必ず在る型。**行数の床だけでは、A が M に化けても12行のまま緑**になる
+ * （/code-review 指摘。実測では検査8が「65件が未掲載」という読めない形で落ちた）。
+ * 型を増やすときはここも足す —— 増やしたことを意識させるための固定である。
+ */
+const REQUIRED_TYPES = [..."ABCDEFGHIJKL"];
+/**
+ * 型表の行数の床。**`REQUIRED_TYPES` から導く** —— 同じ事実（12型ある）を2箇所に持って
+ * いたので、型を増やすときに片方を忘れると床だけ緩む（/code-review 指摘。この台帳が
+ * 型 C として並べている形そのもの）。テストが import しているので公開は維持する。
+ */
+export const MIN_TYPE_ROWS = REQUIRED_TYPES.length;
 
 /** 同じ数え方を3度書かないための小物（検査5・6で使う）。 */
 const countBy = (xs, key) => xs.reduce((m, x) => m.set(key(x), (m.get(key(x)) ?? 0) + 1), new Map());
@@ -101,7 +130,11 @@ function tableBlock(entries, header, isRow) {
   // 表の上の本文に `| 型 | 中身 | 該当 |` と書いた日から**正しい文書が0行**になり、
   // 行数の床（検査6-b）が落ちて pre-commit がリポジトリ全体を止める（/code-review 指摘・
   // 実測）。行の引用に対しては同じ穴を塞いであったのに、**ヘッダの引用を見ていなかった。**
-  // 候補を全部試して、**行が1本でも取れたブロック**を採る。
+  // 候補を全部試して、**行がいちばん多く取れたブロック**を採る。
+  // 「1本でも取れたら採る」にしていたら、本物の表より前に
+  // ヘッダ＋区切り＋行1本を書式説明として置いた日に**その引用が本物として採られ**、
+  // 行数の床が落ちて全コミットが止まる（/code-review 指摘・実測で「1 行しか読めなかった」）。
+  let best = [];
   for (let h = 0; h < entries.length; h++) {
     if (!entries[h].line.startsWith(header)) continue;
     const body = [];
@@ -109,9 +142,10 @@ function tableBlock(entries, header, isRow) {
       if (e.line.trim() === "") break;
       body.push(e);
     }
-    if (body.some(({ line }) => isRow(line))) return body;
+    const rows = body.filter(({ line }) => isRow(line)).length;
+    if (rows > best.filter(({ line }) => isRow(line)).length) best = body;
   }
-  return [];
+  return best;
 }
 
 /** 型表の本体（**行でないものも含む**。崩れた行を検査6-a で落とすため）。 */
@@ -131,12 +165,20 @@ const legacyTableBody = (entries) => tableBlock(entries, LEGACY_TABLE_HEADER, (l
  * 両方とも「最後の内側セル」を取れば消える。
  */
 function targetCell(line) {
-  // 正しい行は内側3セル（型の名前・中身・該当）。中身にパイプが入れば4以上になり、
-  // **最後の内側セルが該当列**であることは変わらない。2以下は列が落ちている
-  // （`>= 2` にしていたら、末尾のパイプが落ちた行で**中身のセルを該当列と誤読**し、
-  // その型の全エントリを未掲載と言い出す。実測で素通りした）。
+  // **列数では判別できない。** `| **G. x** | 説明 `a|b` |`（該当列が落ちて中身にパイプが1つ）は
+  // 内側3セルで、正しい3列の行と区別が付かない。`inner.length >= 3` だけで通していたら、
+  // **中身の後半を該当列と誤読して `--fix` がそこへ ID を書き込み、その後は緑**になった
+  // （/code-review 指摘・実測）。
+  //
+  // 該当列は**ID の並びしか入らない**（`**M-…**, M-001, …`）ので、そう見えることを確かめる。
+  // 装飾・カンマ・空白を除いて何も残らず、ID が1つ以上あるセルだけを該当列とする。
   const inner = line.split("|").slice(1, -1);
-  return inner.length >= 3 ? inner.at(-1) : null;
+  if (inner.length < 3) return null;
+  const cell = inner.at(-1);
+  const ids = cellIds(cell);
+  if (ids.length === 0) return null;
+  const leftover = cell.replace(TABLE_ID_LOOSE_RE, "").replace(/[\s,*`]/g, "");
+  return leftover === "" ? cell : null;
 }
 
 /**
@@ -218,12 +260,6 @@ const TABLE_ID_LOOSE_RE = /M-[^\s,|、）)]+/g;
 const cellIds = (text) => [...text.matchAll(TABLE_ID_LOOSE_RE)].map(([m]) => m.replace(/[*`]+$/, ""));
 /** 旧番号の対応表のヘッダ。検査7が見る「索引の表」のもう1つ。 */
 const LEGACY_TABLE_HEADER = "| 旧番号 | 日付 | 新 ID | 表題 |";
-/**
- * 型表に必ず在る型。**行数の床だけでは、A が M に化けても12行のまま緑**になる
- * （/code-review 指摘。実測では検査8が「65件が未掲載」という読めない形で落ちた）。
- * 型を増やすときはここも足す —— 増やしたことを意識させるための固定である。
- */
-const REQUIRED_TYPES = [..."ABCDEFGHIJKL"];
 /** 旧番号（`M-060` 等）。移行時の別名で、新形式の見出しとしては実在しない。 */
 const LEGACY_ID_RE = /^M-\d{1,4}$/;
 /**
@@ -267,11 +303,18 @@ const LEGACY_RE = /・旧 (M-\d+)(?=[・）])/g;
 /**
  * 台帳の本文を検査する。問題があれば人が読めるメッセージを `error` に入れて返す。
  *
- * **落とす条件を8つに分けてあるのは、どれか1つが空振りしても他が生きるようにするため。**
+ * **落とす条件を分けてあるのは、どれか1つが空振りしても他が生きるようにするため。**
  * 「重複が無い」だけを見ると、見出しの書式が変わって0件になった日から
- * この検査は永久に緑になる（型 A）。
- * （1〜5 が見出しの ID、6-a/6-b/6-c/7/8 が表。2026-10-09 に 5 → 7、2026-10-10 に 8 に増えた。
- * 7 は「表 → エントリ」（指し先が実在するか）、8 は「エントリ → 表」（名乗った型の行に載っているか）。
+ * この検査は永久に緑になる（型 A）。**件数はここにも書かない** —— 増えるたびにずれる
+ * （「7つ」「8つ」と書いて2回とも列挙と合わなかった）。落とす順に並べると:
+ *
+ *   見出しの ID: 書式 → ID の日付と見出しの日付の一致 → 件数の床 → 新 ID の重複 → 旧番号の余剰
+ *   型表: ブロック内の非行 → 行の重複 → A〜L が揃っているか → 該当列が読めるか
+ *   索引: 表の ID が実在するか（旧番号の表の床を含む） → 名乗った型の行に載っているか（型を名乗る
+ *         見出しの床を含む）
+ *
+ * 索引の2方向は「表 → エントリ」（指し先が実在するか）と「エントリ → 表」（名乗った型の行に
+ * 載っているか）。
  *
  * **対称にはしていない。** 表は見出しが名乗っていない型にもエントリを挙げてよい
  * （副次的な分類。実測で9組ある）。検査8が見るのは「**名乗った型は最低限載っている**」までで、
@@ -281,7 +324,13 @@ const LEGACY_RE = /・旧 (M-\d+)(?=[・）])/g;
  */
 export function checkLedger(
   text,
-  { knownLegacyExcess = KNOWN_LEGACY_EXCESS, minEntries = MIN_ENTRIES, minTypeRows = MIN_TYPE_ROWS } = {},
+  {
+    knownLegacyExcess = KNOWN_LEGACY_EXCESS,
+    minEntries = MIN_ENTRIES,
+    minTypeRows = MIN_TYPE_ROWS,
+    minTypedHeadings = MIN_TYPED_HEADINGS,
+    minLegacyRows = MIN_LEGACY_ROWS,
+  } = {},
 ) {
   const entries = contentLines(text).lines;
   const bodyLines = entries.map(({ line }) => line);
@@ -452,11 +501,35 @@ export function checkLedger(
   //    **旧番号も実在を見る。** `LEGACY_ID_RE` に当たるだけで通していたので、
   //    `M-9999` のような実在しない旧番号が素通りした（Codex 指摘・実測）。
   //    見出しが名乗っている旧番号の集合に入っていることを見る。
+  //    **見るのは ID の列だけ。** 行を丸ごと走査していたので、型表の「中身」や
+  //    旧番号表の「表題」に区切り無しで ID を書くと（`（M-20260915-… の形）`）
+  //    `M-20260915-…の形` というトークンになって**正しい文書が落ちた**
+  //    （/code-review 指摘・実測）。「説明用の表で止めるな」と同じ誤りが、
+  //    **索引表の内部に残っていた**。
+  const legacyRows = legacyTableBody(entries);
+  if (legacyRows.length < minLegacyRows) {
+    return {
+      ok: false,
+      error:
+        `旧番号の対応表の行が ${legacyRows.length} 行しか読めなかった（下限は ${minLegacyRows} 行）。\n` +
+        `  ヘッダ（${LEGACY_TABLE_HEADER}）の表記が変わったか、行が消えている。\n` +
+        "  → この表が読めないと、検査7のこの表に対する被覆が**黙って消える**。",
+    };
+  }
   const entryIds = new Set(ids);
   const legacyOwned = new Set(legacyNames);
   const dangling = new Set();
-  for (const { line } of [...typeTableBody(entries), ...legacyTableBody(entries)]) {
-    for (const id of cellIds(line)) {
+  const idColumns = [
+    // 型表: 該当列だけ（`targetCell` が「ID の並びだけのセル」であることを確かめている）
+    ...typeTableRows(entries).map(({ line }) => targetCell(line)),
+    // 旧番号表: 旧番号の列と新 ID の列だけ（日付と表題は散文）
+    ...legacyRows.flatMap(({ line }) => {
+      const inner = line.split("|").slice(1, -1);
+      return inner.length >= 4 ? [inner[0], inner[2]] : [];
+    }),
+  ].filter((c) => c !== null);
+  for (const cell of idColumns) {
+    for (const id of cellIds(cell)) {
       if (entryIds.has(id) || legacyOwned.has(id)) continue;
       dangling.add(id);
     }
@@ -485,12 +558,31 @@ export function checkLedger(
   //    全件が旧番号で表に載っていることは実測した。型を書けと強制はしない ——
   //    それは初日から45件赤になり、「正しい検査でも初日から赤なら入れない」に反する
   //    （DECISION_LOG 2026-10-09）。
-  const unindexed = missingPairs(entries).map(({ id, type }) => `${id} → 型 ${type}`);
+  const pairs = missingPairs(entries);
+  // **型を名乗る見出しの床。** 無いと、見出しの書き方が変わった日から検査8は0件＝永久に緑。
+  // `DECLARED_TYPE_RE` は `/g` なので **`.test()` を使うと `lastIndex` が進んで隔回で外す**
+  // （実測で 212 件が 109 件になった）。`matchAll` は内部で複製するので状態を持たない。
+  const typedHeadings = parsed.filter(({ heading }) => {
+    const tail = heading.match(HEADING_TAIL_RE);
+    return tail !== null && [...tail[1].matchAll(DECLARED_TYPE_RE)].length > 0;
+  }).length;
+  if (typedHeadings < minTypedHeadings) {
+    return {
+      ok: false,
+      error:
+        `型を名乗る見出しが ${typedHeadings} 件しか読めなかった（下限は ${minTypedHeadings} 件）。\n` +
+        "  見出しの末尾の `（…・型 X）` の書き方が変わったか、括弧が入れ子になっている。\n" +
+        "  → 読めないと検査8が0件になり、索引の足し忘れを**永久に見逃す**。",
+    };
+  }
+  const unindexed = pairs.map(({ id, type }) => `${id} → 型 ${type}`);
   if (unindexed.length > 0) {
     return {
       ok: false,
       // `--fix` が直せるのはこの1種類だけなので、呼び出し側が見分けられるようにする。
       kind: "unindexed",
+      // 同じ走査を `fixLedger` でもう一度回さないよう、計算結果を渡す。
+      pairs,
       error:
         `見出しが名乗る型の行に載っていない組が ${unindexed.length} 件ある:\n` +
         unindexed.slice(0, 10).map((x) => `    ${x}`).join("\n") +
@@ -529,12 +621,14 @@ export function checkLedger(
  * それを保証する）。行の書式が `| **X. 名前** | 中身 | ID… |` から変わったら、
  * ここも `TYPE_ROW_RE` と一緒に直す。
  */
-export function fixLedger(text) {
+export function fixLedger(text, pairs = null) {
   const lines = text.split("\n");
   const entries = contentLines(text).lines;
   const rows = typeTableRows(entries);
   const want = new Map(); // 型 → 足す ID（日付順）
-  for (const { id, type } of missingPairs(entries)) {
+  // **欠落の計算は `missingPairs` だけが持つ。** 呼び出し側から渡せるようにしてあるのは、
+  // `main` が検査の結果を再利用して走査を1回に減らせるようにするため（/code-review 指摘）。
+  for (const { id, type } of pairs ?? missingPairs(entries)) {
     want.set(type, [...(want.get(type) ?? []), id]);
   }
   for (const list of want.values()) list.sort();
@@ -546,19 +640,25 @@ export function fixLedger(text) {
     const i = n - 1;
     const t = lines[i].match(TYPE_ROW_RE)?.[1];
     if (!t || !want.has(t)) continue;
+    // **該当列の見つけ方を検査と揃える。** `parts[3]` の決め打ちをやめたと書いたのに、
+    // 書き込む側だけ `parts.length !== 5` / `parts[3]` のままだった ——
+    // 中身にパイプが1つ入った行では**赤いのに `--fix` が置けず**、
+    // 「置き先の行が無い」という原因と違うメッセージが出た（/code-review 指摘・実測）。
+    const cell = targetCell(lines[i]);
+    if (cell === null) continue;
     const parts = lines[i].split("|");
-    if (parts.length !== 5) continue;
-    const items = parts[3].split(",").map((x) => x.trim()).filter(Boolean);
+    const col = parts.length - 2; // 最後の内側セル
+    const items = parts[col].split(",").map((x) => x.trim()).filter(Boolean);
     for (const id of want.get(t)) {
       const date = id.slice(2, 10);
       const at = items.findIndex((it) => {
-        const d = it.replace(/\*/g, "").match(/^M-(\d{8})-/);
+        const d = it.replace(/[*`]/g, "").match(/^M-(\d{8})-/);
         return d !== null && d[1] > date;
       });
       items.splice(at < 0 ? items.length : at, 0, `**${id}**`);
       added.push(`${id} → 型 ${t}`);
     }
-    parts[3] = ` ${items.join(", ")} `;
+    parts[col] = ` ${items.join(", ")} `;
     lines[i] = parts.join("|");
   }
   return { text: lines.join("\n"), added };
@@ -580,7 +680,8 @@ function main() {
       );
       process.exit(1);
     } else {
-      const { text: fixed, added } = fixLedger(text);
+      // 検査が出した欠落の組をそのまま渡す（走査を2度回さない）。
+      const { text: fixed, added } = fixLedger(text, before.pairs);
       if (added.length === 0) {
         // 欠落はあるのに1件も置けなかった = 置き先の行が無い（型の誤記など）。
         // ここで「埋まっている」と言うと、次の行の赤と矛盾する（/code-review 指摘）。
