@@ -400,6 +400,8 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (args.has("--filming")) await assertNoFilmingLeftovers();
+
   console.log("🚀 デモテナント `Ledra Motors` をセットアップします...\n");
 
   // 1) Tenant
@@ -750,13 +752,24 @@ function heroCertIds(): string[] {
   return CERTS.filter((c) => c.vehicleIdn === HERO_VEHICLE_IDN).map((c) => uuid("ce01", c.idn));
 }
 
+// 撮影用の写真行が残っていると sha256 が凍結されていて書き換えられない（certificate_images_guard）。
+// シードの途中で気づくと証明書だけ更新されてアンカーと食い違うので、何も書く前に止める。
+async function assertNoFilmingLeftovers(): Promise<void> {
+  const ids = heroCertIds().map((_, i) => uuid("cf02", i + 1));
+  const { data, error } = await admin.from("certificate_images").select("id").in("id", ids);
+  if (error) throw error;
+  if ((data ?? []).length > 0) {
+    throw new Error(`撮影用の写真行が ${data!.length} 件残っています。先に --filming-cleanup を実行してください。`);
+  }
+}
+
 async function filmingSetup(): Promise<void> {
   console.log("─ Filming: anchors / passport / report order");
   const heroIds = heroCertIds();
 
   // 1) 証明書ごとにアンカー済みの写真を 1 枚足す（その種類の最後の写真＝仕上がり）。既存の写真行は
   //    発行済み証明書の証跡列（sha256 / authenticity_grade）が凍結されていて更新できないので、新しい行で足す。
-  //    写真を差し替えた後に --filming を再実行すると sha256 の変更がガードに拒否されるので、先に --filming-cleanup する。
+  //    撮影用の行が残っていたら（--filming-cleanup をしていなければ）下で止まる。
   const anchoredImages = await Promise.all(
     heroIds.map(async (certId, i) => {
       const publicId = `LEDRA-DEMO-${certId.slice(-4)}`;
