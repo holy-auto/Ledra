@@ -15,6 +15,8 @@ export default function ImageGallery({ images, alt }: { images: VehicleImage[]; 
         {images[mainImage]?.url ? (
           <Image
             src={images[mainImage].url}
+            // 署名 URL は表示ごとにトークンが変わり 1 時間で切れるので、最適化キャッシュに載せない
+            unoptimized
             alt={alt}
             fill
             sizes="(max-width: 1024px) 100vw, 50vw"
@@ -37,7 +39,9 @@ export default function ImageGallery({ images, alt }: { images: VehicleImage[]; 
                 idx === mainImage ? "border-accent" : "border-transparent"
               }`}
             >
-              {img.url && <Image src={img.url} alt="" width={64} height={64} className="w-full h-full object-cover" />}
+              {img.url && (
+                <Image src={img.url} alt="" width={64} height={64} className="w-full h-full object-cover" unoptimized />
+              )}
             </button>
           ))}
         </div>

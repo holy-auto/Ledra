@@ -9,6 +9,7 @@ import {
 
 import { withCaller } from "@/lib/api/withCaller";
 import { signAssetPaths } from "@/lib/signedUrl";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 const MV_COLS =
   "id, tenant_id, maker, model, grade, year, mileage, color, color_code, plate_number, chassis_number, engine_type, displacement, transmission, drive_type, fuel_type, door_count, seating_capacity, body_type, inspection_date, repair_history, condition_grade, condition_note, asking_price, wholesale_price, cost_price, supplier_name, acquisition_date, description, features, status, listed_at, created_at, updated_at";
 const MVI_COLS = "id, vehicle_id, tenant_id, storage_path, file_name, content_type, file_size, sort_order, created_at";
@@ -59,8 +60,9 @@ export const GET = withCaller(
             .returns<MarketVehicleImageRow[]>();
           imgs = data ?? [];
         }
+        // market の objects には読み取りポリシーが無いので service-role で署名する（RLS 越しに読めた車両の画像だけ）
         const imgUrls = await signAssetPaths(
-          supabase,
+          createTenantScopedAdmin(caller.tenantId).admin,
           imgs.map((i) => i.storage_path),
           "market",
         );
@@ -103,7 +105,7 @@ export const GET = withCaller(
 
       // Fetch images for all vehicles
       const vehicleIds = (vehicles ?? []).map((v) => v.id);
-      const imagesMap: Record<string, Array<MarketVehicleImageRow & { url: string | null }>> = {};
+      const imagesMap: Record<string, MarketVehicleImageRow[]> = {};
 
       if (vehicleIds.length > 0) {
         const { data: images } = await supabase
@@ -113,21 +115,26 @@ export const GET = withCaller(
           .order("sort_order", { ascending: true })
           .returns<MarketVehicleImageRow[]>();
 
-        const urls = await signAssetPaths(
-          supabase,
-          (images ?? []).map((img) => img.storage_path),
-          "market",
-        );
         (images ?? []).forEach((img) => {
           if (!imagesMap[img.vehicle_id]) imagesMap[img.vehicle_id] = [];
-          imagesMap[img.vehicle_id].push({ ...img, url: urls.get(img.storage_path) ?? null });
+          imagesMap[img.vehicle_id].push(img);
         });
       }
 
-      const enriched = (vehicles ?? []).map((v) => ({
-        ...v,
-        images: imagesMap[v.id] ?? [],
-      }));
+      // 一覧の画面（MarketVehiclesClient）は thumbnail_url を出す。1 枚目だけ署名する。
+      const thumbUrls = await signAssetPaths(
+        createTenantScopedAdmin(caller.tenantId).admin,
+        Object.values(imagesMap).map((imgs) => imgs[0]?.storage_path),
+        "market",
+      );
+      const enriched = (vehicles ?? []).map((v) => {
+        const first = imagesMap[v.id]?.[0];
+        return {
+          ...v,
+          images: imagesMap[v.id] ?? [],
+          thumbnail_url: (first && thumbUrls.get(first.storage_path)) ?? null,
+        };
+      });
 
       // Stats (only for tenant's own vehicles)
       const allVehicles = isPublic ? enriched : enriched;

@@ -560,6 +560,8 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                 {images[mainIdx]?.url ? (
                   <Image
                     src={images[mainIdx].url}
+                    // 署名 URL は表示ごとにトークンが変わり 1 時間で切れるので、最適化キャッシュに載せない
+                    unoptimized
                     alt={`${vehicle.maker} ${vehicle.model}`}
                     fill
                     sizes="(max-width: 1024px) 100vw, 50vw"
@@ -580,7 +582,14 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                         className={`w-16 h-16 rounded-lg overflow-hidden border-2 ${idx === mainIdx ? "border-accent" : "border-transparent"}`}
                       >
                         {img.url && (
-                          <Image src={img.url} alt="" width={64} height={64} className="w-full h-full object-cover" />
+                          <Image
+                            src={img.url}
+                            alt=""
+                            width={64}
+                            height={64}
+                            className="w-full h-full object-cover"
+                            unoptimized
+                          />
                         )}
                       </button>
                       <button

@@ -227,7 +227,9 @@ function buildPresetLines(schema: TemplateSchema | null, values: Record<string, 
  * ロゴの保存パスは `template_assets.storage_path`（`template-logos/<テナント>/<時刻>.<拡張子>`）にあるので、ID から引く
  * （以前は `template-logos/<ID>` という存在しないパスを署名していて、ロゴが黙って出なかった）。
  * 引くのは `tenantId` のテナントが上げたロゴだけ（設定 JSON の ID を書き換えて他店のロゴを出させない）。
- * `tenantId` が無い呼び出し（メーカー指定デザイン）では、テンプレートのロゴは使わない。
+ * テンプレートのロゴが引けない・署名できないときは、証明書側のロゴ（同じ店のロゴ）に落とす。
+ * `tenantId` が無い呼び出し（メーカー指定デザイン）でテンプレートにロゴ ID があるときは、ロゴを出さない
+ * （メーカーのデザインに施工店のロゴを差し込まない。以前と同じ見た目）。
  */
 export async function resolveBrandedLogoUrl(
   config: TemplateConfig,
@@ -236,6 +238,7 @@ export async function resolveBrandedLogoUrl(
 ): Promise<string | null> {
   try {
     const assetId = config.branding.logo_asset_id;
+    if (assetId && !tenantId) return null;
     if (assetId && tenantId) {
       const { data } = await createServiceRoleAdmin("branded certificate — resolve template logo path")
         .from("template_assets")
@@ -245,7 +248,8 @@ export async function resolveBrandedLogoUrl(
         .eq("asset_type", "logo")
         .maybeSingle();
       const path = (data as { storage_path: string | null } | null)?.storage_path;
-      if (path) return await createSignedAssetUrl(path, 3600);
+      const url = path ? await createSignedAssetUrl(path, 3600) : null;
+      if (url) return url;
     }
     return row.logo_asset_path ? await createSignedAssetUrl(row.logo_asset_path, 3600) : null;
   } catch {

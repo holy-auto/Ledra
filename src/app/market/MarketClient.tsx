@@ -168,6 +168,8 @@ export default function MarketClient({ vehicles }: { vehicles: MarketVehicle[] }
                   {v.images?.[0]?.url ? (
                     <Image
                       src={v.images[0].url}
+                      // 署名 URL は表示ごとにトークンが変わり 1 時間で切れるので、最適化キャッシュに載せない
+                      unoptimized
                       alt={`${v.maker} ${v.model}`}
                       fill
                       sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"

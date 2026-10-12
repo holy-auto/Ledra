@@ -328,6 +328,8 @@ export default function MarketVehiclesClient() {
                       <Image
                         src={v.thumbnail_url}
                         alt={`${v.maker} ${v.model}`}
+                        // 署名 URL は表示ごとにトークンが変わり 1 時間で切れるので、最適化キャッシュに載せない
+                        unoptimized
                         fill
                         className="object-cover"
                         sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"

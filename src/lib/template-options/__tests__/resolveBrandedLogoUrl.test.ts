@@ -5,12 +5,13 @@ const h = vi.hoisted(() => ({
   signed: [] as string[],
   filters: [] as Array<[string, unknown]>,
   row: null as { storage_path: string } | null,
+  failPaths: [] as string[],
 }));
 
 vi.mock("@/lib/signedUrl", () => ({
   createSignedAssetUrl: async (p: string) => {
     h.signed.push(p);
-    return `https://s/${p}?token=x`;
+    return h.failPaths.includes(p) ? null : `https://s/${p}?token=x`;
   },
 }));
 vi.mock("@/lib/supabase/admin", () => ({
@@ -37,6 +38,7 @@ beforeEach(() => {
   h.signed = [];
   h.filters = [];
   h.row = null;
+  h.failPaths = [];
 });
 
 describe("resolveBrandedLogoUrl [ブランド証明書のロゴ]", () => {
@@ -59,10 +61,18 @@ describe("resolveBrandedLogoUrl [ブランド証明書のロゴ]", () => {
     expect(h.signed).toEqual(["tenants/t1/logo.png"]);
   });
 
-  it("テナントが無い呼び出し（メーカー指定デザイン）ではテンプレートのロゴを引かない", async () => {
+  it("テナントが無い呼び出し（メーカー指定デザイン）でロゴ ID があれば、施工店のロゴも差し込まない", async () => {
     h.row = { storage_path: "template-logos/x/1.png" };
-    await resolveBrandedLogoUrl(config("a1"), { logo_asset_path: null }, null);
+    const url = await resolveBrandedLogoUrl(config("a1"), { logo_asset_path: "tenants/t1/logo.png" }, null);
+    expect(url).toBeNull();
     expect(h.filters).toEqual([]);
     expect(h.signed).toEqual([]);
+  });
+
+  it("テンプレートのロゴが署名できなければ、証明書側のロゴに落とす", async () => {
+    h.row = { storage_path: "template-logos/t1/gone.png" };
+    h.failPaths = ["template-logos/t1/gone.png"];
+    const url = await resolveBrandedLogoUrl(config("a1"), { logo_asset_path: "tenants/t1/logo.png" }, "t1");
+    expect(url).toBe("https://s/tenants/t1/logo.png?token=x");
   });
 });
