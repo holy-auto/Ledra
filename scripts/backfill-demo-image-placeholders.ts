@@ -61,14 +61,14 @@ async function main(): Promise<void> {
       // admin ギャラリーの容量表示を実ファイルと揃える
       const { error: sizeErr } = await admin.from("certificate_images").update({ file_size: body.length }).eq("storage_path", path);
       if (sizeErr) console.warn(`  ⚠️ file_size 更新失敗 (${path}): ${sizeErr.message}`);
-      return true;
+      return !sizeErr;
     }),
   );
   const uploaded = results.filter(Boolean).length;
-  console.log(`✓ ${uploaded}/${paths.length} 件を Storage にアップロード`);
+  console.log(`✓ ${uploaded}/${paths.length} 件を Storage にアップロードし file_size を更新`);
 
   if (uploaded < paths.length) {
-    throw new Error(`${paths.length - uploaded} 件のアップロードに失敗しました（公開ページに 400 が残ります）。`);
+    throw new Error(`${paths.length - uploaded} 件が失敗しました（アップロード失敗なら公開ページに 400、file_size 更新失敗なら容量表示がずれたまま）。再実行してください。`);
   }
 }
 
