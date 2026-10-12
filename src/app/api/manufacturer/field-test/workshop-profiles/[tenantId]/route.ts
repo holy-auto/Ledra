@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { isParticipatingTenant } from "@/lib/fieldTest/applicationGate";
 import {
   apiJson,
   apiUnauthorized,
@@ -67,6 +68,9 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ tenantId: 
 
   try {
     const admin = createServiceRoleAdmin("workshop profile detail");
+    if (!(await isParticipatingTenant(admin, { manufacturerId: caller.manufacturerId, tenantId }))) {
+      return apiNotFound("プロファイルが見つかりません。");
+    }
     const { data, error } = await admin
       .from("workshop_capability_profiles")
       .select("*")
@@ -101,6 +105,10 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ tenantId: s
 
   try {
     const admin = createServiceRoleAdmin("workshop profile upsert — admin");
+    // 自社の実証テストに参加していない施工店の設備・資格は書き換えさせない（1施工店1行で他社とも共有のため）
+    if (!(await isParticipatingTenant(admin, { manufacturerId: caller.manufacturerId, tenantId }))) {
+      return apiForbidden("この施工店は自社の実証テストに参加していません。");
+    }
     const { data, error } = await admin
       .from("workshop_capability_profiles")
       .upsert(

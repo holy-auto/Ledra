@@ -4,6 +4,17 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-12 メーカーが他社の施工店の設備・資格を読めた・書き換えられた穴を塞いだ
+
+- 内容: 施工店の設備・資格（`workshop_capability_profiles`。許可番号・整備士の資格者名・対応地域。1施工店1行でメーカーをまたいで共有）を、
+  **自社の実証テストに参加している施工店（どれかのプロジェクトで応募承認済み、または案件割当済み）だけ**に絞った。
+  - `GET /api/manufacturer/field-test/workshop-profiles`: `project_id` を必須にした。条件なし（全施工店 200件）と `tenant_id` 指定の分岐を消した（画面はプロジェクト指定でしか呼んでいない）。
+  - `GET / PUT /api/manufacturer/field-test/workshop-profiles/[tenantId]`: 参加していない施工店は GET が 404、PUT が 403。**以前は、どのメーカーの管理者でも任意の施工店の設備・資格を上書きできた。**
+  - 判定は `isParticipatingTenant()`（`src/lib/fieldTest/applicationGate.ts`、テスト4件）。設備・資格タブが出す施工店と同じ条件。
+- 見つけた経緯: #1323 の `/code-review` で一覧 API の分岐が指摘され、直す際に個別ルートの GET/PUT にも同じ穴があることを見つけた。
+- 実害: 本番の `workshop_capability_profiles` は 2026-10-12 時点で1行だけで、それはデモ施工店の行（同日 `demo-manufacturer-portal.sql` で入れたもの。それ以前は0行）。
+  実在の施工店の設備・資格は1件も無かったので、読まれた・書き換えられたものは無い（本番 DB で件数を確認）。
+
 ## 2026-10-12 デモデータ: 施工写真（AI 生成）を種類ごとに入れ、施工・整備記録に詳細文を入れる（本番のデモテナントに反映済み）
 
 - 内容: `scripts/setup-demo-tenant.ts` のデモ証明書27件すべてに、何をどう施工・整備したかの詳細文（`content_free_text`）を入れた。

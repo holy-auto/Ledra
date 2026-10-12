@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,10 +10,9 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/manufacturer/field-test/workshop-profiles
  *
- * List workshop capability profiles.
- * - ?project_id=X → profiles of workshops participating in the project (approved applicants + assigned jobs)
- * - ?tenant_id=X  → single tenant's profile
- * - no filter     → all profiles (for browsing)
+ * プロジェクトに参加している施工店（応募承認済み＋案件割当済み）の設備・資格を返す。project_id は必須。
+ * 設備・資格はメーカーをまたいで1施工店1行なので、条件なし・施工店指定で全施工店を返す分岐は置かない
+ * （以前はあり、どのメーカーからも他社の施工店の許可番号・資格者名が読めた）。
  */
 export async function GET(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
@@ -22,68 +21,51 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const projectId = url.searchParams.get("project_id");
-  const tenantId = url.searchParams.get("tenant_id");
 
   try {
+    if (!projectId) return apiValidationError("project_id は必須です。");
     const admin = createServiceRoleAdmin("workshop profiles list — manufacturer-scoped");
 
-    if (tenantId) {
-      const { data, error } = await admin.from("workshop_capability_profiles").select("*").eq("tenant_id", tenantId);
-      if (error) return apiInternalError(error, "workshop profiles GET");
-      return apiJson({ profiles: data ?? [] });
-    }
+    // Collect tenant IDs from approved applications + assigned jobs
+    const [appResult, jobResult] = await Promise.all([
+      admin
+        .from("ft_applications")
+        .select("tenant_id")
+        .eq("project_id", projectId)
+        .eq("manufacturer_id", caller.manufacturerId)
+        .eq("status", "approved"),
+      admin
+        .from("ft_jobs")
+        .select("tenant_id")
+        .eq("project_id", projectId)
+        .eq("manufacturer_id", caller.manufacturerId),
+    ]);
+    if (appResult.error) return apiInternalError(appResult.error, "workshop profiles GET applications");
+    if (jobResult.error) return apiInternalError(jobResult.error, "workshop profiles GET jobs");
 
-    if (projectId) {
-      // Collect tenant IDs from approved applications + assigned jobs
-      const [appResult, jobResult] = await Promise.all([
-        admin
-          .from("ft_applications")
-          .select("tenant_id")
-          .eq("project_id", projectId)
-          .eq("manufacturer_id", caller.manufacturerId)
-          .eq("status", "approved"),
-        admin
-          .from("ft_jobs")
-          .select("tenant_id")
-          .eq("project_id", projectId)
-          .eq("manufacturer_id", caller.manufacturerId),
-      ]);
-      if (appResult.error) return apiInternalError(appResult.error, "workshop profiles GET applications");
-      if (jobResult.error) return apiInternalError(jobResult.error, "workshop profiles GET jobs");
+    const tenantIds = [
+      ...new Set([
+        ...(appResult.data?.map((r) => r.tenant_id) ?? []),
+        ...(jobResult.data?.map((r) => r.tenant_id) ?? []),
+      ]),
+    ];
 
-      const tenantIds = [
-        ...new Set([
-          ...(appResult.data?.map((r) => r.tenant_id) ?? []),
-          ...(jobResult.data?.map((r) => r.tenant_id) ?? []),
-        ]),
-      ];
+    if (tenantIds.length === 0) return apiJson({ profiles: [] });
 
-      if (tenantIds.length === 0) return apiJson({ profiles: [] });
-
-      const { data, error } = await admin
-        .from("workshop_capability_profiles")
-        .select("*, tenants(name)")
-        .in("tenant_id", tenantIds);
-      if (error) return apiInternalError(error, "workshop profiles GET");
-      // 施工店名はこのメーカーの案件に参加した施工店（この分岐）だけに付ける。設備タブは tenant_name を読む
-      type TenantJoinRow = Record<string, unknown> & {
-        tenants: { name: string | null } | { name: string | null }[] | null;
-      };
-      const profiles = (data ?? []).map((r: TenantJoinRow) => {
-        const tj = Array.isArray(r.tenants) ? r.tenants[0] : r.tenants;
-        return { ...r, tenant_name: tj?.name ?? null, tenants: undefined };
-      });
-      return apiJson({ profiles });
-    }
-
-    // No filter — return all profiles
     const { data, error } = await admin
       .from("workshop_capability_profiles")
-      .select("*")
-      .order("updated_at", { ascending: false })
-      .limit(200);
+      .select("*, tenants(name)")
+      .in("tenant_id", tenantIds);
     if (error) return apiInternalError(error, "workshop profiles GET");
-    return apiJson({ profiles: data ?? [] });
+    // 設備タブは tenant_name を読む
+    type TenantJoinRow = Record<string, unknown> & {
+      tenants: { name: string | null } | { name: string | null }[] | null;
+    };
+    const profiles = (data ?? []).map((r: TenantJoinRow) => {
+      const tj = Array.isArray(r.tenants) ? r.tenants[0] : r.tenants;
+      return { ...r, tenant_name: tj?.name ?? null, tenants: undefined };
+    });
+    return apiJson({ profiles });
   } catch (e) {
     return apiInternalError(e, "workshop profiles GET");
   }
