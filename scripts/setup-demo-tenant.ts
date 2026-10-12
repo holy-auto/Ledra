@@ -400,7 +400,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (args.has("--filming")) await assertNoFilmingLeftovers();
+  // 撮影用データが残ったまま再シードすると、証明書の updated_at が動いてアンカーが古い版を指す。どの実行でも先に確かめる。
+  await assertNoFilmingLeftovers();
 
   console.log("🚀 デモテナント `Ledra Motors` をセットアップします...\n");
 
