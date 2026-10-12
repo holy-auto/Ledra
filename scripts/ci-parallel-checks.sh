@@ -37,7 +37,7 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # 表示名と実行コマンド。**CI はこの1箇所だけを見る。**
-NAMES=(lint lint:migrations tsc test:coverage check:schema check:context-dates check:ox-override check:ledger-ids check:audit-actions check:c2pa-binary)
+NAMES=(lint lint:migrations tsc test:coverage check:schema check:context-dates check:ox-override check:ledger-ids check:audit-actions check:c2pa-binary check:db-writes)
 CMDS=(
   "npm run lint"
   "npm run lint:migrations"
@@ -68,6 +68,10 @@ CMDS=(
   # `npm run build || true` で終了コードを捨てるので CI では信号にならない
   # (/code-review 2026-10-07)。production 以外では即 skip して何もしない
   "npm run check:c2pa-binary"
+  # Supabase の書き込みは失敗を例外ではなく `{ error }` で返す。戻り値を受け取らない
+  # 書き込みは「画面には成功、DB には何も無い」になる。2026-10-10 にヒアリング連携で
+  # 実害が出て、同じ形が 276 件あった (DECISION_LOG 2026-10-12)。0 件を維持する
+  "npm run check:db-writes"
 )
 
 # NAMES と CMDS は添字で対応する並列配列で、間に説明コメントが挟まるため

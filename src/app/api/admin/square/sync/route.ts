@@ -6,6 +6,7 @@ import { apiOk, apiInternalError, apiError, apiValidationError } from "@/lib/api
 import { enqueueSquareSync } from "@/lib/qstash/publish";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "from / to は YYYY-MM-DD 形式です");
 const squareSyncSchema = z.object({
   from: isoDate.optional(),
@@ -98,14 +99,17 @@ export const POST = withCaller(
       } catch (enqueueErr) {
         const message = enqueueErr instanceof Error ? enqueueErr.message : String(enqueueErr);
         console.error(`[square:sync] enqueue failed tenant=${caller.tenantId} job=${syncRun.id}:`, message);
-        await admin
-          .from("square_sync_runs")
-          .update({
-            status: "failed",
-            finished_at: new Date().toISOString(),
-            error_message: `QStash enqueue failed: ${message}`.slice(0, 500),
-          })
-          .eq("id", syncRun.id);
+        await bestEffortWrite(
+          admin
+            .from("square_sync_runs")
+            .update({
+              status: "failed",
+              finished_at: new Date().toISOString(),
+              error_message: `QStash enqueue failed: ${message}`.slice(0, 500),
+            })
+            .eq("id", syncRun.id),
+          "square_sync_runs update (POST)",
+        );
         return apiError({
           code: "internal_error",
           message: "同期キューへの登録に失敗しました。時間を置いて再試行してください。",

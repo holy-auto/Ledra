@@ -26,6 +26,7 @@ import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import { getVehicleReportSettings, generateReportAccessToken } from "@/lib/vehicleReport/access";
 import { getReportTierByKey, scopeCutoffIso } from "@/lib/vehicleReport/tiers";
 import { getAnchoredCertCountsByTenant } from "@/lib/vehicleReport/revenueShare";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 const schema = z.object({
   vin: z.string().trim().min(1).max(64),
@@ -174,7 +175,7 @@ export async function POST(req: NextRequest) {
       });
     } catch (stripeErr) {
       // Stripe 失敗 → 孤立した pending order を expired にしておく。
-      await admin.from("vehicle_report_orders").update({ status: "expired" }).eq("id", order.id);
+      await bestEffortWrite(admin.from("vehicle_report_orders").update({ status: "expired" }).eq("id", order.id), "vehicle_report_orders update (POST)");
       throw stripeErr;
     }
 
@@ -188,7 +189,7 @@ export async function POST(req: NextRequest) {
       .update({ stripe_checkout_session_id: session.id })
       .eq("id", order.id);
     if (sidErr) {
-      await admin.from("vehicle_report_orders").update({ status: "expired" }).eq("id", order.id);
+      await bestEffortWrite(admin.from("vehicle_report_orders").update({ status: "expired" }).eq("id", order.id), "vehicle_report_orders update (POST)");
       return apiInternalError(sidErr, "vehicle_report_orders session id persist");
     }
 

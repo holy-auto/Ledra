@@ -150,7 +150,11 @@ export async function regenerateSignedPdf(certificateId: string, signatureInfo: 
     }
 
     // 署名完了日時を certificates テーブルに記録
-    await supabase.from("certificates").update({ signed_at: signatureInfo.signedAt }).eq("id", certificateId);
+    const { error: signedAtErr } = await supabase
+      .from("certificates")
+      .update({ signed_at: signatureInfo.signedAt })
+      .eq("id", certificateId);
+    if (signedAtErr) throw new Error(`署名完了日時の記録に失敗: ${signedAtErr.message}`);
 
     console.info("[pdfUtils] Signed PDF stored:", storagePath);
   } catch (err) {

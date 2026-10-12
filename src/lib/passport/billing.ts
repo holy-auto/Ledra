@@ -23,6 +23,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
 import { logger } from "@/lib/logger";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminDb = SupabaseClient<any, any, any>;
@@ -175,14 +176,17 @@ export async function runBillingForConsumer(args: {
       timestamp,
     });
 
-    await admin
-      .from("passport_api_billing_periods")
-      .update({
-        reported_to_stripe_at: new Date().toISOString(),
-        stripe_usage_record_id: usage?.id ?? null,
-        last_error: null,
-      })
-      .eq("id", period.id);
+    await bestEffortWrite(
+      admin
+        .from("passport_api_billing_periods")
+        .update({
+          reported_to_stripe_at: new Date().toISOString(),
+          stripe_usage_record_id: usage?.id ?? null,
+          last_error: null,
+        })
+        .eq("id", period.id),
+      "passport_api_billing_periods update (runBillingForConsumer)",
+    );
 
     return {
       consumerId: consumer.id,
@@ -198,10 +202,13 @@ export async function runBillingForConsumer(args: {
       periodStart,
       error: msg,
     });
-    await admin
-      .from("passport_api_billing_periods")
-      .update({ last_error: msg.slice(0, 500), last_attempt_at: new Date().toISOString() })
-      .eq("id", period.id);
+    await bestEffortWrite(
+      admin
+        .from("passport_api_billing_periods")
+        .update({ last_error: msg.slice(0, 500), last_attempt_at: new Date().toISOString() })
+        .eq("id", period.id),
+      "passport_api_billing_periods update (runBillingForConsumer)",
+    );
     return { consumerId: consumer.id, status: "stripe_failed", callCount, periodId: period.id, error: msg };
   }
 }

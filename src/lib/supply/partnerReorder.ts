@@ -23,6 +23,7 @@ import { readSecret } from "@/lib/crypto/tenantSecrets";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { shouldAutoDraftReorder } from "@/lib/ai/automation/orchestrator";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export interface MaybeAutoDraftPartnerReordersResult {
   created: number;
@@ -247,7 +248,10 @@ export async function maybeAutoDraftPartnerReordersForTenant(
       const { error: itemErr } = await admin.from("purchase_order_items").insert(itemRows);
       if (itemErr) {
         logger.warn("[partnerReorder] PO items insert failed", { tenantId, poId: po.id, err: itemErr.message });
-        await admin.from("purchase_orders").delete().eq("id", po.id).eq("tenant_id", tenantId);
+        await bestEffortWrite(
+          admin.from("purchase_orders").delete().eq("id", po.id).eq("tenant_id", tenantId),
+          "purchase_orders delete (maybeAutoDraftPartnerReordersForTenant)",
+        );
         continue;
       }
       result.created += 1;
@@ -396,18 +400,21 @@ async function attemptAutoSend(
     return false;
   }
 
-  await admin
-    .from("purchase_orders")
-    .update({
-      status: "sent",
-      source: "auto",
-      sent_at: new Date().toISOString(),
-      transport: "api",
-      transport_status: "acked",
-      external_order_id: placed.externalOrderId,
-    })
-    .eq("id", poId)
-    .eq("tenant_id", tenantId);
+  await bestEffortWrite(
+    admin
+      .from("purchase_orders")
+      .update({
+        status: "sent",
+        source: "auto",
+        sent_at: new Date().toISOString(),
+        transport: "api",
+        transport_status: "acked",
+        external_order_id: placed.externalOrderId,
+      })
+      .eq("id", poId)
+      .eq("tenant_id", tenantId),
+    "purchase_orders update — 送信済みの発注の控え（送信自体は完了している）",
+  );
   logger.info("[partnerReorder] auto-sent order", { tenantId, poId, partnerId, subtotal });
   return true;
 }

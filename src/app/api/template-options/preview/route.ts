@@ -10,6 +10,7 @@ import type { CertRow } from "@/lib/pdfCertificate";
 import type { TemplateConfig } from "@/types/templateOption";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 const previewSchema = z.object({
   config: templateConfigSchema,
 });
@@ -93,12 +94,15 @@ export const POST = withCaller(
         .maybeSingle();
 
       if (latestOrder) {
-        await admin.from("template_order_logs").insert({
-          order_id: latestOrder.id,
-          action: "test_issue",
-          actor: caller.userId,
-          message: `テスト発行 (${usedCount + 1}/${limit})`,
-        });
+        await bestEffortWrite(
+          admin.from("template_order_logs").insert({
+            order_id: latestOrder.id,
+            action: "test_issue",
+            actor: caller.userId,
+            message: `テスト発行 (${usedCount + 1}/${limit})`,
+          }),
+          "template_order_logs insert (POST)",
+        );
       }
 
       const config = parsed.data.config as TemplateConfig;

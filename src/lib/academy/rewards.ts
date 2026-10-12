@@ -3,6 +3,7 @@ import { getStripeClient } from "@/lib/stripe/client";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/email/sendEmail";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 const REWARD_PER_LESSON = 500; // JPY per qualifying lesson
 const QUALIFY_AVG = 4.0;
@@ -158,10 +159,13 @@ export async function applyStripeCredit(rewardId: string): Promise<ApplyResult> 
 
   if (!reward.tenant_id) {
     // platform コンテンツ (tenant_id=null) はスキップ
-    await supabase
-      .from("academy_creator_rewards")
-      .update({ status: "skipped", notes: "platform content: no tenant" })
-      .eq("id", rewardId);
+    await bestEffortWrite(
+      supabase
+        .from("academy_creator_rewards")
+        .update({ status: "skipped", notes: "platform content: no tenant" })
+        .eq("id", rewardId),
+      "academy_creator_rewards update — skipped の記録",
+    );
     return { ok: false, reason: "no_stripe_customer", detail: "platform content has no tenant" };
   }
 
@@ -172,10 +176,13 @@ export async function applyStripeCredit(rewardId: string): Promise<ApplyResult> 
     .maybeSingle();
 
   if (!tenant?.stripe_customer_id) {
-    await supabase
-      .from("academy_creator_rewards")
-      .update({ status: "skipped", notes: "no stripe_customer_id" })
-      .eq("id", rewardId);
+    await bestEffortWrite(
+      supabase
+        .from("academy_creator_rewards")
+        .update({ status: "skipped", notes: "no stripe_customer_id" })
+        .eq("id", rewardId),
+      "academy_creator_rewards update — skipped の記録",
+    );
     return { ok: false, reason: "no_stripe_customer" };
   }
 
@@ -197,7 +204,7 @@ export async function applyStripeCredit(rewardId: string): Promise<ApplyResult> 
       { idempotencyKey: `academy-reward:${rewardId}` },
     );
 
-    await supabase
+    const { error: appliedErr } = await supabase
       .from("academy_creator_rewards")
       .update({
         status: "applied",
@@ -205,6 +212,7 @@ export async function applyStripeCredit(rewardId: string): Promise<ApplyResult> 
         applied_at: new Date().toISOString(),
       })
       .eq("id", rewardId);
+    if (appliedErr) throw new Error(`academy reward applied の記録に失敗: ${appliedErr.message}`);
 
     logger.info("[rewards] stripe credit applied", { rewardId, txnId: txn.id });
     return { ok: true, stripe_credit_id: txn.id };
@@ -212,7 +220,10 @@ export async function applyStripeCredit(rewardId: string): Promise<ApplyResult> 
     const detail = e instanceof Error ? e.message : String(e);
     logger.error("[rewards] stripe createBalanceTransaction failed", { rewardId, detail });
 
-    await supabase.from("academy_creator_rewards").update({ status: "failed", notes: detail }).eq("id", rewardId);
+    await bestEffortWrite(
+      supabase.from("academy_creator_rewards").update({ status: "failed", notes: detail }).eq("id", rewardId),
+      "academy_creator_rewards update — failed の記録",
+    );
 
     return { ok: false, reason: "error", detail };
   }

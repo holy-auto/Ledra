@@ -1,4 +1,3 @@
-
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 import { apiJson, apiValidationError, apiNotFound, apiInternalError, apiOk } from "@/lib/api/response";
@@ -13,7 +12,6 @@ const SELECT_COLS = "id, tenant_id, name, doc_type, layout_config, is_default, c
 export const GET = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const url = new URL(req.url);
       const docType = url.searchParams.get("doc_type") ?? "";
 
@@ -56,7 +54,6 @@ export const GET = withCaller(
 export const POST = withCaller(
   async (req, { caller }) => {
     try {
-
       // 帳票テンプレートの変更は admin 以上 (代表判断 2026-09-01)
 
       const body = await req.json().catch(() => ({}) as Record<string, unknown>);
@@ -124,12 +121,13 @@ export const PUT = withCaller(
       if (parsed.data.is_default !== undefined) updates.is_default = parsed.data.is_default;
 
       if (parsed.data.is_default === true) {
-        await admin
+        const { error: demoteErr } = await admin
           .from("document_templates")
           .update({ is_default: false })
           .eq("tenant_id", caller.tenantId)
           .eq("is_default", true)
           .neq("id", parsed.data.id);
+        if (demoteErr) return apiInternalError(demoteErr, "document-templates PUT: demote previous default");
       }
 
       const { data, error } = await admin

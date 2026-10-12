@@ -69,7 +69,7 @@ export async function upsertVehiclePassport(certId: string): Promise<void> {
 
   if (anchoredCertCount === 0) return;
 
-  await admin.from("vehicle_passports").upsert(
+  const { error: upsertErr } = await admin.from("vehicle_passports").upsert(
     {
       vin_code_normalized: vin,
       display_maker: vehicle.maker ?? null,
@@ -81,6 +81,7 @@ export async function upsertVehiclePassport(certId: string): Promise<void> {
     },
     { onConflict: "vin_code_normalized" },
   );
+  if (upsertErr) throw new Error(`vehicle_passports の upsert に失敗: ${upsertErr.message}`);
 
   // PR-7: refresh the VIN-level meta-anchor. No-op when the hash hasn't
   // changed since last upsert (the common case), so we don't burn Polygon

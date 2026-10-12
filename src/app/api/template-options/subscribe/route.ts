@@ -1,4 +1,3 @@
-
 import { z } from "zod";
 import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
@@ -9,6 +8,7 @@ import { apiOk, apiValidationError, apiInternalError, apiError } from "@/lib/api
 import { createTemplateOptionCheckout } from "@/lib/template-options/stripe";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 const subscribeSchema = z.object({
   option_type: z.enum(["preset", "custom"]),
   platform_template_id: z.string().uuid().optional(),
@@ -69,7 +69,10 @@ export const POST = withCaller(
         });
         customerId = customer.id;
 
-        await admin.from("tenants").update({ stripe_customer_id: customerId }).eq("id", caller.tenantId);
+        await bestEffortWrite(
+          admin.from("tenants").update({ stripe_customer_id: customerId }).eq("id", caller.tenantId),
+          "tenants update — stripe_customer_id の保存（失敗すると次回 Stripe 顧客が二重に作られる）",
+        );
       }
 
       const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "";

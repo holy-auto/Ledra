@@ -8,6 +8,7 @@ import { deriveTaxRateFromSquareAmounts, mapSquareLineItems } from "@/lib/docume
 import { DOC_TYPES } from "@/types/document";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 export const dynamic = "force-dynamic";
 
 const DOC_SELECT =
@@ -17,7 +18,6 @@ const DOC_SELECT =
 export const POST = withCaller<{ id: string }>(
   async (_req, { caller, params }) => {
     try {
-
       const { id } = params;
       if (!id) return apiValidationError("オーダーIDが必要です。");
 
@@ -55,18 +55,25 @@ export const POST = withCaller<{ id: string }>(
       }
       if (existing) {
         if (!existingReceiptId) {
-          await admin
-            .from("square_orders")
-            .update({ receipt_document_id: existing.id })
-            .eq("id", id)
-            .eq("tenant_id", caller.tenantId);
+          await bestEffortWrite(
+            admin
+              .from("square_orders")
+              .update({ receipt_document_id: existing.id })
+              .eq("id", id)
+              .eq("tenant_id", caller.tenantId),
+            "square_orders update (POST)",
+          );
         }
         return apiOk({ document: existing, already_exists: true });
       }
 
       let recipientName: string | null = null;
       if (order.customer_id) {
-        const { data: customer } = await admin.from("customers").select("name").eq("id", order.customer_id).maybeSingle();
+        const { data: customer } = await admin
+          .from("customers")
+          .select("name")
+          .eq("id", order.customer_id)
+          .maybeSingle();
         recipientName = customer?.name ?? null;
       }
 

@@ -1,4 +1,3 @@
-
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 import { apiOk, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
@@ -41,7 +40,6 @@ function validateMagicBytes(buffer: Buffer): string | null {
 export const POST = withCaller(
   async (req, { caller }) => {
     try {
-
       const optionStatus = await getTemplateOptionStatus(caller.tenantId);
       if (!optionStatus.hasSubscription) {
         return apiForbidden("テンプレートオプションの契約が必要です。");
@@ -119,10 +117,11 @@ export const POST = withCaller(
             },
           };
 
-          await admin
+          const { error: configErr } = await admin
             .from("tenant_template_configs")
             .update({ config_json: updatedConfig, updated_at: new Date().toISOString() })
             .eq("id", configId);
+          if (configErr) return apiInternalError(configErr, "template-options/upload-logo: save config");
         }
       }
 

@@ -61,11 +61,12 @@ export async function markOrderInvoicePaid(orderId: string): Promise<void> {
   const today = todayJst(new Date());
 
   if (doc.status !== "paid") {
-    await supabase
+    const { error: paidErr } = await supabase
       .from("documents")
       .update({ status: "paid", payment_date: today })
       .eq("id", doc.id)
       .eq("tenant_id", toTenantId);
+    if (paidErr) throw new Error(`帳票の入金記録に失敗: ${paidErr.message}`);
   }
 
   await recordInvoicePaymentBalance(supabase, {

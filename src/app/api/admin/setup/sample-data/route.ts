@@ -1,9 +1,9 @@
-
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiInternalError } from "@/lib/api/response";
 import { logger } from "@/lib/logger";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 export const dynamic = "force-dynamic";
 
 /**
@@ -21,7 +21,6 @@ const SAMPLE_NOTE =
 export const GET = withCaller(
   async (_req, { caller }) => {
     try {
-
       const { admin } = createTenantScopedAdmin(caller.tenantId);
       const [{ count: customerCount }, { count: vehicleCount }] = await Promise.all([
         admin
@@ -102,7 +101,7 @@ export const POST = withCaller(
         .single();
       if (vehErr) {
         // 車両作成失敗時は顧客もロールバック
-        await admin.from("customers").delete().eq("id", customer.id);
+        await bestEffortWrite(admin.from("customers").delete().eq("id", customer.id), "customers delete (POST)");
         return apiInternalError(vehErr, "setup/sample-data:POST vehicle");
       }
 

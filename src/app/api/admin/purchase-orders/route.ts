@@ -14,12 +14,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { withCaller } from "@/lib/api/withCaller";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import {
-  apiJson,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { enforceBilling } from "@/lib/billing/guard";
 import { sendEmail } from "@/lib/email/sendEmail";
 import { readSecret } from "@/lib/crypto/tenantSecrets";
@@ -28,6 +23,7 @@ import { markOrderDeliveredToPortal } from "@/lib/supply/portalDispatch";
 import { notifyPartnerNewPortalOrder } from "@/lib/supply/portalNotify";
 import { logger } from "@/lib/logger";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -148,7 +144,10 @@ export const POST = withCaller(
     }));
     const { error: itemErr } = await supabase.from("purchase_order_items").insert(itemRows);
     if (itemErr) {
-      await supabase.from("purchase_orders").delete().eq("id", po.id).eq("tenant_id", caller.tenantId);
+      await bestEffortWrite(
+        supabase.from("purchase_orders").delete().eq("id", po.id).eq("tenant_id", caller.tenantId),
+        "purchase_orders delete (POST)",
+      );
       return apiInternalError(itemErr, "purchase order items create");
     }
 
@@ -247,15 +246,18 @@ export const PUT = withCaller(
       // portal は markOrderDeliveredToPortal が transport/partner_response を確定済みのため
       // ここでの上書きは整合する値 (transport='portal' / transport_status='sent')。
       const transportStatus = transport === "api" ? "acked" : transport ? "sent" : "failed";
-      await supabase
-        .from("purchase_orders")
-        .update({
-          transport,
-          transport_status: transportStatus,
-          external_order_id: externalOrderId,
-        })
-        .eq("id", id)
-        .eq("tenant_id", caller.tenantId);
+      await bestEffortWrite(
+        supabase
+          .from("purchase_orders")
+          .update({
+            transport,
+            transport_status: transportStatus,
+            external_order_id: externalOrderId,
+          })
+          .eq("id", id)
+          .eq("tenant_id", caller.tenantId),
+        "purchase_orders update (PUT)",
+      );
     }
 
     // 入荷: 明細の数量を在庫に in 計上する。
@@ -286,11 +288,14 @@ export const PUT = withCaller(
         }
         stockedIn += 1;
       }
-      await supabase
-        .from("purchase_order_items")
-        .update({ received: true })
-        .eq("po_id", id)
-        .eq("tenant_id", caller.tenantId);
+      await bestEffortWrite(
+        supabase
+          .from("purchase_order_items")
+          .update({ received: true })
+          .eq("po_id", id)
+          .eq("tenant_id", caller.tenantId),
+        "purchase_order_items update (PUT)",
+      );
     }
 
     return apiJson({

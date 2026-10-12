@@ -24,7 +24,6 @@ const schema = z.object({
 export const POST = withCaller(
   async (req, { caller }) => {
     try {
-
       const parsed = schema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
 
@@ -65,7 +64,11 @@ export const POST = withCaller(
 
       const { error: insErr } = await admin.from("operator_credentials").insert(row);
       // チャレンジは成否に関わらず消費して再利用(リプレイ)を防ぐ。
-      await admin.from("webauthn_challenges").update({ consumed_at: new Date().toISOString() }).eq("id", ch.id);
+      const { error: consumeErr } = await admin
+        .from("webauthn_challenges")
+        .update({ consumed_at: new Date().toISOString() })
+        .eq("id", ch.id);
+      if (consumeErr) return apiInternalError(consumeErr, "webauthn/register/verify: consume challenge");
       if (insErr) {
         if (insErr.code === "23505") return apiValidationError("この認証器は既に登録済みです。");
         return apiInternalError(insErr, "webauthn/register/verify insert");

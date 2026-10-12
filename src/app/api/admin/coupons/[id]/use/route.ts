@@ -1,14 +1,9 @@
 import { NextRequest } from "next/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { withCaller } from "@/lib/api/withCaller";
-import {
-  apiJson,
-  apiNotFound,
-  apiValidationError,
-  apiError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiNotFound, apiValidationError, apiError, apiInternalError } from "@/lib/api/response";
 import { couponUseSchema } from "@/lib/validations/coupon";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -110,12 +105,15 @@ export const POST = withCaller<{ id: string }>(
       .maybeSingle();
     if (countErr) {
       // 補償: issue を元に戻す。
-      await admin
-        .from("coupon_issues")
-        .update({ status: "issued", used_at: null, document_id: null, discount_applied: null })
-        .eq("id", issue_id)
-        .eq("tenant_id", caller.tenantId)
-        .eq("status", "used");
+      await bestEffortWrite(
+        admin
+          .from("coupon_issues")
+          .update({ status: "issued", used_at: null, document_id: null, discount_applied: null })
+          .eq("id", issue_id)
+          .eq("tenant_id", caller.tenantId)
+          .eq("status", "used"),
+        "coupon_issues update (POST)",
+      );
       return apiInternalError(countErr, "coupons used_count increment");
     }
 

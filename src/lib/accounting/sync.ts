@@ -23,6 +23,7 @@ import {
   type LedraSalesEntry,
 } from "./types";
 import { logger } from "@/lib/logger";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 const SYNC_LOOKBACK_DAYS = 90;
 const MAX_RECORDS_PER_RUN = 100;
@@ -273,13 +274,16 @@ async function ensureValidAccessToken(
     const refreshed = await client.refreshAccessToken(tokens.refreshToken);
     const payload = await buildTokenWritePayload(refreshed);
     const admin = createServiceRoleAdmin("accounting-sync — refresh OAuth tokens");
-    await admin
-      .from("accounting_integrations")
-      .update({
-        ...payload,
-        last_error: null,
-      })
-      .eq("id", row.id);
+    await bestEffortWrite(
+      admin
+        .from("accounting_integrations")
+        .update({
+          ...payload,
+          last_error: null,
+        })
+        .eq("id", row.id),
+      "accounting_integrations update (ensureValidAccessToken)",
+    );
     return refreshed.accessToken;
   } catch (e) {
     log.warn("token refresh failed", {
@@ -303,20 +307,23 @@ async function upsertSyncRecord(
   const total = args.entry.breakdown.reduce((sum, b) => sum + b.subtotal + b.tax, 0);
   const tax = args.entry.breakdown.reduce((sum, b) => sum + b.tax, 0);
 
-  await admin.from("accounting_sync_records").upsert(
-    {
-      tenant_id: args.tenantId,
-      provider: args.provider,
-      source_type: args.entry.sourceType,
-      source_id: args.entry.sourceId,
-      external_id: args.externalId,
-      status: args.status,
-      error_message: args.errorMessage ?? null,
-      amount: total,
-      tax_amount: tax,
-      synced_at: args.status === "synced" ? new Date().toISOString() : null,
-    },
-    { onConflict: "tenant_id,provider,source_type,source_id" },
+  await bestEffortWrite(
+    admin.from("accounting_sync_records").upsert(
+      {
+        tenant_id: args.tenantId,
+        provider: args.provider,
+        source_type: args.entry.sourceType,
+        source_id: args.entry.sourceId,
+        external_id: args.externalId,
+        status: args.status,
+        error_message: args.errorMessage ?? null,
+        amount: total,
+        tax_amount: tax,
+        synced_at: args.status === "synced" ? new Date().toISOString() : null,
+      },
+      { onConflict: "tenant_id,provider,source_type,source_id" },
+    ),
+    "accounting_sync_records upsert (upsertSyncRecord)",
   );
 }
 
@@ -325,7 +332,10 @@ async function markIntegrationError(
   integrationId: string,
   reason: string,
 ) {
-  await admin.from("accounting_integrations").update({ status: "error", last_error: reason }).eq("id", integrationId);
+  await bestEffortWrite(
+    admin.from("accounting_integrations").update({ status: "error", last_error: reason }).eq("id", integrationId),
+    "accounting_integrations update (markIntegrationError)",
+  );
 }
 
 async function finalizeRun(
@@ -336,23 +346,26 @@ async function finalizeRun(
   topLevelError?: string,
 ) {
   if (!runId) return;
-  await admin
-    .from("accounting_sync_runs")
-    .update({
-      status,
-      records_attempted: result.attempted,
-      records_synced: result.synced,
-      records_failed: result.failed,
-      records_skipped: result.skipped,
-      errors_json: topLevelError ? [{ message: topLevelError }, ...result.errors] : result.errors,
-      finished_at: new Date().toISOString(),
-    })
-    .eq("id", runId);
+  await bestEffortWrite(
+    admin
+      .from("accounting_sync_runs")
+      .update({
+        status,
+        records_attempted: result.attempted,
+        records_synced: result.synced,
+        records_failed: result.failed,
+        records_skipped: result.skipped,
+        errors_json: topLevelError ? [{ message: topLevelError }, ...result.errors] : result.errors,
+        finished_at: new Date().toISOString(),
+      })
+      .eq("id", runId),
+    "accounting_sync_runs update (finalizeRun)",
+  );
 }
 
 async function touchLastSynced(admin: ReturnType<typeof createServiceRoleAdmin>, integrationId: string) {
-  await admin
-    .from("accounting_integrations")
-    .update({ last_synced_at: new Date().toISOString() })
-    .eq("id", integrationId);
+  await bestEffortWrite(
+    admin.from("accounting_integrations").update({ last_synced_at: new Date().toISOString() }).eq("id", integrationId),
+    "accounting_integrations update (touchLastSynced)",
+  );
 }

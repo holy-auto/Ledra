@@ -33,6 +33,7 @@ import {
   type ReceiptPayloadSnapshot,
 } from "@/lib/signature/deliveryReceipt";
 import { anchorToPolygon } from "@/lib/anchoring/providers/polygon";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 
@@ -100,7 +101,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     }
 
     if (new Date(session.expires_at) < new Date()) {
-      await admin.from("signature_sessions").update({ status: "expired" }).eq("id", session.id);
+      await bestEffortWrite(
+        admin.from("signature_sessions").update({ status: "expired" }).eq("id", session.id),
+        "signature_sessions update (POST)",
+      );
       return apiError({ code: "not_found", message: "受領サインリンクの有効期限が切れています", status: 404 });
     }
 
@@ -127,20 +131,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       // 試行回数を更新
       const newAttempts =
         factorResult.reason === "mismatch" ? factorResult.attempts : (session.secondary_factor_attempts ?? 0);
-      await admin.from("signature_sessions").update({ secondary_factor_attempts: newAttempts }).eq("id", session.id);
+      const { error: attemptsErr } = await admin
+        .from("signature_sessions")
+        .update({ secondary_factor_attempts: newAttempts })
+        .eq("id", session.id);
+      if (attemptsErr) return apiInternalError(attemptsErr, "delivery-receipt sign: secondary factor attempts");
 
       // 監査ログ
-      await admin.from("signature_audit_logs").insert({
-        session_id: session.id,
-        event: "secondary_factor_failed",
-        ip,
-        user_agent: ua,
-        metadata: { reason: factorResult.reason, attempts: newAttempts },
-      });
+      await bestEffortWrite(
+        admin.from("signature_audit_logs").insert({
+          session_id: session.id,
+          event: "secondary_factor_failed",
+          ip,
+          user_agent: ua,
+          metadata: { reason: factorResult.reason, attempts: newAttempts },
+        }),
+        "signature_audit_logs insert (POST)",
+      );
 
       // 上限超過 → セッションをキャンセル
       if (factorResult.reason === "locked" || newAttempts >= SECONDARY_FACTOR_MAX_ATTEMPTS) {
-        await admin
+        const { error: lockSessErr } = await admin
           .from("signature_sessions")
           .update({
             status: "cancelled",
@@ -148,7 +159,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
             cancel_reason: "secondary_factor_locked",
           })
           .eq("id", session.id);
-        await admin
+        if (lockSessErr) return apiInternalError(lockSessErr, "delivery-receipt sign: lock session");
+        const { error: lockReceiptErr } = await admin
           .from("delivery_receipts")
           .update({
             status: "cancelled",
@@ -156,13 +168,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
             cancel_reason: "secondary_factor_locked",
           })
           .eq("signature_session_id", session.id);
-        await admin.from("signature_audit_logs").insert({
-          session_id: session.id,
-          event: "secondary_factor_locked",
-          ip,
-          user_agent: ua,
-          metadata: { attempts: newAttempts },
-        });
+        if (lockReceiptErr) return apiInternalError(lockReceiptErr, "delivery-receipt sign: lock receipt");
+        await bestEffortWrite(
+          admin.from("signature_audit_logs").insert({
+            session_id: session.id,
+            event: "secondary_factor_locked",
+            ip,
+            user_agent: ua,
+            metadata: { attempts: newAttempts },
+          }),
+          "signature_audit_logs insert (POST)",
+        );
         return apiError({
           code: "forbidden",
           message: "本人確認の試行回数を超えました。施工店にリンクの再発行を依頼してください。",
@@ -181,13 +197,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     }
 
     // 二要素認証 OK - 監査ログ
-    await admin.from("signature_audit_logs").insert({
-      session_id: session.id,
-      event: "secondary_factor_passed",
-      ip,
-      user_agent: ua,
-      metadata: { method: "phone_last4" },
-    });
+    await bestEffortWrite(
+      admin.from("signature_audit_logs").insert({
+        session_id: session.id,
+        event: "secondary_factor_passed",
+        ip,
+        user_agent: ua,
+        metadata: { method: "phone_last4" },
+      }),
+      "signature_audit_logs insert (POST)",
+    );
 
     // ── 署名ペイロード構築 + 署名実行 ─────────────────────────
     const signedAt = new Date().toISOString();
@@ -253,7 +272,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       signed_at: signedAt,
     };
 
-    await admin
+    const { error: signedErr } = await admin
       .from("delivery_receipts")
       .update({
         status: "signed",
@@ -262,38 +281,47 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
         device_fingerprint_json: { ip, user_agent: ua },
       })
       .eq("signature_session_id", session.id);
+    if (signedErr) return apiInternalError(signedErr, "delivery-receipt sign: mark receipt signed");
 
     // certificates.delivery_acknowledged_at を更新
-    await admin.from("certificates").update({ delivery_acknowledged_at: signedAt }).eq("id", session.certificate_id);
+    const { error: ackErr } = await admin
+      .from("certificates")
+      .update({ delivery_acknowledged_at: signedAt })
+      .eq("id", session.certificate_id);
+    if (ackErr) return apiInternalError(ackErr, "delivery-receipt sign: certificate acknowledged_at");
 
     // 案件サインオフ・ワークフロー由来なら予約側を「署名済み」に遷移させる。
     // これで案件画面のパイプラインがサイン完了を認識する。
     if (session.reservation_id) {
-      await admin
+      const { error: signoffErr } = await admin
         .from("reservations")
         .update({ signoff_status: "signed", signed_off_at: signedAt })
         .eq("id", session.reservation_id)
         .eq("tenant_id", session.tenant_id);
+      if (signoffErr) return apiInternalError(signoffErr, "delivery-receipt sign: reservation signoff");
     }
 
     // 監査ログ
-    await admin.from("signature_audit_logs").insert({
-      session_id: session.id,
-      event: "signed",
-      ip,
-      user_agent: ua,
-      metadata: {
-        purpose: "delivery_receipt",
-        signer_email,
-        signed_at: signedAt,
-        key_version: keyInfo.version,
-        public_key_fingerprint: keyInfo.fingerprint,
-        consent_version: consentVersion,
-        consent_text_hash: consentTextHash,
-        document_hash: session.document_hash,
-        signature_preview: signature.slice(0, 32) + "...",
-      },
-    });
+    await bestEffortWrite(
+      admin.from("signature_audit_logs").insert({
+        session_id: session.id,
+        event: "signed",
+        ip,
+        user_agent: ua,
+        metadata: {
+          purpose: "delivery_receipt",
+          signer_email,
+          signed_at: signedAt,
+          key_version: keyInfo.version,
+          public_key_fingerprint: keyInfo.fingerprint,
+          consent_version: consentVersion,
+          consent_text_hash: consentTextHash,
+          document_hash: session.document_hash,
+          signature_preview: signature.slice(0, 32) + "...",
+        },
+      }),
+      "signature_audit_logs insert (POST)",
+    );
 
     // verify_url は delivery_receipts.id を使う (検証 API
     // /api/signature/delivery-receipt/verify/[id] が delivery_receipts.id で
@@ -310,15 +338,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       try {
         const result = await anchorToPolygon(session.document_hash);
         if (result.anchored && result.txHash) {
-          await admin
-            .from("delivery_receipts")
-            .update({ anchor_tx_hash: result.txHash, anchored_at: new Date().toISOString() })
-            .eq("signature_session_id", session.id);
-          await admin.from("signature_audit_logs").insert({
-            session_id: session.id,
-            event: "receipt_anchored",
-            metadata: { tx_hash: result.txHash, network: result.network },
-          });
+          await bestEffortWrite(
+            admin
+              .from("delivery_receipts")
+              .update({ anchor_tx_hash: result.txHash, anchored_at: new Date().toISOString() })
+              .eq("signature_session_id", session.id),
+            "delivery_receipts update (POST)",
+          );
+          await bestEffortWrite(
+            admin.from("signature_audit_logs").insert({
+              session_id: session.id,
+              event: "receipt_anchored",
+              metadata: { tx_hash: result.txHash, network: result.network },
+            }),
+            "signature_audit_logs insert (POST)",
+          );
         }
       } catch (err) {
         console.error("[delivery-receipt/sign] anchoring failed:", err);

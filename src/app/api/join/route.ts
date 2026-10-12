@@ -182,11 +182,12 @@ export async function POST(req: NextRequest) {
   }
 
   // Step 3: Consume the email verification token (one-time use)
-  await supabase
+  const { error: consumeErr } = await supabase
     .from("insurer_email_verifications")
     .delete()
     .eq("email", data.email.toLowerCase())
     .eq("verified", true);
+  if (consumeErr) return apiInternalError(consumeErr, "join POST: consume email verification");
 
   return apiJson(
     {

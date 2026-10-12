@@ -34,6 +34,7 @@ import { escapeHtml } from "@/lib/sanitize";
 import { sendEmail } from "@/lib/email/sendEmail";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 export const dynamic = "force-dynamic";
 
 const SIGN_BASE_URL = process.env.NEXT_PUBLIC_SIGN_BASE_URL ?? "/sign";
@@ -67,7 +68,7 @@ async function markReservationAwaitingSignoff(
   reservationId: string,
 ): Promise<void> {
   const requestedAt = new Date().toISOString();
-  await admin
+  const { error: signoffErr } = await admin
     .from("reservations")
     .update({
       signoff_status: "awaiting",
@@ -77,6 +78,7 @@ async function markReservationAwaitingSignoff(
     .eq("id", reservationId)
     .eq("tenant_id", tenantId)
     .neq("signoff_status", "signed");
+  if (signoffErr) throw new Error(`markReservationAwaitingSignoff failed: ${signoffErr.message}`);
 }
 
 async function sendDeliveryReceiptEmail(params: {
@@ -229,16 +231,18 @@ export const POST = withCaller<{ id: string }>(
         // 既存の有効な依頼を再利用する場合も、案件由来なら予約側を署名待ちに
         // 揃えておく (reservation_id の後付けリンクも兼ねる)。
         if (reservation_id) {
-          await admin
-            .from("delivery_receipts")
-            .update({ reservation_id })
-            .eq("id", existing.id)
-            .is("reservation_id", null);
-          await admin
-            .from("signature_sessions")
-            .update({ reservation_id })
-            .eq("id", existing.signature_session_id)
-            .is("reservation_id", null);
+          await bestEffortWrite(
+            admin.from("delivery_receipts").update({ reservation_id }).eq("id", existing.id).is("reservation_id", null),
+            "delivery_receipts update — 既存依頼への reservation_id 後付け",
+          );
+          await bestEffortWrite(
+            admin
+              .from("signature_sessions")
+              .update({ reservation_id })
+              .eq("id", existing.signature_session_id)
+              .is("reservation_id", null),
+            "signature_sessions update — 既存依頼への reservation_id 後付け",
+          );
           await markReservationAwaitingSignoff(admin, caller.tenantId, reservation_id);
         }
         return apiOk({
@@ -298,17 +302,20 @@ export const POST = withCaller<{ id: string }>(
         return apiError({ code: "db_error", message: "受領サイン依頼の作成に失敗しました", status: 500 });
       }
 
-      await admin.from("signature_audit_logs").insert({
-        session_id: session.id,
-        event: "session_created",
-        metadata: {
-          purpose: "delivery_receipt",
-          certificate_id: certificateId,
-          document_hash: documentHash,
-          consent_version: CONSENT_VERSION,
-          expires_at: expiresAt,
-        },
-      });
+      await bestEffortWrite(
+        admin.from("signature_audit_logs").insert({
+          session_id: session.id,
+          event: "session_created",
+          metadata: {
+            purpose: "delivery_receipt",
+            certificate_id: certificateId,
+            document_hash: documentHash,
+            consent_version: CONSENT_VERSION,
+            expires_at: expiresAt,
+          },
+        }),
+        "signature_audit_logs insert (POST)",
+      );
 
       // 受領内容スナップショット (Supabase relation は配列で返る場合があるので両対応)
       const vehRaw = cert.vehicles as unknown as

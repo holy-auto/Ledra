@@ -1,6 +1,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 /**
  * 受注承認（pending→accepted, isTo）で、指名オーダーに紐づく仮押さえを B の本予約へ変換する。
@@ -63,7 +64,12 @@ export async function convertHoldToReservation(orderId: string): Promise<void> {
     return;
   }
 
-  await admin.from("job_orders").update({ reservation_id: resv.id }).eq("id", orderId).is("reservation_id", null);
+  const { error: linkErr } = await admin
+    .from("job_orders")
+    .update({ reservation_id: resv.id })
+    .eq("id", orderId)
+    .is("reservation_id", null);
+  if (linkErr) throw new Error(`job_orders への予約の紐付けに失敗: ${linkErr.message}`);
 
   logger.info("[holdConvert] converted", { orderId, reservationId: resv.id, holdId: hold.id });
 }
@@ -71,5 +77,8 @@ export async function convertHoldToReservation(orderId: string): Promise<void> {
 /** 却下/取消で、オーダーに紐づく pending 仮押さえを解放する。 */
 export async function releaseOrderHolds(orderId: string, status: "cancelled" | "rejected"): Promise<void> {
   const admin = createServiceRoleAdmin("orders/holdConvert: 却下/取消で仮押さえを解放");
-  await admin.from("reservation_holds").update({ status }).eq("job_order_id", orderId).eq("status", "pending");
+  await bestEffortWrite(
+    admin.from("reservation_holds").update({ status }).eq("job_order_id", orderId).eq("status", "pending"),
+    "reservation_holds update (releaseOrderHolds)",
+  );
 }

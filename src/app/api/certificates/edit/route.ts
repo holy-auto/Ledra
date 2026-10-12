@@ -1,4 +1,3 @@
-
 import { z } from "zod";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiValidationError, apiNotFound, apiForbidden } from "@/lib/api/response";
@@ -10,6 +9,7 @@ import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 import { mergeMileageOnEdit } from "@/lib/maintenance/mileage";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 const certificateEditSchema = z
   .object({
     public_id: z.string().trim().min(1, "public_id は必須です。").max(100),
@@ -47,7 +47,6 @@ function valuesEqual(a: unknown, b: unknown): boolean {
 export const PUT = withCaller(
   async (req, { caller }) => {
     try {
-
       const parsed = certificateEditSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -145,13 +144,16 @@ export const PUT = withCaller(
       }
 
       // Record edit history
-      await admin.from("certificate_edit_histories").insert({
-        certificate_id: cert.id,
-        tenant_id: caller.tenantId,
-        edited_by: caller.userId,
-        version: nextVersion,
-        changes,
-      });
+      await bestEffortWrite(
+        admin.from("certificate_edit_histories").insert({
+          certificate_id: cert.id,
+          tenant_id: caller.tenantId,
+          edited_by: caller.userId,
+          version: nextVersion,
+          changes,
+        }),
+        "certificate_edit_histories insert (PUT)",
+      );
 
       // Also log to audit_logs for general audit trail
       await logTenantAuditEvent(admin, {
@@ -216,7 +218,11 @@ export const PUT = withCaller(
           console.error("[cert-version] snapshot insert failed (non-fatal)", versionErr);
         } else if (insertedVersions && insertedVersions.length > 0) {
           const latest = insertedVersions.reduce((a, b) => (b.version > a.version ? b : a));
-          await admin.from("certificates").update({ current_version_id: latest.id }).eq("id", cert.id);
+          const { error: versionErr } = await admin
+            .from("certificates")
+            .update({ current_version_id: latest.id })
+            .eq("id", cert.id);
+          if (versionErr) return apiInternalError(versionErr, "certificates/edit PUT: current_version_id");
         }
       } catch (e) {
         console.error("[cert-version] snapshot failed (non-fatal)", e);

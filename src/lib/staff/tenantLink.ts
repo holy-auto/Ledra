@@ -118,10 +118,11 @@ export async function redeemStaffLinkInvite(code: string, redeemingTenantId: str
     .eq("tenant_id", invite.tenant_id);
   if (linkError) throw new Error(`redeemStaffLinkInvite failed: ${linkError.message}`);
 
-  await db
+  const { error: redeemErr } = await db
     .from("staff_link_invites")
     .update({ redeemed_at: new Date().toISOString(), redeemed_by_tenant_id: redeemingTenantId })
     .eq("id", invite.id);
+  if (redeemErr) throw new Error(`招待の消費の記録に失敗（再利用できる状態）: ${redeemErr.message}`);
 
   const { data: client } = await db.from("tenants").select("name, slug").eq("id", invite.tenant_id).maybeSingle();
   return {

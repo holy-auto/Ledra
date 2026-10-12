@@ -27,6 +27,7 @@ import { signPayloadWithProvider } from "@/lib/signature/signer";
 import { regenerateSignedPdf } from "@/lib/signature/pdfUtils";
 import { escapeHtml } from "@/lib/sanitize";
 import { sendEmail } from "@/lib/email/sendEmail";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 const signatureSignSchema = z.object({
   signer_email: z
@@ -174,20 +175,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   }
 
   // 6. 監査ログ
-  await supabase.from("signature_audit_logs").insert({
-    session_id: session.id,
-    event: "signed",
-    ip,
-    user_agent: ua,
-    metadata: {
-      signer_email: normalizedEmail,
-      signed_at: signedAt,
-      key_version: keyInfo.version,
-      public_key_fingerprint: keyInfo.fingerprint,
-      document_hash: session.document_hash,
-      signature_preview: signature.slice(0, 32) + "...",
-    },
-  });
+  await bestEffortWrite(
+    supabase.from("signature_audit_logs").insert({
+      session_id: session.id,
+      event: "signed",
+      ip,
+      user_agent: ua,
+      metadata: {
+        signer_email: normalizedEmail,
+        signed_at: signedAt,
+        key_version: keyInfo.version,
+        public_key_fingerprint: keyInfo.fingerprint,
+        document_hash: session.document_hash,
+        signature_preview: signature.slice(0, 32) + "...",
+      },
+    }),
+    "signature_audit_logs insert (POST)",
+  );
 
   const verifyUrl = `${VERIFY_BASE_URL}/${session.id}`;
 

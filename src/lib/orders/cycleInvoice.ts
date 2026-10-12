@@ -160,13 +160,14 @@ export async function runCycleInvoices(targetDate?: Date): Promise<{ generated: 
       }
 
       // 集約したオーダーに請求書番号を stamp（二重集約防止）
-      await supabase
+      const { error: stampErr } = await supabase
         .from("job_orders")
         .update({ invoice_number: doc.doc_number as string, invoice_due_date: dueYmd })
         .in(
           "id",
           rows.map((o) => o.id),
         );
+      if (stampErr) throw new Error(`請求書番号の stamp に失敗（二重集約の恐れ）: ${stampErr.message}`);
 
       logger.info("[cycleInvoice] consolidated draft generated", {
         toTenantId,

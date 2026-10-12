@@ -6,12 +6,8 @@
  * 欠品が無ければ 400。仕入先・送信は人が行う (本ルートは下書き作成まで)。
  */
 import { withCaller } from "@/lib/api/withCaller";
-import {
-  apiJson,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -95,7 +91,10 @@ export const POST = withCaller<{ id: string }>(
     }));
     const { error: itemErr } = await supabase.from("purchase_order_items").insert(itemRows);
     if (itemErr) {
-      await supabase.from("purchase_orders").delete().eq("id", created.id).eq("tenant_id", caller.tenantId);
+      await bestEffortWrite(
+        supabase.from("purchase_orders").delete().eq("id", created.id).eq("tenant_id", caller.tenantId),
+        "purchase_orders delete (POST)",
+      );
       return apiInternalError(itemErr, "backorder reorder items");
     }
 

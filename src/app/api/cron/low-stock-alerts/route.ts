@@ -7,6 +7,7 @@ import { withCronLock } from "@/lib/cron/lock";
 import { sendLowStockAlert } from "@/lib/follow-up/email";
 import { maybeAutoDraftReordersForTenant } from "@/lib/ai/automation/reorderAuto";
 import { maybeAutoDraftPartnerReordersForTenant } from "@/lib/supply/partnerReorder";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -109,14 +110,17 @@ export async function GET(req: NextRequest) {
           console.error("[cron/low-stock-alerts] send error:", err);
         }
 
-        await supabase.from("notification_logs").insert({
-          tenant_id: tenantId,
-          type: "low_stock_alert",
-          target_type: "inventory",
-          target_id: null,
-          recipient_email: email,
-          status: sent ? "sent" : "failed",
-        });
+        await bestEffortWrite(
+          supabase.from("notification_logs").insert({
+            tenant_id: tenantId,
+            type: "low_stock_alert",
+            target_type: "inventory",
+            target_id: null,
+            recipient_email: email,
+            status: sent ? "sent" : "failed",
+          }),
+          "notification_logs insert (GET)",
+        );
 
         if (sent) {
           notified += 1;

@@ -5,6 +5,7 @@ import { logger } from "@/lib/logger";
 import { STARTER_PACKAGES, type StarterMenuItem } from "@/lib/service-packages/starter-templates";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 export const dynamic = "force-dynamic";
 
 type MenuItemRow = { id: string; name: string };
@@ -35,7 +36,6 @@ function indexMenuItemsByName(rows: MenuItemRow[]): Map<string, string> {
 export const POST = withCaller(
   async (_req, { caller }) => {
     try {
-
       const { admin } = createTenantScopedAdmin(caller.tenantId);
 
       const wantedNames = STARTER_PACKAGES.map((p) => p.name);
@@ -93,7 +93,10 @@ export const POST = withCaller(
           tax_category: it.tax_category ?? 10,
           is_active: true,
         }));
-        const { data: created, error: insertErr } = await admin.from("menu_items").insert(insertRows).select("id, name");
+        const { data: created, error: insertErr } = await admin
+          .from("menu_items")
+          .insert(insertRows)
+          .select("id, name");
         if (insertErr) return apiInternalError(insertErr, "service-packages/seed:menu_items insert");
         for (const row of (created ?? []) as MenuItemRow[]) {
           menuByName.set(row.name.trim().toLowerCase(), row.id);
@@ -149,7 +152,10 @@ export const POST = withCaller(
               packageKey: pkg.key,
               err: itemErr.message,
             });
-            await admin.from("service_packages").delete().eq("id", pkgRow.id).eq("tenant_id", caller.tenantId);
+            await bestEffortWrite(
+              admin.from("service_packages").delete().eq("id", pkgRow.id).eq("tenant_id", caller.tenantId),
+              "service_packages delete (POST)",
+            );
             continue;
           }
         }
