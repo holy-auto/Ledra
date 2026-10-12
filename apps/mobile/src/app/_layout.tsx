@@ -31,6 +31,11 @@ import * as Notifications from "expo-notifications";
 
 SplashScreen.preventAutoHideAsync();
 
+// ponytail: 起動オープニング(AppIntro)を一旦止める（2026-10-12 代表判断）。
+// 素材が 608px 幅の縦パネルを 1080 幅へ約1.8倍に引き伸ばしたもので、画質が荒い。
+// 高画質な素材ができたら true に戻すだけで復帰する（AppIntro / 素材は残してある）。
+const INTRO_ENABLED = false;
+
 
 
 /**
@@ -141,7 +146,7 @@ useAuthStore.subscribe((state) => {
 
 export default function RootLayout() {
   const { isReady } = useAuthInit();
-  const [introDone, setIntroDone] = useState(false);
+  const [introDone, setIntroDone] = useState(!INTRO_ENABLED);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   // code-review 指摘 (2026-09-09): 認証初期化が SPLASH_FAILSAFE_MS を超えて
@@ -192,6 +197,13 @@ export default function RootLayout() {
     }, SPLASH_FAILSAFE_MS);
     return () => clearTimeout(id);
   }, []);
+
+  // オープニング無しのときは AppIntro がスプラッシュを剥がさないので、ここで剥がす。
+  // 認証初期化の完了まで待つのは、スピナーを一瞬挟まずにログイン/ホームへ直接出すため。
+  // 初期化が返ってこない場合は上の最後の砦(SPLASH_FAILSAFE_MS)が剥がす。
+  useEffect(() => {
+    if (!INTRO_ENABLED && isReady) void SplashScreen.hideAsync().catch(() => {});
+  }, [isReady]);
 
   // Stripe Terminal の connection token 取得
   // SDK 0.0.1-beta.29 では initialize() 経由ではなく Provider 経由で渡す
