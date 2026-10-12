@@ -8,6 +8,8 @@ import {
 } from "@/lib/validations/market";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { signAssetPaths } from "@/lib/signedUrl";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 const MV_COLS =
   "id, tenant_id, maker, model, grade, year, mileage, color, color_code, plate_number, chassis_number, engine_type, displacement, transmission, drive_type, fuel_type, door_count, seating_capacity, body_type, inspection_date, repair_history, condition_grade, condition_note, asking_price, wholesale_price, cost_price, supplier_name, acquisition_date, description, features, status, listed_at, created_at, updated_at";
@@ -59,7 +61,14 @@ export const GET = withCaller(
             .returns<MarketVehicleImageRow[]>();
           imgs = data ?? [];
         }
-        const enriched = (vehicles ?? []).map((v) => ({ ...v, images: imgs }));
+        // market の objects には読み取りポリシーが無いので service-role で署名する（RLS 越しに読めた車両の画像だけ）
+        const imgUrls = await signAssetPaths(
+          createTenantScopedAdmin(caller.tenantId).admin,
+          imgs.map((i) => i.storage_path),
+          "market",
+        );
+        const withUrls = imgs.map((i) => ({ ...i, url: imgUrls.get(i.storage_path) ?? null }));
+        const enriched = (vehicles ?? []).map((v) => ({ ...v, images: withUrls }));
         return apiJson({ vehicles: enriched, stats: { total: enriched.length, listed: 0, draft: 0 } });
       }
 
@@ -113,10 +122,20 @@ export const GET = withCaller(
         });
       }
 
-      const enriched = (vehicles ?? []).map((v) => ({
-        ...v,
-        images: imagesMap[v.id] ?? [],
-      }));
+      // 一覧の画面（MarketVehiclesClient）は thumbnail_url を出す。1 枚目だけ署名する。
+      const thumbUrls = await signAssetPaths(
+        createTenantScopedAdmin(caller.tenantId).admin,
+        Object.values(imagesMap).map((imgs) => imgs[0]?.storage_path),
+        "market",
+      );
+      const enriched = (vehicles ?? []).map((v) => {
+        const first = imagesMap[v.id]?.[0];
+        return {
+          ...v,
+          images: imagesMap[v.id] ?? [],
+          thumbnail_url: (first && thumbUrls.get(first.storage_path)) ?? null,
+        };
+      });
 
       // Stats (only for tenant's own vehicles)
       const allVehicles = isPublic ? enriched : enriched;
@@ -286,7 +305,8 @@ export const DELETE = withCaller(
       if (images && images.length > 0) {
         const paths = images.map((img) => img.storage_path).filter(Boolean);
         if (paths.length > 0) {
-          await supabase.storage.from("market-vehicle-images").remove(paths);
+          // 保存先は market（images/route.ts の upload と同じ）。以前は存在しないバケット名で、画像が残っていた
+          await supabase.storage.from("market").remove(paths);
         }
         await bestEffortWrite(
           supabase.from("market_vehicle_images").delete().eq("vehicle_id", id).eq("tenant_id", caller.tenantId),

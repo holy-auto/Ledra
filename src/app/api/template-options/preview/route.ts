@@ -108,7 +108,7 @@ export const POST = withCaller(
       const config = parsed.data.config as TemplateConfig;
       const previewUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://example.com"}/c/PREVIEW-0001`;
 
-      const pdfBuffer = await renderBrandedCertificatePdf(PREVIEW_CERT, previewUrl, config);
+      const pdfBuffer = await renderBrandedCertificatePdf(PREVIEW_CERT, previewUrl, config, caller.tenantId);
 
       return new NextResponse(new Uint8Array(pdfBuffer), {
         status: 200,
