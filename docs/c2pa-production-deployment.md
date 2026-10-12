@@ -65,6 +65,13 @@ C2PA Trust List の CA から署名証明書を得るには、Ledra を「Confor
 > バイナリが無いまま本番に出ると、#1209 の先行検査で**写真アップロードが全件 503** になるため。
 > 単体でも確かめられる: `C2PA_MODE=production npm run check:c2pa-binary`。
 >
+> **ビルドの最後にはもう1本走る**（`node scripts/check-c2pa-binary.mjs --traced`）。
+> こちらは `.next/server` 配下の trace manifest を読み、**バイナリが関数バンドルに入ったか**を見る
+> （`serverExternalPackages` に入れてあるので、48MB のバイナリは output file tracing 経由でだけ入る）。
+> ログに `[check:c2pa-binary --traced] OK —` の行が出ていれば入っている。
+> **この行が出ていなければ `C2PA_MODE` がビルド時に見えていない**ということなので、
+> Vercel の env を Build にも露出させること（前段のロード検査も同じ条件で skip している）。
+>
 > この検査は `.env` 系も読む。**読み方は next 本体のもの**（`next` 経由で `@next/env` の
 > `loadEnvConfig` を呼ぶ）なので、同じキーが2行あるとき後の行が勝つ・行内の `#` 以降はコメント、
 > といった細かいところまで `next build` と一致する。`NODE_ENV` の既定も next の CLI と同じ

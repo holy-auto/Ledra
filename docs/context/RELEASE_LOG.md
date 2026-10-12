@@ -4,6 +4,28 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-12 ビルドの最後に「C2PA のバイナリが関数バンドルに入ったか」を確かめる（`--traced`）
+
+- 内容: `scripts/check-c2pa-binary.mjs` に `--traced` を追加し、`npm run build` の最後に置いた
+  （`node scripts/check-c2pa-binary.mjs && next build && node scripts/prune-build-cache.mjs && node scripts/check-c2pa-binary.mjs --traced`）。
+  前段のロード検査は**ビルド機で `require` できるか**しか見ない。`serverExternalPackages` に入れてあるので、
+  48MB の `dist/index.node` は Turbopack のバンドルではなく **output file tracing 経由でだけ**関数に入る。
+  tracing が拾わなければ、ビルドもデプロイも緑のまま**実行時に** `signer_unavailable` → #1209 のゲートが全アップロードを 503 で断る。
+- 見るもの: `.next/server` 配下の `*.nft.json` を読み、`@contentauth/c2pa-node` **内のファイル**を挙げている trace が
+  全部 `index.node` も挙げていることを要求する。**0本のときも落とす**（「全部入っている」と「何も見ていない」を同じ緑にしない）。
+  `C2PA_MODE=production` のときだけ走り、`C2PA_LIBRARY_PATH` が設定されているときは skip する
+  （実行時 env で決まるパスを tracing は辿れない）。
+- 実測（2026-10-12・Next 16.3.8 の手元のビルド成果物）: trace 1076 本のうちパッケージを挙げているのは9本で、**9本とも `index.node` を挙げている**。
+  `dist/` の 18 エントリのうち `types/`（ディレクトリ）以外の 17 が入っており、誰も import していない `Builder.spec.js` まで入っている
+  → 推定: `require(C2PA_LIBRARY_PATH ?? "./index.node")` が静的に解けないので tracing が `dist/` を丸ごと取り込んでいる。
+- ディレクトリ名では数えない: Turbopack は `.next/node_modules/@contentauth/c2pa-node-<hash>` という symlink を作り、
+  trace にその行も載る。symlink の1行だけを「参照している」と数えると、**ディレクトリ1行で足りているケースを誤って赤にする**。
+- 検査: `scripts/__tests__/checkC2paBinary.test.ts` に8本追加（計18本）。使い捨てディレクトリに `.nft.json` を置いて
+  子プロセスで走らせる形なので、本物のビルドを回さずに全分岐を踏める。7種の変異（空振りを緑にする／バイナリ欠落を見逃す／
+  成果物が無くても進む／override で skip しない／壊れた trace を飛ばす／symlink の行を数える／mode の gate を外す）が**全部赤になる**ことを確認。
+- OPEN_QUESTIONS の【要確認】を1件閉じた。原文の塞ぎ方（「ビルド後に `.next/` 配下の実在を見る」）は誤りで、
+  tracing はファイルを `.next/` へコピーしない（manifest に書くだけ）—— MISTAKE_LEDGER `M-20261012-planned-to-look-for-a-file-tracing-never-copies`。
+
 ## 2026-10-11 メーカーポータルに「連携レポート見本」ページを追加（商談の当日に見せる用）
 
 - 内容: `/manufacturer/report-samples`。施工店の現場データと車両データを掛け合わせたメーカー向けレポートの見本を、

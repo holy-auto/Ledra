@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -43,9 +43,13 @@ describe("check-c2pa-binary.mjs", () => {
     }
   }
 
-  function run(env: Record<string, string | undefined>, cwd: string = ROOT): { code: number; out: string } {
+  function run(
+    env: Record<string, string | undefined>,
+    cwd: string = ROOT,
+    args: string[] = [],
+  ): { code: number; out: string } {
     try {
-      const out = execFileSync(process.execPath, [SCRIPT], {
+      const out = execFileSync(process.execPath, [SCRIPT, ...args], {
         cwd,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
@@ -259,5 +263,124 @@ describe("check-c2pa-binary.mjs", () => {
     const { code, out } = run({ C2PA_MODE: "production", C2PA_LIBRARY_PATH: "./index.node" });
     expect(code, `相対パスを scripts/ 基準で解いている: ${out}`).toBe(0);
     expect(out).toMatch(/OK —/);
+  });
+
+  /**
+   * ## `--traced`（ビルド後の検査）
+   *
+   * こちらは `.next/server` 配下の trace manifest だけを読むので、**本物のビルドを
+   * 走らせずに外から試せる**。使い捨てディレクトリに `.nft.json` を置いて cwd にする。
+   *
+   * 本物の成果物に対しては手で1回当たりを取っている（2026-10-12、Next 16.3.8）:
+   * trace 1076 本のうちパッケージを挙げているのは9本、**9本とも `index.node` を挙げていた**。
+   * ここで見張るのは「その形が崩れたときに赤になるか」である。
+   */
+  const PKG = "../../../../../node_modules/@contentauth/c2pa-node/dist";
+
+  /** `.next/server/<name>` に trace を並べた使い捨て cwd で `--traced` を走らせる。 */
+  function runTraced(
+    traces: Record<string, string[]> | null,
+    env: Record<string, string | undefined> = {},
+  ): { code: number; out: string } {
+    const dir = mkdtempSync(path.join(tmpdir(), "c2pa-traced-"));
+    try {
+      if (traces !== null) {
+        for (const [name, files] of Object.entries(traces)) {
+          const file = path.join(dir, ".next", "server", name);
+          mkdirSync(path.dirname(file), { recursive: true });
+          writeFileSync(file, JSON.stringify({ version: 1, files }));
+        }
+      }
+      return run({ C2PA_MODE: "production", ...env }, dir, ["--traced"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it("--traced: パッケージを挙げる trace が全部 index.node も挙げていれば成功する", () => {
+    const { code, out } = runTraced({
+      "app/api/x/route.js.nft.json": [`${PKG}/index.js`, `${PKG}/binary.js`, `${PKG}/index.node`],
+      "app/page.js.nft.json": ["../chunks/a.js"],
+    });
+    expect(code, out).toBe(0);
+    expect(out).toMatch(/OK —/);
+  });
+
+  it("--traced: index.node を落とした trace が1本でもあれば exit 1", () => {
+    // これが本番で起きると、ビルドもデプロイも緑のまま**実行時に**全アップロードが 503 になる
+    // （#1209 のゲート）。tracing が拾うかは静的解析の副作用なので、Next / パッケージの
+    // 更新で崩れうる。崩れたらここで赤くする。
+    const { code, out } = runTraced({
+      "app/api/ok/route.js.nft.json": [`${PKG}/index.js`, `${PKG}/index.node`],
+      "app/api/ng/route.js.nft.json": [`${PKG}/index.js`, `${PKG}/binary.js`],
+    });
+    expect(code, `落ちなかった: ${out}`).toBe(1);
+    expect(out).toContain("app/api/ng/route.js.nft.json");
+    // 緑だった側を犯人として挙げていないこと。
+    expect(out).not.toContain("app/api/ok/route.js.nft.json");
+  });
+
+  it("--traced: どの trace もパッケージを挙げていなければ exit 1（空振りを緑にしない）", () => {
+    // 空配列の `every` が通るのと同じ形。「全部入っている」と「何も見ていない」を
+    // 同じ緑にすると、署名経路が木から外れたことに気づけない
+    // （MISTAKE_LEDGER `M-20261010-wrote-the-same-computation-twice-and-left-the-mirror-assertion`）。
+    const { code, out } = runTraced({ "app/page.js.nft.json": ["../chunks/a.js"] });
+    expect(code, `空振りで緑になった: ${out}`).toBe(1);
+    expect(out).toMatch(/どれも/);
+  });
+
+  it("--traced: symlink のディレクトリ1行だけでは「挙げている」と数えない", () => {
+    // Turbopack は `.next/node_modules/@contentauth/c2pa-node-<hash>` という symlink を作り、
+    // trace にはその行も載る。**ディレクトリ名で数えると、この1行だけの trace を
+    // 「パッケージを挙げているのにバイナリが無い」と誤って赤にする。**
+    const { code, out } = runTraced({
+      "app/api/x/route.js.nft.json": ["../../../node_modules/@contentauth/c2pa-node-73ddc61fb6cd2ba3"],
+    });
+    // パッケージ内のファイルは1本も無い → 「空振り」の方で落ちる（バイナリ欠落ではない）。
+    expect(code).toBe(1);
+    expect(out, "symlink の行をファイル参照として数えている").toMatch(/どれも/);
+  });
+
+  it("--traced: .next/server が無ければ exit 1（ビルド前に走らせた形）", () => {
+    const { code, out } = runTraced(null);
+    expect(code, `成果物が無いのに緑になった: ${out}`).toBe(1);
+    expect(out).toMatch(/が無い/);
+  });
+
+  it("--traced: C2PA_MODE が production 以外なら何も読まずに成功する", () => {
+    for (const mode of [undefined, "disabled", "dev-signed"]) {
+      // 赤になる trace を置いてあっても、mode が production でなければ見ない。
+      const { code, out } = runTraced(
+        { "app/api/ng/route.js.nft.json": [`${PKG}/index.js`] },
+        { C2PA_MODE: mode },
+      );
+      expect(code, `C2PA_MODE=${String(mode)} で落ちた: ${out}`).toBe(0);
+      expect(out).toMatch(/skip/);
+    }
+  });
+
+  it("--traced: C2PA_LIBRARY_PATH が設定されていれば skip する", () => {
+    // 実行時 env で決まるパスは tracing が辿れない（だから dist/ 丸ごとになる）。
+    // override 構成でバイナリを本番へ届けるのは、この検査の範囲外である。
+    const { code, out } = runTraced(
+      { "app/api/ng/route.js.nft.json": [`${PKG}/index.js`] },
+      { C2PA_LIBRARY_PATH: "/opt/c2pa/index.node" },
+    );
+    expect(code, out).toBe(0);
+    expect(out).toMatch(/skip/);
+  });
+
+  it("--traced: 壊れた trace を黙って飛ばさない", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "c2pa-traced-bad-"));
+    try {
+      const file = path.join(dir, ".next", "server", "app", "x.js.nft.json");
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(file, "{ not json");
+      const { code, out } = run({ C2PA_MODE: "production" }, dir, ["--traced"]);
+      expect(code, `読めない trace を飛ばして緑になった: ${out}`).toBe(1);
+      expect(out).toMatch(/trace を読めない/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

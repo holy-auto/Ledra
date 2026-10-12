@@ -36,18 +36,18 @@
  *
  * ## 天井（ponytail）
  *
- 1. `C2PA_MODE` が**ビルド時に見えること**が前提。`.env` 系は上で読むが、Vercel で
+ * 1. `C2PA_MODE` が**ビルド時に見えること**が前提。`.env` 系は上で読むが、Vercel で
  *    実行時専用の env として設定されている場合は発火しない。その場合でも実行時の
  *    先行検査（#1209）が 503 で止めるので「黙って未署名」には戻らないが、気づくのは
  *    デプロイ後になる。確実にしたいなら Vercel の env を Build にも露出させる。
- 2. **見ているのは「ビルド機でロードできるか」であって、「本番の関数にバイナリが入るか」
- *    ではない。** `next.config.ts` の `serverExternalPackages` に入れてあるので、48MB の
- *    `dist/index.node` は output file tracing 経由でしか関数バンドルに入らない。
- *    DL は成功（この検査は緑）なのに tracing が拾わなかった場合、実行時は
- *    `signer_unavailable` になり #1209 のゲートが全件 503 にする —— **この検査では防げない。**
- *    塞ぐならビルド後に `.next/` 配下の実在を見るか、デプロイ後のスモークが要る。
+ *    **`--traced`（下）も同じ env で発火するので、この天井は両方に掛かる。**
+ * 2. **ここで見ているのは「ビルド機でロードできるか」だけで、「本番の関数にバイナリが
+ *    入るか」ではない。** それは `next build` の後に `--traced` で見る（下の節）。
+ *    ロードできること（この検査）と、関数バンドルに入ること（`--traced`）は別の条件で、
+ *    前者が緑でも後者が落ちれば実行時は `signer_unavailable` → #1209 のゲートが全件 503。
  */
 
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -118,6 +118,151 @@ if (mode !== "production") {
   process.exit(0);
 }
 
+
+/**
+ * ## `--traced`: ビルド後に「関数バンドルに入ったか」を見る
+ *
+ * 上のロード検査は**ビルド機で `require` できるか**しか見ない。`serverExternalPackages` に
+ * 入れてあるので、48MB の `dist/index.node` は Turbopack のバンドルではなく
+ * **output file tracing（`.next/server` 配下の `*.nft.json`）経由でだけ**関数に入る。
+ * tracing が拾わなければ、ビルドもデプロイも緑のまま実行時に `signer_unavailable` →
+ * #1209 のゲートが全アップロードを 503 で断る。
+ *
+ * そこで `next build` の後に同じスクリプトを `--traced` で走らせ、
+ * **パッケージを参照している trace 全部が、バイナリも参照していること**を要求する。
+ *
+ * 実測（2026-10-12・Next 16.3.8 のビルド成果物）: `.next/server` 配下の trace 1078 本のうち
+ * パッケージを参照するのは9本で、**9本とも `dist/index.node` を挙げている**。
+ * `dist/` の 18 エントリのうち `types/`（ディレクトリ）以外の 17 が入っており、
+ * `Builder.spec.js` のような誰も import しないファイルまで入っている ——
+ * 推定: `require(C2PA_LIBRARY_PATH ?? "./index.node")` が静的に解けないので、
+ * tracing が `dist/` をまるごと取り込んでいる。**この形は Next / パッケージの更新で変わりうる**
+ * ので、固定するのではなく検査で見張る。
+ *
+ * ## 天井（ponytail）
+ *
+ * - **trace の中身を文字列で見ている。** `files` を解決して実在を確認するのではなく、
+ *   `@contentauth/c2pa-node` を含む行と `index.node` で終わる行を数える。Vercel が
+ *   実際にコピーするのはこの manifest なので、manifest に載っていることが要件そのものである。
+ *   実在はロード検査（上）が別経路で見ている。
+ * - **「`.next/` 配下にバイナリが在るか」ではない。** tracing はファイルを `.next/` へ
+ *   コピーしない（manifest に書くだけで、コピーは Vercel のビルダーがデプロイ時に行う）。
+ *   `.next/` を探しても永久に見つからないので、manifest を見る。
+ * - `C2PA_LIBRARY_PATH` が設定されているときは skip する。実行時の env で決まるパスを
+ *   tracing は辿れない（だから `dist/` 丸ごとになる）。override 構成でバイナリを本番へ
+ *   届けるのは、この検査の範囲外。
+ */
+if (process.argv.includes("--traced")) {
+  const override = process.env.C2PA_LIBRARY_PATH;
+  if (override !== undefined) {
+    console.log(
+      `[check:c2pa-binary --traced] skip — C2PA_LIBRARY_PATH=${JSON.stringify(override)} が設定されている` +
+        `（実行時 env で決まるパスは tracing が辿れない／出典: ${via}）`,
+    );
+    process.exit(0);
+  }
+
+  const serverDir = path.join(process.cwd(), ".next", "server");
+  if (!existsSync(serverDir)) {
+    failTraced(
+      `${serverDir} が無い`,
+      [
+        "`--traced` は `next build` の**後**に走らせる検査です（package.json の `build` を参照）。",
+        "ビルドが成果物を作らずに終わっている場合は、まずビルドのログを見てください。",
+      ].join("\n"),
+    );
+  }
+
+  const traces = readdirSync(serverDir, { recursive: true })
+    .map((p) => String(p))
+    .filter((p) => p.endsWith(".nft.json"));
+
+  // パッケージ**内のファイル**を挙げている trace と、そのうちバイナリも挙げている trace。
+  //
+  // ディレクトリ名で見ないのは、Turbopack が `.next/node_modules/@contentauth/c2pa-node-<hash>`
+  // という symlink を作り、trace にはその symlink 自体も1行として載るためである
+  // （実測: 該当9本すべてに、symlink の行と `node_modules/@contentauth/c2pa-node/dist/*` の
+  //  実ファイルの行が両方ある）。**symlink の行だけを「参照している」と数えると、
+  // ディレクトリ1行で足りているケースを「バイナリが無い」と誤って赤にする。**
+  // そこでパッケージ名の**後ろに何かある**行、つまりパッケージ内のファイルだけを数える。
+  //
+  // `/g` を付けない（`.test`/`.exec` が `lastIndex` を進めて交互に外す。
+  //  MISTAKE_LEDGER `M-20261010-tested-a-global-regex-and-halved-the-count`）。
+  const PKG_FILE_RE = /@contentauth[/\\]c2pa-node[^/\\]*[/\\](.+)$/;
+  const refsPkg = (entry) => PKG_FILE_RE.test(entry);
+  const refsBinary = (entry) => {
+    const m = PKG_FILE_RE.exec(entry);
+    return m !== null && /(^|[/\\])index\.node$/.test(m[1]);
+  };
+
+  const withPkg = [];
+  const withoutBinary = [];
+  for (const rel of traces) {
+    let files;
+    try {
+      files = JSON.parse(readFileSync(path.join(serverDir, rel), "utf8")).files ?? [];
+    } catch (err) {
+      failTraced(
+        `trace を読めない: ${rel}`,
+        err instanceof Error ? (err.stack ?? err.message) : String(err),
+      );
+    }
+    if (!files.some(refsPkg)) continue;
+    withPkg.push(rel);
+    if (!files.some(refsBinary)) withoutBinary.push(rel);
+  }
+
+  // **1本も参照していないときに緑にしてはいけない。** それは「全部入っている」ではなく
+  // 「何も見ていない」である（空配列の `every` が通るのと同じ形で、一度やった:
+  //  MISTAKE_LEDGER `M-20261010-wrote-the-same-computation-twice-and-left-the-mirror-assertion`）。
+  if (withPkg.length === 0) {
+    failTraced(
+      `${traces.length} 本の trace のどれも @contentauth/c2pa-node 内のファイルを挙げていない`,
+      [
+        "C2PA_MODE=production なのに、どの関数も C2PA のパッケージを引いていません。",
+        "署名経路が木から外れている（import が消えた・route が消えた）か、tracing が",
+        "external なパッケージを辿らなくなっています。どちらでも実行時は signer_unavailable です。",
+      ].join("\n"),
+    );
+  }
+  if (withoutBinary.length > 0) {
+    failTraced(
+      `パッケージを挙げている ${withPkg.length} 本のうち ${withoutBinary.length} 本が index.node を挙げていない`,
+      [
+        "output file tracing がネイティブバイナリを関数バンドルに入れていません。",
+        "ビルドは緑のままデプロイされ、**実行時に** signer_unavailable → 全アップロード 503 になります。",
+        "",
+        "該当する trace:",
+        ...withoutBinary.slice(0, 10).map((p) => `  .next/server/${p}`),
+        ...(withoutBinary.length > 10 ? [`  …他 ${withoutBinary.length - 10} 本`] : []),
+        "",
+        "原因の候補: Next / Turbopack の更新で external パッケージの辿り方が変わった、",
+        "パッケージが `dist/index.node` を別の場所・別の名前に移した、",
+        "`serverExternalPackages` から外れた（その場合はバンドル側に入るので別の確認が要る）。",
+      ].join("\n"),
+    );
+  }
+
+  console.log(
+    `[check:c2pa-binary --traced] OK — trace ${traces.length} 本のうち ${withPkg.length} 本が` +
+      ` @contentauth/c2pa-node 内のファイルを挙げ、全部が index.node も挙げている`,
+  );
+  process.exit(0);
+}
+
+/** `--traced` 用。ロード検査の `fail()` とは原因候補も対処も違うので別にしてある。 */
+function failTraced(reason, detail) {
+  console.error(
+    [
+      "",
+      `::error::[check:c2pa-binary --traced] C2PA_MODE=production なのに、ネイティブバイナリが関数バンドルに入っていません: ${reason}`,
+      "",
+      detail,
+      "",
+    ].join("\n"),
+  );
+  process.exit(1);
+}
 
 
 function fail(reason, detail) {

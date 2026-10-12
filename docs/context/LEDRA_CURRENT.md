@@ -117,6 +117,15 @@
 > **今の本番にバイナリがあるかは依然未確認**だが、Vercel のビルドログで `Downloading |`（DL 成功）か
 > `Skipping Rust build since Rust and/or Cargo is not found`（不在）のどちらが出ているかで1分で分かる。
 > プリビルド資産自体は 0.9.7 の linux-x64-gnu 向けに存在する（HTTP 206 で実測）。
+> **2026-10-12 追記: ビルドの最後にもう1本入れた（`--traced`）。** 前段のロード検査は
+> 「ビルド機で `require` できるか」までで、**関数バンドルに入るか**は見ていなかった。
+> `serverExternalPackages` に入れてあるので 48MB のバイナリは output file tracing 経由でだけ入る。
+> 手元の実測では `.next/server` の trace 1076 本のうちパッケージを挙げている9本が**全部 `index.node` を挙げていた**が、
+> それは静的解析の副作用（`require(C2PA_LIBRARY_PATH ?? "./index.node")` が解けず `dist/` が丸ごと入る）なので、
+> 更新で崩れうる。`npm run build` の最後に `node scripts/check-c2pa-binary.mjs --traced` を置いて見張る。
+> **Vercel のビルドでも同じ形になるかは未確認**（`C2PA_MODE` がビルド時に見えないと skip するため、
+> オンにした最初のビルドのログで確かめる）。
+
 > **2026-10-08 追記: この検査は `build` の前段に入っている（PR #1272）。** 10-07〜08 に Vercel プレビューの赤を切り分けるため
 > 一時的に外していたが、赤の原因は OOM で検査とは無関係だったため戻した。検査を `build` に入れた状態の
 > `f9616a58` は Vercel が緑で、**Vercel のビルド機で検査が通ること自体は実測済み**。

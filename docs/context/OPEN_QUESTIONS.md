@@ -1745,11 +1745,26 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
     検査8はこの向きを見ない —— 誤りとして扱うと、付け足した分類を消すことになる。
     決めること: 9組を1つずつ見て、意図的なら見出しにも型を足す／残骸なら表から外す。
     あるいは「表は見出しより多く挙げてよい」を正式な規則にする（今の実装はこちら）。
-  - 【要確認】**output file tracing が `index.node` を本番の関数バンドルに入れているか。**
-    `next.config.ts` の `serverExternalPackages` に入れてあるので、48MB のバイナリは tracing 経由でしか
-    入らない。`scripts/check-c2pa-binary.mjs` が見るのは**ビルド機でロードできるか**までで、
-    DL 成功（検査は緑）でも tracing が拾わなければ実行時は `signer_unavailable` → #1209 のゲートで
-    全件 503 になる。塞ぐならビルド後に `.next/` 配下の実在を見るか、デプロイ後のスモークが要る。
+  - ~~【要確認】**output file tracing が `index.node` を本番の関数バンドルに入れているか。**~~
+    **2026-10-12 に実測して解決（入っている）。** 手元の `.next`（Next 16.3.8 のビルド成果物）で、
+    `.next/server` 配下の trace 1076 本のうちパッケージ内のファイルを挙げているのは9本、
+    **9本とも `dist/index.node` を挙げていた**。`dist/` の 18 エントリのうち `types/`（ディレクトリ）
+    以外の 17 が入っており、**誰も import していない `Builder.spec.js` まで入っている** ——
+    推定: `require(C2PA_LIBRARY_PATH ?? "./index.node")` が静的に解けないので、tracing が
+    `dist/` をまるごと取り込んでいる。この形は Next / パッケージの更新で変わりうるので、
+    `npm run build` の最後に `node scripts/check-c2pa-binary.mjs --traced` を置いて見張ることにした
+    （パッケージを挙げている trace が全部バイナリも挙げていることを要求する。0本でも落とす ——
+    「全部入っている」と「何も見ていない」を同じ緑にしないため）。
+    **原文が書いた塞ぎ方は誤りだった**: tracing はファイルを `.next/` へコピーしない
+    （manifest に書くだけで、コピーはデプロイ時に Vercel のビルダーが行う）。
+    「`.next/` 配下の実在を見る」では永久に見つからない —— 見るべきは manifest の方である
+    （MISTAKE_LEDGER `M-20261012-planned-to-look-for-a-file-tracing-never-copies`）。
+  - 【要確認】**Vercel のビルドでも同じ形（9本とも index.node を挙げる）になるか。**
+    上の実測は手元のビルドである。`--traced` は Vercel の `npm run build` でも走るが、
+    **`C2PA_MODE` がビルド時に見えないと skip する**（検査の天井1と同じ）。
+    `C2PA_MODE=production` を入れた最初のビルドのログに
+    `[check:c2pa-binary --traced] OK —` の行が出るかで分かる。出ていなければ env が
+    Build に露出していないということなので、そこで露出させる。
   - 【要確認】**本番（Vercel）で `@contentauth/c2pa-node` が実際にビルドできているか。**
     できていなければ、`C2PA_MODE=production` にした瞬間に全アップロードが
     `signer_unavailable` で断られる。**オンにする前に本番環境での読み込み可否を確かめること。**
