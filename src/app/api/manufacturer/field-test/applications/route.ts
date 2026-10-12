@@ -49,7 +49,16 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query;
     if (error) return apiInternalError(error, "ft applications GET");
 
-    return apiJson({ applications: data ?? [] });
+    // 画面は tenant_name を読む（jobs / agreements と同じ形に平らにする）
+    type TenantJoinRow = Record<string, unknown> & {
+      tenants: { name: string | null } | { name: string | null }[] | null;
+    };
+    const applications = (data ?? []).map((r: TenantJoinRow) => {
+      const tj = Array.isArray(r.tenants) ? r.tenants[0] : r.tenants;
+      return { ...r, tenant_name: tj?.name ?? null, tenants: undefined };
+    });
+
+    return apiJson({ applications });
   } catch (e) {
     return apiInternalError(e, "ft applications GET");
   }

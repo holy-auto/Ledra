@@ -48,12 +48,18 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
     // Fetch related data in parallel
     const [checksRes, evidenceRes, inspectionsRes] = await Promise.all([
-      admin.from("ft_condition_checks").select("*").eq("job_id", id).order("checked_at", { ascending: true }),
+      // 条件名・種類は ft_conditions 側にしか無いので結合する
+      admin
+        .from("ft_condition_checks")
+        .select("*, ft_conditions(label, check_type)")
+        .eq("job_id", id)
+        .order("checked_at", { ascending: true }),
       admin
         .from("ft_evidence")
-        .select("id", { count: "exact", head: true })
+        .select("id, evidence_type, file_name, caption, captured_at, created_at")
         .eq("job_id", id)
-        .eq("manufacturer_id", manufacturerId),
+        .eq("manufacturer_id", manufacturerId)
+        .order("created_at", { ascending: true }),
       admin
         .from("ft_inspections")
         .select("*")
@@ -63,6 +69,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     ]);
 
     if (checksRes.error) return apiInternalError(checksRes.error, "ft job GET checks");
+    if (evidenceRes.error) return apiInternalError(evidenceRes.error, "ft job GET evidence");
     if (inspectionsRes.error) return apiInternalError(inspectionsRes.error, "ft job GET inspections");
 
     const tj = Array.isArray(job.tenants) ? job.tenants[0] : job.tenants;
@@ -72,8 +79,14 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
     return apiJson({
       job: { ...jobData, tenant_name: (tj as { name: string | null } | null)?.name ?? null },
-      condition_checks: checksRes.data ?? [],
-      evidence_count: evidenceRes.count ?? 0,
+      condition_checks: (checksRes.data ?? []).map((c: Record<string, unknown> & { ft_conditions: unknown }) => {
+        const cond = (Array.isArray(c.ft_conditions) ? c.ft_conditions[0] : c.ft_conditions) as {
+          label: string | null;
+          check_type: string | null;
+        } | null;
+        return { ...c, label: cond?.label ?? null, check_type: cond?.check_type ?? null, ft_conditions: undefined };
+      }),
+      evidence: evidenceRes.data ?? [],
       inspections: inspectionsRes.data ?? [],
     });
   } catch (e) {

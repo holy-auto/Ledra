@@ -15,6 +15,15 @@ export const dynamic = "force-dynamic";
  * - ?tenant_id=X  → single tenant's profile
  * - no filter     → all profiles (for browsing)
  */
+// 画面は tenant_name を読む（jobs / agreements と同じ形に平らにする）
+type TenantJoinRow = Record<string, unknown> & {
+  tenants: { name: string | null } | { name: string | null }[] | null;
+};
+const withTenantName = (r: TenantJoinRow) => {
+  const tj = Array.isArray(r.tenants) ? r.tenants[0] : r.tenants;
+  return { ...r, tenant_name: tj?.name ?? null, tenants: undefined };
+};
+
 export async function GET(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveManufacturerCaller(supabase);
@@ -28,9 +37,12 @@ export async function GET(req: NextRequest) {
     const admin = createServiceRoleAdmin("workshop profiles list — manufacturer-scoped");
 
     if (tenantId) {
-      const { data, error } = await admin.from("workshop_capability_profiles").select("*").eq("tenant_id", tenantId);
+      const { data, error } = await admin
+        .from("workshop_capability_profiles")
+        .select("*, tenants(name)")
+        .eq("tenant_id", tenantId);
       if (error) return apiInternalError(error, "workshop profiles GET");
-      return apiJson({ profiles: data ?? [] });
+      return apiJson({ profiles: (data ?? []).map(withTenantName) });
     }
 
     if (projectId) {
@@ -58,19 +70,22 @@ export async function GET(req: NextRequest) {
 
       if (tenantIds.length === 0) return apiJson({ profiles: [] });
 
-      const { data, error } = await admin.from("workshop_capability_profiles").select("*").in("tenant_id", tenantIds);
+      const { data, error } = await admin
+        .from("workshop_capability_profiles")
+        .select("*, tenants(name)")
+        .in("tenant_id", tenantIds);
       if (error) return apiInternalError(error, "workshop profiles GET");
-      return apiJson({ profiles: data ?? [] });
+      return apiJson({ profiles: (data ?? []).map(withTenantName) });
     }
 
     // No filter — return all profiles
     const { data, error } = await admin
       .from("workshop_capability_profiles")
-      .select("*")
+      .select("*, tenants(name)")
       .order("updated_at", { ascending: false })
       .limit(200);
     if (error) return apiInternalError(error, "workshop profiles GET");
-    return apiJson({ profiles: data ?? [] });
+    return apiJson({ profiles: (data ?? []).map(withTenantName) });
   } catch (e) {
     return apiInternalError(e, "workshop profiles GET");
   }
