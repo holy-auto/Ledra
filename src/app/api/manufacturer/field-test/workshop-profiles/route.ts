@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
@@ -23,7 +24,9 @@ export async function GET(req: NextRequest) {
   const projectId = url.searchParams.get("project_id");
 
   try {
-    if (!projectId) return apiValidationError("project_id は必須です。");
+    if (!projectId || !z.string().uuid().safeParse(projectId).success) {
+      return apiValidationError("project_id（UUID）は必須です。");
+    }
     const admin = createServiceRoleAdmin("workshop profiles list — manufacturer-scoped");
 
     // Collect tenant IDs from approved applications + assigned jobs

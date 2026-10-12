@@ -65,6 +65,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ tenantId: 
   if (!caller) return apiUnauthorized();
 
   const { tenantId } = await ctx.params;
+  if (!z.string().uuid().safeParse(tenantId).success) return apiNotFound("プロファイルが見つかりません。");
 
   try {
     const admin = createServiceRoleAdmin("workshop profile detail");
@@ -97,6 +98,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ tenantId: s
   if (caller.role !== "admin") return apiForbidden("プロファイル更新は admin ロールのみ実行できます。");
 
   const { tenantId } = await ctx.params;
+  if (!z.string().uuid().safeParse(tenantId).success) return apiNotFound("プロファイルが見つかりません。");
 
   const parsed = profileSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
