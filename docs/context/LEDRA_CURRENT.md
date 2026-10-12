@@ -132,7 +132,13 @@
 > 更新で崩れうる。`npm run build` の最後に `node scripts/check-c2pa-binary.mjs --traced` を置いて見張る
 > （**ゲート背後の2本の route** の trace がバイナリを挙げていることを要求する。route 単位にした理由は
 > MISTAKE_LEDGER `M-20261012-checked-the-population-not-the-entrypoint`）。
-> **Vercel のビルドでも同じ形になるかは未確認**（`C2PA_MODE` がビルド時に見えないと skip するため、
+> **2026-10-12 確定: 今の Vercel のビルドは `C2PA_MODE` を見ていない**（#1326 のプレビューのログに
+> `[check:c2pa-binary] skip — C2PA_MODE=(未設定)` がそのまま出ていた）。つまり **10-07 に入れた
+> ロード検査も、今回の `--traced` も、本番ビルドでは一度も働いていない。**
+> 10-08 に「Vercel のビルド機で検査が通ること自体は実測済み」と書いたが、**「通った」のではなく
+> 「skip した」**のであって、保護はまだ無い。オンにする日に env を Build へ露出させる手順を
+> `docs/c2pa-production-deployment.md` §3 に入れた。
+> **Vercel のビルドでも trace の形が同じになるかは未確認**（`C2PA_MODE` がビルド時に見えないと skip するため、
 > オンにした最初のビルドのログで確かめる）。
 
 > **2026-10-08 追記: この検査は `build` の前段に入っている（PR #1272）。** 10-07〜08 に Vercel プレビューの赤を切り分けるため

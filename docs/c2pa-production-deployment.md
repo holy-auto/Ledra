@@ -80,6 +80,13 @@ C2PA Trust List の CA から署名証明書を得るには、Ledra を「Confor
 > | `skip — C2PA_LIBRARY_PATH=…` | override 構成のため範囲外（実行時 env のパスは tracing が辿れない） | バイナリを本番へ届ける経路を自分で確かめる |
 > | `::error::… 関数バンドルに入っていません` | **入っていない**（ビルドは赤で止まる） | 出力の「原因の候補」を見る |
 >
+> **2026-10-12 実測: 今の Vercel のビルドは `C2PA_MODE` を見ていない。**
+> #1326 のプレビューのログに `[check:c2pa-binary] skip — C2PA_MODE=(未設定)` がそのまま出ていた。
+> つまり**前段のロード検査もこの `--traced` も、現状の本番ビルドでは何も見ていない**。
+> **`C2PA_MODE` を入れるときは、Vercel の Environment Variables で Build にも露出させること**
+> （Production/Preview の「Environment」に加えて、ビルド時に読まれる設定になっているかを確認する）。
+> 露出させない限り、バイナリが無いままデプロイが成功する経路は塞がらない。
+>
 > **`OK` でも「関数に入った」の確証ではない。** 確かめているのは trace manifest が挙げているかまでで、
 > Vercel のビルダーがその列挙どおりにコピーする、という理解に乗っている。
 > **オンにした日は、本番で1枚アップロードして `signer_unavailable` が出ないことを必ず見る**

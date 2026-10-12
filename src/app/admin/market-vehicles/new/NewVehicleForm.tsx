@@ -223,18 +223,27 @@ export default function NewVehicleForm() {
 
       const vehicleId = j.vehicle?.id ?? j.id;
 
-      // 2. Upload images
-      if (images.length > 0 && vehicleId) {
-        const formData = new FormData();
-        images.forEach((img) => formData.append("images", img.file));
-        const imgRes = await fetch(`/api/admin/market-vehicles/${vehicleId}/images`, {
-          method: "POST",
-          body: formData,
-        });
-        if (!imgRes.ok) {
-          const imgJ = await parseJsonSafe(imgRes);
-          console.error("Image upload failed:", imgJ?.message ?? imgJ?.error ?? imgRes.status);
+      // 2. Upload images（詳細画面と同じ API に 1 枚ずつ送る。以前は存在しない
+      //    `/api/admin/market-vehicles/{id}/images` に送っていて、作成時の写真が保存されていなかった）
+      let failed = 0;
+      if (vehicleId) {
+        for (const img of images) {
+          const fd = new FormData();
+          fd.append("file", img.file);
+          fd.append("vehicle_id", vehicleId);
+          const imgRes = await fetch("/api/admin/market-vehicles/images", { method: "POST", body: fd });
+          if (!imgRes.ok) {
+            failed++;
+            const imgJ = await parseJsonSafe(imgRes);
+            console.error("Image upload failed:", imgJ?.message ?? imgJ?.error ?? imgRes.status);
+          }
         }
+      }
+      if (failed > 0) {
+        // 車両は登録済みなので、黙って一覧へ戻らずに伝える
+        throw new Error(
+          `車両は登録しました。写真 ${failed} 枚の保存に失敗しました。車両の詳細画面から追加してください。`,
+        );
       }
 
       router.push("/admin/market-vehicles");
