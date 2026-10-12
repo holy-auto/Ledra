@@ -1,0 +1,115 @@
+name: Mobile TestFlight
+
+# iOS の demo ビルド（production + push 無し。plugins/withoutPushEntitlement.js）を
+# EAS で作り、TestFlight に上げる。
+# 手元の PC（eas-cli・Apple 証明書・D:\ の ASC キー）が無くても、
+# GitHub の Actions 画面（スマホのブラウザ可）から「Run workflow」で実行できる。
+#
+# 必要な Secrets（Settings → Secrets and variables → Actions）:
+#   EXPO_TOKEN        必須。expo.dev → Account settings → Access tokens で作る
+#   ASC_API_KEY_P8    任意。App Store Connect API キー（AuthKey_P235PU8K3S.p8）の中身。
+#                     EAS 側にキーを登録済みなら不要。未登録かつ未設定なら submit だけ失敗する
+#
+# iOS のビルド自体は EAS のクラウド（macOS）で走る。このランナーはアップロードと待機だけ。
+# 署名証明書は eas.json production の既定（credentialsSource: remote）＝EAS 保管分を使う。
+
+on:
+  workflow_dispatch:
+    inputs:
+      submit_only:
+        description: "ビルドせず、EAS 上の最新 iOS ビルドを TestFlight に提出だけする"
+        type: boolean
+        default: false
+
+concurrency:
+  group: mobile-testflight
+  cancel-in-progress: false
+
+jobs:
+  build-submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - name: Check EXPO_TOKEN
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::Secret EXPO_TOKEN が未設定です（Settings → Secrets and variables → Actions）"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install eas-cli
+        run: npm i -g eas-cli
+
+      - name: Point submit profile at the CI key
+        # eas.json の ascApiKeyPath は代表 PC の D:\ を指していて CI では読めない。
+        # Secret があればそれを書き出して差し替え、無ければキー指定を外して EAS 保管分に任せる。
+        # このチェックアウトは使い捨てなので eas.json の書き換えはコミットされない。
+        env:
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const j = JSON.parse(fs.readFileSync("eas.json", "utf8"));
+            const ios = j.submit.production.ios;
+            if (process.env.ASC_API_KEY_P8) {
+              fs.writeFileSync("/tmp/asc.p8", process.env.ASC_API_KEY_P8);
+              ios.ascApiKeyPath = "/tmp/asc.p8";
+              console.log("ASC key: GitHub Secret を使用");
+            } else {
+              delete ios.ascApiKeyPath; delete ios.ascApiKeyId; delete ios.ascApiKeyIssuerId;
+              console.log("ASC key: EAS 保管分を使用");
+            }
+            fs.writeFileSync("eas.json", JSON.stringify(j, null, 2));
+          '
+
+      - name: Build (EAS, iOS demo)
+        id: build
+        if: ${{ !inputs.submit_only }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          # 失敗理由をログ本体を開かずに読めるよう、末尾を annotation に出す
+          # （job ログは Blob 経由で、取得できない環境がある）。
+          if ! eas build --platform ios --profile demo --non-interactive --wait --json > /tmp/build.json 2> >(tee /tmp/build.err >&2); then
+            sleep 2
+            # GitHub は1ステップの annotation を10件までしか残さないので、空行を除いた末尾9行だけ出す
+            sed 's/\x1b\[[0-9;]*m//g' /tmp/build.err | grep -v "^\s*$" | tail -n 9 | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi
+          cat /tmp/build.json
+          echo "id=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("/tmp/build.json","utf8"))[0].id)')" >> "$GITHUB_OUTPUT"
+
+      - name: Submit to TestFlight
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          BUILD_ID: ${{ steps.build.outputs.id }}
+        run: |
+          # submit_only のときは build ステップが飛ぶので、EAS 上の最新ビルドを使う
+          if [ -n "$BUILD_ID" ]; then target="--id $BUILD_ID"; else target="--latest"; fi
+          echo "::notice::submit target: $target"
+          # eas submit はエラーを stdout に出すことがあるので両方を拾う
+          set +e
+          eas submit --platform ios --profile production $target --non-interactive 2>&1 | tee /tmp/submit.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            # GitHub は1ステップの annotation を10件までしか残さないので、空行を除いた末尾9行だけ出す
+            sed 's/\x1b\[[0-9;]*m//g' /tmp/submit.log | grep -v "^\s*$" | tail -n 9 | while IFS= read -r l; do echo "::error::$l"; done
+            exit "$rc"
+          fi

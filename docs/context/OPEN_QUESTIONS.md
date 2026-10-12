@@ -4455,3 +4455,11 @@ DECISION_LOG「遷移表の未解決4件を代表判断で解決」参照。）
 - 次のアクション: 代表判断待ち。判断が付くまでは暫定対応（確認メール送信の明示表示）のまま。
 - 公開区分: 非公開（Apple 審査対応の内部検討事項）
 - 起票日: 2026-09-08
+
+## iOS App Store profile に Push Notifications が無く、production ビルドが署名で落ちる（2026-10-12）
+- 状況: EAS 保管の App Store profile（"[expo] com.ledra.app AppStore 2026-05-02..."）が expo-notifications 導入前の作成で、
+  `aps-environment` を含められない。JMS2026 向けは `demo` プロファイル（push 無し）で回避した（DECISION_LOG 2026-10-12）。
+- やること: Apple Developer で App ID `com.ledra.app` の Push Notifications を有効化 → `eas credentials --platform ios` で
+  App Store profile を削除・再生成 → production でビルドが通ることを確認（Apple ID ログインか ASC キーが要る）。
+- それまで production の iOS ビルドは通らず、TestFlight / App Store 版では push が届かない。
+
