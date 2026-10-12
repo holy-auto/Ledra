@@ -8,8 +8,9 @@
 
 1. 日付: 2026-10-12（`date -u` で確認）
 2. 起きたこと: 【要確認】として残していた「output file tracing が 48MB の `index.node` を本番の関数バンドルに
-   入れているか」を実測した。手元の `.next`（Next 16.3.8）で、`.next/server` 配下の trace 1076 本のうち
-   `@contentauth/c2pa-node` 内のファイルを挙げているのは9本、**9本とも `dist/index.node` を挙げていた**。
+   入れているか」を実測した。手元の `.next`（Next 16.3.8）で、`.next/server` 配下の trace のうち
+   `@contentauth/c2pa-node` 内のファイルを挙げているのは9本、**9本とも `dist/index.node` を挙げていた**
+   （同日に2回、別のツリーのビルドで同じ 9/9。trace の総数は route が増えるたびに動くので書かない —— 2回で 1076 → 1082）。
    `dist/` の 18 エントリのうち `types/`（ディレクトリ）以外の 17 が入っており、誰も import していない
    `Builder.spec.js` まで入っている。
 3. 以前の考え: 塞ぐなら「ビルド後に `.next/` 配下の実在を見る」（OPEN_QUESTIONS の原文）。

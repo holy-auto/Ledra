@@ -127,7 +127,7 @@
 > **2026-10-12 追記: ビルドの最後にもう1本入れた（`--traced`）。** 前段のロード検査は
 > 「ビルド機で `require` できるか」までで、**関数バンドルに入るか**は見ていなかった。
 > `serverExternalPackages` に入れてあるので 48MB のバイナリは output file tracing 経由でだけ入る。
-> 手元の実測では `.next/server` の trace 1076 本のうちパッケージを挙げている9本が**全部 `index.node` を挙げていた**が、
+> 手元の実測では `.next/server` でパッケージを挙げている trace 9本が**全部 `index.node` を挙げていた**（同日に2回）が、
 > それは静的解析の副作用（`require(C2PA_LIBRARY_PATH ?? "./index.node")` が解けず `dist/` が丸ごと入る）なので、
 > 更新で崩れうる。`npm run build` の最後に `node scripts/check-c2pa-binary.mjs --traced` を置いて見張る
 > （**ゲート背後の2本の route** の trace がバイナリを挙げていることを要求する。route 単位にした理由は

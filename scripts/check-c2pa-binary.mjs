@@ -139,9 +139,11 @@ if (mode !== "production") {
  * upload の trace が空でも exit 0 だった）。だから下の `GATED_ROUTES` を名指しし、
  * **その trace が実在し、バイナリを挙げていること**を要求する。
  *
- * 実測（2026-10-12・Next 16.3.8 の手元のビルド成果物）: `.next/server` 配下の trace 1076 本のうち
- * `@contentauth/c2pa-node` 内のファイルを挙げているのは9本で、**9本とも `dist/index.node` を
- * 挙げている**（`GATED_ROUTES` の2本を含む）。`dist/` の 18 エントリのうち `types/`（ディレクトリ）
+ * 実測（2026-10-12・Next 16.3.8 の手元のビルド成果物。同日に2回、別のツリーで）:
+ * `.next/server` 配下の trace のうち `@contentauth/c2pa-node` 内のファイルを挙げているのは
+ * **9本**で、**9本とも `dist/index.node` を挙げている**（`GATED_ROUTES` の2本を含む）。
+ * **trace の総数は書かない** —— route が増えるたびに動く（同日の2回で 1076 → 1082）。
+ * 形が崩れたかを判断する材料は「9本」と「2本とも挙げている」の方である。`dist/` の 18 エントリのうち `types/`（ディレクトリ）
  * 以外の 17 が入っており、`Builder.spec.js` のような誰も import しないファイルまで入っている ——
  * 推定: `require(C2PA_LIBRARY_PATH ?? "./index.node")` が静的に解けないので、
  * tracing が `dist/` をまるごと取り込んでいる。**この形は Next / パッケージの更新で変わりうる**
