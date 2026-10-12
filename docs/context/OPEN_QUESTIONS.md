@@ -513,6 +513,15 @@ opt-in `tenants.require_inspector_qualification`・既定 false）。残って�
      **2026-10-09 実装**: `npm run build` の後に `scripts/prune-build-cache.mjs` で古い版を消し、キャッシュと node_modules の大きさを
      `[build-cache]` としてビルドログに出す（今の版は消さない）。残る課題は「今の版が育つこと」で、これはまだ止められていない。
      減らせる候補: 動画書き出し用の `@remotion/cli` 一式（gzip 約 74 MB）をアプリの依存から外し、`render-video.yml` でだけ入れる。
+     **2026-10-12 再発**: プレビュー（`ae2b495`、`claude/imp-000-implementation-r0eje1`）で `Previous build cache ... was too large` →
+     8 GB 機で全部ビルド → 約 3 分で OOM（137）。古い版を消すだけでは、今の版が育つのは止まらないことが実例で分かった。
+     そこで「キャッシュが捨てられても 8 GB に収まる」側を取った（DECISION_LOG 2026-10-12）。手元実測（キャッシュなし、ピークは全プロセスの RSS 合計）:
+     - 段階ごとの山: コンパイル中（next-build だけで約 5.8 GB、合計 7.1 GB）と、その後の型チェック（tsc だけで約 5.3 GB、合計 6.3 GB）の 2 つ。
+     - サーバー側ソースマップなし（`experimental.serverSourceMaps: false`）: Sentry なしでコンパイルのピーク 7.1→6.1 GB。
+       Sentry あり（本番と同じ）で、型チェックを省いた同士で比べると 7.6 / 7.6 GB → 6.0 / 6.8 GB（1 回ごとに ±0.4 GB ほど振れる）。
+     - 型チェックを省くだけ（`typescript.ignoreBuildErrors`）では 7.6 GB のまま（コンパイルの山が残る）。両方入れて初めて下がる。
+     - 効かなかったもの: `turbopackMemoryEviction: 'full'`（7.0→6.9 GB、コンパイルが 1.5 倍遅い）、Turbopack のビルドキャッシュを切る（6.3〜7.9 GB）。
+     まだ分からないこと: Vercel の 8 GB 機で 6.0〜6.8 GB が通るか（Vercel 側の余計な消費は未計測）。次に `was too large` が出た回のログで確かめる【要確認】。
 - 起票日: 2026-10-02
 - 判断者: 代表（対策の選択・`1200421` のログの確認）。実装は開発（Claude）
 
