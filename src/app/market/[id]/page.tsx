@@ -6,6 +6,8 @@ import { formatJpy, formatDate } from "@/lib/format";
 import Badge from "@/components/ui/Badge";
 import ImageGallery from "./ImageGallery";
 import InquiryForm from "./InquiryForm";
+import { signAssetPaths } from "@/lib/signedUrl";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +62,14 @@ export default async function MarketVehicleDetailPage({ params }: { params: Prom
     .eq("vehicle_id", id)
     .order("sort_order", { ascending: true });
 
-  const vehicleImages = images ?? [];
+  // 保存パスはそのままでは画像として開けないので、署名 URL にして渡す。
+  // market の objects には読み取りポリシーが無いので service-role で署名する（RLS 越しに読めた出品中の車両の画像だけ）
+  const urls = await signAssetPaths(
+    createServiceRoleAdmin("market detail — sign images of a listed vehicle"),
+    (images ?? []).map((img) => img.storage_path),
+    "market",
+  );
+  const vehicleImages = (images ?? []).map((img) => ({ ...img, url: urls.get(img.storage_path) ?? null }));
 
   const specRows: [string, string | null][] = [
     ["メーカー", vehicle.maker],

@@ -4,6 +4,8 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { escapeIlike } from "@/lib/sanitize";
 import MarketClient from "./MarketClient";
+import { signAssetPaths } from "@/lib/signedUrl";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +47,16 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
       if (!imagesMap[img.vehicle_id]) imagesMap[img.vehicle_id] = [];
       imagesMap[img.vehicle_id].push(img);
     });
+    // 一覧は 1 枚目しか出さないので、1 枚目だけ署名 URL にする。
+    // market の objects には読み取りポリシーが無い（20260616000003 で外した）ので、署名は service-role で行う
+    // （署名するのは、この画面の利用者が RLS 越しに読めた出品中の車両の画像だけ）。
+    const firsts = Object.values(imagesMap).map((imgs) => imgs[0]);
+    const urls = await signAssetPaths(
+      createServiceRoleAdmin("market list — sign first image of listed vehicles"),
+      firsts.map((img) => img.storage_path),
+      "market",
+    );
+    for (const img of firsts) img.url = urls.get(img.storage_path) ?? null;
   }
 
   const enriched = (vehicles ?? []).map((v: any) => ({
