@@ -4,6 +4,7 @@ import { getPublicCertificateData } from "@/lib/certificates/publicData";
 import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import CustomerActions from "./CustomerActions";
 import MediaGallery from "./MediaGallery";
+import { DEMO_TENANT_SLUG } from "@/lib/demo";
 import UnifiedTimeline, { type CertEvent, type ReservationItem } from "./UnifiedTimeline";
 import HeroCard from "@/components/customer/HeroCard";
 import RecordAnchorBadge from "@/components/customer/RecordAnchorBadge";
@@ -786,6 +787,12 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
             ・担当者名・作業メモ・傷の位置は、車両の所有者（マイページにログイン中）、施工した店舗、
             この車両の履歴レポートをご購入の方にだけ表示しています。
           </section>
+        ) : null}
+
+        {data.shop?.slug === DEMO_TENANT_SLUG && images.length > 0 ? (
+          <p className="text-xs text-muted">
+            デモ用の証明書です。施工写真は AI で生成したイメージで、実際の施工写真ではありません。
+          </p>
         ) : null}
 
         <MediaGallery
