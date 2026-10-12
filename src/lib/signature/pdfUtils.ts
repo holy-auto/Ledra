@@ -130,21 +130,13 @@ export async function generateCertificatePdfBytes(certificateId: string): Promis
  * certificates/{certificateId}/signed_certificate.pdf に保存される。
  *
  * @param certificateId - 証明書 UUID
- * @param signatureInfo - 埋め込む署名情報（将来の UI 表示用）
+ * @param signatureInfo - 埋め込む署名情報（将来の UI 表示用。現状は PDF に入れず、ログにだけ使う。証明書の signed_at は呼び出し側の route が記録する）
  */
 export async function regenerateSignedPdf(certificateId: string, signatureInfo: PdfSignatureInfo): Promise<void> {
   try {
-    const supabase = createServiceRoleAdmin("signature PDF — generated for unauthenticated customer via signing flow");
-
-    // 署名完了日時は、PDF の生成・保存の成否と切り離して先に記録する
-    // （以前は PDF の保存に失敗すると return して、署名した事実まで残らなかった）。
-    const { error: signedAtError } = await supabase
-      .from("certificates")
-      .update({ signed_at: signatureInfo.signedAt })
-      .eq("id", certificateId);
-    if (signedAtError) console.error("[pdfUtils] Failed to record signed_at:", signedAtError.message);
-
     const pdfBytes = await generateCertificatePdfBytes(certificateId);
+
+    const supabase = createServiceRoleAdmin("signature PDF — generated for unauthenticated customer via signing flow");
     const storagePath = `certificates/${certificateId}/signed_certificate.pdf`;
 
     const { error: uploadError } = await supabase.storage.from("assets").upload(storagePath, pdfBytes, {
@@ -157,7 +149,7 @@ export async function regenerateSignedPdf(certificateId: string, signatureInfo: 
       return;
     }
 
-    console.info("[pdfUtils] Signed PDF stored:", storagePath);
+    console.info("[pdfUtils] Signed PDF stored:", storagePath, "signed_at:", signatureInfo.signedAt);
   } catch (err) {
     console.error("[pdfUtils] regenerateSignedPdf failed:", err);
   }

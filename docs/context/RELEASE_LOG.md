@@ -4,15 +4,18 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
-## 2026-10-12 写真の保存先の制限を、アプリが受け付けるものに合わせて広げる（HEIC・動画・PDF・100MB）
+## 2026-10-12 写真の保存先が HEIC・動画・PDF を受け付けるようにし、署名日時を確実に記録する
 
-- 内容: `assets` バケットの制限（画像 5 種・10MB）がアプリより狭く、iPhone の HEIC 写真・10MB 超の写真・証明書の動画・署名済み PDF の
-  保存が Storage に弾かれていた。許可する形式に `image/heic`・`video/mp4`・`video/quicktime`・`application/pdf` を足し、上限を
-  アプリの最大（動画の 100MB）にした（`20261012131344_widen_assets_bucket_limits.sql`。マージで本番に適用）。
-  `assets` への書き込み口 15 箇所が付ける形式がすべて一覧に入ることを確認。
-- 署名日時: 署名済み PDF の保存に失敗すると `regenerateSignedPdf` が早期 return して `certificates.signed_at` まで記録されなかった。
-  署名日時を PDF の生成・保存より先に記録するようにした（`regenerateSignedPdf.test.ts`。旧コードでは赤になることを確認）。
-- 残り【要確認】: プロジェクト全体の上限（Global file size limit）が 100MB 未満なら、動画はそちらで弾かれる。
+- 内容: `assets` バケットの許可形式（画像 5 種）に無かった `image/heic`・`video/mp4`・`video/quicktime`・`application/pdf` を足した
+  （iPhone の HEIC 写真・証明書の動画・署名済み PDF が Storage に弾かれていた）。既存の一覧は置き換えずに足す。上限は 10MB → 20MB
+  （アプリが受け付ける画像の上限の最大）。`20261012131344_widen_assets_bucket_limits.sql`、マージで本番に適用。
+  `assets` への書き込み口（src の 15 箇所）が付ける形式がすべて一覧に入ることを確認。使い捨ての Postgres で、足す・重複しない・
+  「制限なし（null）」は触らない・他のバケットは触らない、を確認。
+- 署名日時: 証明書の `signed_at` は、署名 PDF の再生成の中で **PDF の保存に成功したときだけ** 記録されていた（しかも応答後に
+  `void` で走らせていたので、サーバーレスでは打ち切られうる）。署名の route で応答前に同期的に記録し、PDF 再生成と店舗通知は
+  `after()` に載せた（`src/app/api/signature/sign/[token]/__tests__/route.test.ts`。旧 route では赤になることを確認）。
+- 残り: 10MB を超える写真・動画は、Vercel の関数の本文上限（約 4.5MB、コード内の記載）でアプリに届く前に弾かれる。
+  動画の上限 100MB は今の経路では使えない（OPEN_QUESTIONS 2026-10-12）。
 
 ## 2026-10-10 施工写真の保存先（`assets` バケット）を非公開にする（写真の非公開化 ③）
 
