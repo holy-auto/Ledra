@@ -3,29 +3,31 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 /**
  * ヒアリング→顧客連携が「黙って半分だけ成功する」ことを防ぐ検査。
  *
- * 直した握り潰しは3つ: ヒアリング取得の DB エラー（404 に化けていた）、
- * 車両 insert のエラー（捨てていた）、ヒアリング更新のエラー（受け取ってもいなかった）。
+ * 3つの書き込み（顧客・車両・ヒアリング更新）そのものは DB 側の
+ * `public.link_hearing_customer` に1トランザクションでまとめてあるので、
+ * **原子性・二度押し・車両だけの失敗は SQL 側の検査**が行を入れて確かめている
+ * （`scripts/replay/checks/link_hearing_customer.sql`、`npm run check:migrations`）。
+ *
+ * ここで見るのはルート層の責任だけ:
+ *   - 関数に**呼び出し元のテナント**を渡しているか
+ *   - 返り値の各形（not_found / 車両だけ失敗 / 想定外）を取り違えずに HTTP に写しているか
+ *   - 生の DB メッセージ・SQLSTATE を画面へ出していないか
+ *   - PUT の通常更新が、送っていない列を触らないか／DB の CHECK に無い status を 400 で止めるか
  */
 const HEARING_ID = "11111111-1111-4111-8111-111111111111";
 
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 
-type Res = { data: unknown; error: unknown };
-let hearingRes: Res;
-let customerRes: Res;
-let vehicleRes: Res;
+let rpcRes: { data: unknown; error: unknown };
+const rpcCalls: { fn: string; args: unknown }[] = [];
 let updateRes: { error: unknown };
 const updates: Record<string, unknown>[] = [];
-/** insert が走った表の名前（押し直しで顧客を作り直していないかを見る）。 */
-const inserted: string[] = [];
 
 const supabase = {
-  from(table: string) {
+  from(_table: string) {
     const q = {
       select: () => q,
       eq: () => q,
-      insert: () => (inserted.push(table), q),
-      single: async () => (table === "customers" ? customerRes : table === "vehicles" ? vehicleRes : hearingRes),
       // `.eq()` は連鎖もできて await もできる（通常更新は .eq を2回繋ぐ）。
       update: (row: Record<string, unknown>) => {
         updates.push(row);
@@ -38,6 +40,10 @@ const supabase = {
     };
     return q;
   },
+  rpc: async (fn: string, args: unknown) => {
+    rpcCalls.push({ fn, args });
+    return rpcRes;
+  },
 };
 
 vi.mock("@/lib/api/withCaller", () => ({
@@ -46,105 +52,88 @@ vi.mock("@/lib/api/withCaller", () => ({
 }));
 
 const { PUT } = await import("../route");
-const link = () =>
+const put = (body: Record<string, unknown>) =>
   (PUT as unknown as (r: Request) => Promise<Response>)(
-    new Request("https://app.example/api/admin/hearings", {
-      method: "PUT",
-      body: JSON.stringify({ id: HEARING_ID, action: "link_customer" }),
-    }),
+    new Request("https://app.example/api/admin/hearings", { method: "PUT", body: JSON.stringify(body) }),
   );
+const link = () => put({ id: HEARING_ID, action: "link_customer" });
 
 describe("PUT /api/admin/hearings action=link_customer", () => {
   beforeEach(() => {
-    hearingRes = {
-      data: { id: HEARING_ID, customer_name: "山田", vehicle_maker: "トヨタ", vehicle_model: "ハイエース" },
+    rpcRes = {
+      data: { ok: true, customer_id: "c1", vehicle_id: "v1", vehicle_error_code: null },
       error: null,
     };
-    customerRes = { data: { id: "c1" }, error: null };
-    vehicleRes = { data: { id: "v1" }, error: null };
     updateRes = { error: null };
     updates.length = 0;
-    inserted.length = 0;
+    rpcCalls.length = 0;
   });
 
-  it("正常系は車両まで紐付け、vehicle_error は付かない", async () => {
+  it("1トランザクションの関数を、呼び出し元のテナント付きで呼ぶ", async () => {
     const res = await link();
     expect(res.status).toBe(200);
-    const j = await res.json();
-    expect(j).toMatchObject({ ok: true, customer_id: "c1", vehicle_id: "v1" });
-    expect(j.vehicle_error).toBeUndefined();
-    expect(updates[0]).toMatchObject({ customer_id: "c1", vehicle_id: "v1", status: "linked" });
+    expect(await res.json()).toMatchObject({ ok: true, customer_id: "c1", vehicle_id: "v1" });
+    // テナントを渡し忘れると、関数側の絞り込みが RLS だけになる（複数テナントに属する
+    // ユーザで、別テナントのヒアリングを連携できてしまう）。
+    expect(rpcCalls).toEqual([{ fn: "link_hearing_customer", args: { p_hearing_id: HEARING_ID, p_tenant_id: "t1" } }]);
   });
 
-  it("車両 insert が落ちても顧客連携は完遂し、落ちたことを返す", async () => {
-    vehicleRes = { data: null, error: { code: "23502", message: "null value in column maker" } };
+  it("車両だけ落ちた返り値は 200 + vehicle_error。SQLSTATE は画面へ出さない", async () => {
+    rpcRes = {
+      data: { ok: true, customer_id: "c1", vehicle_id: null, vehicle_error_code: "23502" },
+      error: null,
+    };
     const res = await link();
-    // 顧客行は作成済みなので 500 では返さない（押し直しで顧客が二重に増える）。
+    // 顧客とヒアリングは確定しているので失敗にはしない（押し直しを誘発しない）。
     expect(res.status).toBe(200);
     const j = await res.json();
     expect(j.vehicle_id).toBeNull();
     expect(j.vehicle_error).toContain("車両の登録に失敗");
-    // 生の DB メッセージを画面へ出さない。
-    expect(JSON.stringify(j)).not.toContain("null value in column");
-    expect(updates[0]).toMatchObject({ vehicle_id: null, status: "linked" });
+    expect(JSON.stringify(j)).not.toContain("23502");
   });
 
-  it("ヒアリング更新が落ちたら 500。ok: true で返さない", async () => {
-    updateRes = { error: { code: "42501", message: "permission denied" } };
+  it("not_found は 404、関数の失敗は 500。ok が無い返り値を成功にしない", async () => {
+    rpcRes = { data: { ok: false, error: "not_found" }, error: null };
+    expect((await link()).status).toBe(404);
+
+    rpcRes = { data: null, error: { code: "42501", message: "permission denied" } };
+    expect((await link()).status).toBe(500);
+
+    // 返り値の形が想定と違うとき（null・ok 無し）は 500。黙って ok: true を返さない。
+    rpcRes = { data: null, error: null };
+    expect((await link()).status).toBe(500);
+    rpcRes = { data: { customer_id: "c1" }, error: null };
     const res = await link();
     expect(res.status).toBe(500);
     expect((await res.json()).ok).toBeUndefined();
   });
 
   it("通常更新は送っていない列を触らない（省いた列が null で消えない）", async () => {
-    const res = await (PUT as unknown as (r: Request) => Promise<Response>)(
-      new Request("https://app.example/api/admin/hearings", {
-        method: "PUT",
-        body: JSON.stringify({ id: HEARING_ID, customer_name: "新しい名前" }),
-      }),
-    );
+    const res = await put({ id: HEARING_ID, customer_name: "新しい名前" });
     expect(res.status).toBe(200);
     // zod の textField に `.transform((v) => v || null)` が戻ると、ここに
     // vehicle_maker: null 以下18列が並ぶ（= 入力が消える）。
     expect(Object.keys(updates[0]).sort()).toEqual(["customer_name", "updated_at"]);
+    // 関数は通常更新では呼ばない。
+    expect(rpcCalls).toEqual([]);
   });
 
-  it("既に顧客が付いているヒアリングは、押し直しても顧客を作り直さない", async () => {
-    // ヒアリング更新だけが落ちた回のあと、操作者がもう一度押した状況
-    // （一覧のボタンは status !== "linked" で出続ける）。
-    (hearingRes.data as Record<string, unknown>).customer_id = "c1";
-    const res = await link();
-    expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ ok: true, customer_id: "c1", vehicle_id: "v1" });
-    // customers の insert は走らない（走ると顧客が二重に増える）。
-    expect(inserted).toEqual(["vehicles"]);
-  });
-
-  it("既に車両が付いていれば車両も作り直さない", async () => {
-    (hearingRes.data as Record<string, unknown>).customer_id = "c1";
-    (hearingRes.data as Record<string, unknown>).vehicle_id = "v9";
-    const j = await (await link()).json();
-    expect(j).toMatchObject({ customer_id: "c1", vehicle_id: "v9" });
-    expect(inserted).toEqual([]);
+  it("status は本番 DB の CHECK と同じ3値だけ通す（完了ボタンが 400 で死なない）", async () => {
+    // BrandingHearingClient.handleComplete が送る値。zod に無かったので常に 400 だった。
+    expect((await put({ id: HEARING_ID, status: "completed" })).status).toBe(200);
+    expect(updates[0]).toMatchObject({ status: "completed" });
+    // DB の CHECK に無い値は 500（CHECK 違反）ではなく 400 で止める。
+    for (const bad of ["confirmed", "archived"]) {
+      updates.length = 0;
+      expect((await put({ id: HEARING_ID, status: bad })).status).toBe(400);
+      expect(updates).toEqual([]);
+    }
   });
 
   it("明示的な null は 400。500 にしない", async () => {
     // hearings.customer_name は本番で NOT NULL（既定 ''）。null をそのまま書くと 23502 になる。
-    const res = await (PUT as unknown as (r: Request) => Promise<Response>)(
-      new Request("https://app.example/api/admin/hearings", {
-        method: "PUT",
-        body: JSON.stringify({ id: HEARING_ID, customer_name: null }),
-      }),
-    );
+    const res = await put({ id: HEARING_ID, customer_name: null });
     expect(res.status).toBe(400);
     expect(updates).toEqual([]);
-  });
-
-  it("ヒアリング取得の DB エラーは 500。404 に化けない", async () => {
-    hearingRes = { data: null, error: { code: "42501", message: "permission denied" } };
-    expect((await link()).status).toBe(500);
-    // 0 行（PGRST116）だけが 404。
-    hearingRes = { data: null, error: { code: "PGRST116", message: "no rows" } };
-    expect((await link()).status).toBe(404);
   });
 });

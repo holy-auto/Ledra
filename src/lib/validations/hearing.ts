@@ -22,7 +22,27 @@ import { z } from "zod";
  */
 const textField = (max: number) => z.string().trim().max(max).optional();
 
-const hearingStatuses = ["draft", "confirmed", "linked", "archived"] as const;
+/**
+ * `hearings.status` の値。**本番 DB の CHECK がこの3つなので、ここもこの3つ。**
+ *
+ * 以前は `["draft", "confirmed", "linked", "archived"]` だった。実測（2026-10-10）:
+ *   - 本番の CHECK は `('draft','completed','linked')`（`pg_get_constraintdef` と
+ *     `supabase/migrations/20260322000004_hearings.sql:7` の2経路で一致）
+ *   - 画面のラベル（`HearingClient.tsx` / `branding/BrandingHearingClient.tsx` の
+ *     `statusLabel`）も draft / completed / linked
+ *   - zod だけが `confirmed` / `archived` を持ち、`completed` を持っていなかった
+ *
+ * 実害: `BrandingHearingClient.handleComplete` は `status: "completed"` を送るので
+ * **導入ヒアリングの「完了」ボタンは常に 400 で失敗していた**。逆に zod だけが持つ
+ * `confirmed` / `archived` を送ると CHECK 違反で 500 になる（どちらも保存できない値）。
+ *
+ * `confirmed` / `archived` を読むコードは無い（grep で 0 件・この定義自体を除く）。
+ *
+ * IMP-001 について: `src/lib/domain/states.ts` の正準6軸に Hearing 軸は無く、
+ * ここは**稼働中の DB の値に検証器を合わせただけ**なので、正準モジュールへの追加はしない。
+ * ヒアリングを正準語彙へ載せるかは IMP-015 の判断（DECISION_LOG 2026-10-10）。
+ */
+const hearingStatuses = ["draft", "completed", "linked"] as const;
 
 /** DB CHECK に依存する自由入力カラム群。個別制約は DB 側。 */
 const hearingFieldsShape = {
