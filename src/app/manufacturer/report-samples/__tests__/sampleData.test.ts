@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEMO_MANUFACTURER_ID, isDemoManufacturer } from "@/lib/manufacturers/demo";
 import {
   SAMPLE_REPORTS,
   coatAge,
@@ -33,5 +34,13 @@ describe("連携レポート見本のダミーデータ", () => {
   it("業種タブの id が重複しない", () => {
     const ids = SAMPLE_REPORTS.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("見本を出すメーカーの判定", () => {
+  it("デモ用メーカーだけが true", () => {
+    expect(isDemoManufacturer(DEMO_MANUFACTURER_ID)).toBe(true);
+    expect(isDemoManufacturer("11111111-1111-1111-1111-111111111111")).toBe(false);
+    expect(isDemoManufacturer(null)).toBe(false);
   });
 });

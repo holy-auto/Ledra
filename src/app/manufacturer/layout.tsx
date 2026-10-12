@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import ManufacturerRouteGuard from "./ManufacturerRouteGuard";
 import NotificationBell from "@/components/ui/NotificationBell";
+import { isDemoManufacturer } from "@/lib/manufacturers/demo";
 
 const AUTH_ROUTES = ["/manufacturer/login"];
 
@@ -15,7 +16,6 @@ const NAV = [
   { href: "/manufacturer/tenants", label: "認定施工店" },
   { href: "/manufacturer/certificates", label: "発行履歴" },
   { href: "/manufacturer/quality", label: "品質チェック" },
-  { href: "/manufacturer/report-samples", label: "連携レポート見本" },
   { href: "/manufacturer/templates", label: "デザインテンプレート" },
   { href: "/manufacturer/audit", label: "操作ログ" },
 ];
@@ -24,9 +24,13 @@ const NAV = [
 // ページ側で /manufacturer にリダイレクトされる。
 const ADMIN_NAV = [{ href: "/manufacturer/members", label: "ポータルメンバー" }];
 
+// デモ用メーカーのアカウントにだけ表示する商談用の見本（ダミーデータ）。ページ側でも同じ判定で弾く。
+const DEMO_NAV = [{ href: "/manufacturer/report-samples", label: "連携レポート見本" }];
+
 function Sidebar() {
   const pathname = usePathname();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isDemo, setIsDemo] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,7 +39,9 @@ function Sidebar() {
         const res = await fetch("/api/manufacturer/me", { cache: "no-store" });
         if (!res.ok) return;
         const json = await res.json();
-        if (!cancelled) setIsAdmin(json.role === "admin");
+        if (cancelled) return;
+        setIsAdmin(json.role === "admin");
+        setIsDemo(isDemoManufacturer(json.manufacturer_id));
       } catch {
         /* ignore — defaults to hiding admin nav */
       }
@@ -45,7 +51,7 @@ function Sidebar() {
     };
   }, []);
 
-  const items = isAdmin ? [...NAV, ...ADMIN_NAV] : NAV;
+  const items = [...NAV, ...(isDemo ? DEMO_NAV : []), ...(isAdmin ? ADMIN_NAV : [])];
 
   const logout = async () => {
     try {

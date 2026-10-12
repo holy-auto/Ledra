@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
+import { isDemoManufacturer } from "@/lib/manufacturers/demo";
 import PageHeader from "@/components/ui/PageHeader";
 import ReportSamplesClient from "./ReportSamplesClient";
 
@@ -10,6 +11,8 @@ export default async function ManufacturerReportSamplesPage() {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveManufacturerCaller(supabase);
   if (!caller) redirect("/manufacturer/login");
+  // 商談用のダミー見本なので、提携済みメーカーの本番アカウントには見せない
+  if (!isDemoManufacturer(caller.manufacturerId)) redirect("/manufacturer");
 
   return (
     <div className="space-y-6">
