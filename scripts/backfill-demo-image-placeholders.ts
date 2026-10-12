@@ -1,10 +1,11 @@
 /**
  * backfill-demo-image-placeholders.ts
  *
- * 既存の `certificate_images` のうち storage_path が `demo/LEDRA-DEMO-…` の行に対し、
- * Storage 実ファイル（軽量プレースホルダ JPEG）を配置する。フルデモシード
- * (`setup-demo-tenant.ts`) を再実行せずに、公開ページの Storage 400 だけを解消したい
- * ときに使う。DB は書き換えない（Storage への upsert のみ）。
+ * 既存の `certificate_images` のうち storage_path が `demo/LEDRA-DEMO-…/NN.jpg` の行に対し、
+ * Storage 実ファイル（施工の種類ごとのデモ写真。無い種類はプレースホルダ）を配置する。
+ * フルデモシード (`setup-demo-tenant.ts`) を再実行せずに、写真の差し替えや公開ページの
+ * Storage 400 の解消だけをしたいときに使う。DB は書き換えない（Storage への upsert のみ）。
+ * 撮影用の anchored.jpg は sha256 が DB に記録済みなので触らない。
  *
  * 前提:
  *   - SUPABASE_URL（または NEXT_PUBLIC_SUPABASE_URL）と SUPABASE_SERVICE_ROLE_KEY が env にあること
@@ -16,7 +17,7 @@
  *   - upsert: true なので何度実行しても安全（既存オブジェクトは上書き）。
  */
 import { createClient } from "@supabase/supabase-js";
-import { generateDemoPlaceholderJpeg } from "./demoPlaceholderImage";
+import { demoPhotoFor } from "./demoPlaceholderImage";
 // 書き込み先バケットは公開ページの読み取り (publicData.ts の getPublicUrl) と同じ定数。
 import { CERTIFICATE_IMAGE_BUCKET } from "../src/lib/certificateImages/constants";
 
@@ -39,19 +40,20 @@ async function main(): Promise<void> {
     .like("storage_path", "demo/LEDRA-DEMO-%");
   if (error) throw new Error(`certificate_images の取得に失敗: ${error.message}`);
 
-  const paths = (data ?? []).map((r) => r.storage_path as string).filter(Boolean);
+  const paths = (data ?? []).map((r) => r.storage_path as string).filter((p) => /^demo\/LEDRA-DEMO-\d{4}\/\d{2}\.jpg$/.test(p));
   console.log(`対象パス: ${paths.length} 件（バケット: ${CERTIFICATE_IMAGE_BUCKET}）`);
   if (paths.length === 0) {
     console.log("対象なし。終了。");
     return;
   }
 
-  const placeholder = await generateDemoPlaceholderJpeg();
   const results = await Promise.all(
     paths.map(async (path) => {
+      const [, publicId, nn] = path.split("/");
+      const body = await demoPhotoFor(publicId, Number(nn.slice(0, 2)) - 1);
       const { error: upErr } = await admin.storage
         .from(CERTIFICATE_IMAGE_BUCKET)
-        .upload(path, placeholder, { contentType: "image/jpeg", upsert: true });
+        .upload(path, body, { contentType: "image/jpeg", upsert: true });
       if (upErr) console.warn(`  ⚠️ upload 失敗 (${path}): ${upErr.message}`);
       return !upErr;
     }),

@@ -25,7 +25,7 @@
 
 import { createHash, randomBytes } from "crypto";
 import { createClient } from "@supabase/supabase-js";
-import { generateDemoPlaceholderJpeg } from "./demoPlaceholderImage";
+import { demoPhotoFor } from "./demoPlaceholderImage";
 // 書き込み先バケットは公開ページの読み取り (publicData.ts の getPublicUrl) と
 // 同じ定数を使い、writer/reader がドリフトしないようにする。
 import { CERTIFICATE_IMAGE_BUCKET } from "../src/lib/certificateImages/constants";
@@ -144,47 +144,77 @@ type Cert = {
 };
 
 const CERTS: Cert[] = [
-  { idn: 1,  vehicleIdn: 1,  public_id: "LEDRA-DEMO-0001", service_type: "glass-coating",    preset_title: "プレミアムガラスコーティング",    preset_products: ["9H Premium", "ホイールガラスコート"],            certificate_no: "2026-LDM-0001", daysAgo: 86 },
-  { idn: 2,  vehicleIdn: 2,  public_id: "LEDRA-DEMO-0002", service_type: "ceramic-coating",  preset_title: "セラミックコーティング（8層仕上げ）", preset_products: ["Ceramic Pro 9H", "Top Coat Light"],            certificate_no: "2026-LDM-0002", daysAgo: 72 },
-  { idn: 3,  vehicleIdn: 3,  public_id: "LEDRA-DEMO-0003", service_type: "film-protection",  preset_title: "ヘッドライトプロテクション（PPF）", preset_products: ["XPEL Ultimate Plus"],                           certificate_no: "2026-LDM-0003", daysAgo: 65 },
-  { idn: 4,  vehicleIdn: 4,  public_id: "LEDRA-DEMO-0004", service_type: "glass-coating",    preset_title: "撥水ガラスコーティング",          preset_products: ["Aqua Repel"],                                    certificate_no: "2026-LDM-0004", daysAgo: 58 },
-  { idn: 5,  vehicleIdn: 5,  public_id: "LEDRA-DEMO-0005", service_type: "wrap-full",        preset_title: "フルラッピング（マットブラック）", preset_products: ["3M 2080 Matte Black"],                           certificate_no: "2026-LDM-0005", daysAgo: 52 },
-  { idn: 6,  vehicleIdn: 6,  public_id: "LEDRA-DEMO-0006", service_type: "interior-care",    preset_title: "本革シートメンテナンス",          preset_products: ["Leather Balm"],                                 certificate_no: "2026-LDM-0006", daysAgo: 48 },
-  { idn: 7,  vehicleIdn: 7,  public_id: "LEDRA-DEMO-0007", service_type: "film-window",      preset_title: "ウィンドウフィルム（IR-05 可視光）", preset_products: ["IKC IR-05"],                                    certificate_no: "2026-LDM-0007", daysAgo: 41 },
-  { idn: 8,  vehicleIdn: 8,  public_id: "LEDRA-DEMO-0008", service_type: "glass-coating",    preset_title: "ガラスコーティング（スタンダード）", preset_products: ["9H Standard"],                                 certificate_no: "2026-LDM-0008", daysAgo: 34 },
-  { idn: 9,  vehicleIdn: 9,  public_id: "LEDRA-DEMO-0009", service_type: "detailing",       preset_title: "ファインディティーリング",        preset_products: ["Clay Bar", "Polish Stage 1", "Finishing Wax"],  certificate_no: "2026-LDM-0009", daysAgo: 27 },
-  { idn: 10, vehicleIdn: 10, public_id: "LEDRA-DEMO-0010", service_type: "ceramic-coating",  preset_title: "セラミックコーティング（5年保証）", preset_products: ["Ceramic Pro Sport"],                           certificate_no: "2026-LDM-0010", daysAgo: 21 },
-  { idn: 11, vehicleIdn: 2,  public_id: "LEDRA-DEMO-0011", service_type: "glass-coating",    preset_title: "ボディガラスコーティング再施工", preset_products: ["9H Maintenance"],                                certificate_no: "2026-LDM-0011", daysAgo: 17 },
-  { idn: 12, vehicleIdn: 5,  public_id: "LEDRA-DEMO-0012", service_type: "film-protection",  preset_title: "フロントバンパーPPF",           preset_products: ["SunTek Ultra"],                                  certificate_no: "2026-LDM-0012", daysAgo: 14 },
-  { idn: 13, vehicleIdn: 1,  public_id: "LEDRA-DEMO-0013", service_type: "detailing",       preset_title: "ホイール脱着・内側コーティング",   preset_products: ["Wheel Ceramic"],                                certificate_no: "2026-LDM-0013", daysAgo: 10 },
-  { idn: 14, vehicleIdn: 3,  public_id: "LEDRA-DEMO-0014", service_type: "interior-care",    preset_title: "ファブリックシートクリーニング", preset_products: ["Fabric Guard Pro"],                              certificate_no: "2026-LDM-0014", daysAgo: 6 },
-  { idn: 15, vehicleIdn: 10, public_id: "LEDRA-DEMO-0015", service_type: "ceramic-coating",  preset_title: "ホイールセラミックコーティング", preset_products: ["Wheel Ceramic Pro"],                             certificate_no: "2026-LDM-0015", daysAgo: 2 },
-  { idn: 16, vehicleIdn: 8,  public_id: "LEDRA-DEMO-0016", service_type: "glass-coating",    preset_title: "新車同時施工 ガラスコート",      preset_products: ["9H Premium", "Maintenance Kit"],                 certificate_no: "2026-LDM-0016", daysAgo: 1 },
+  { idn: 1,  vehicleIdn: 1,  public_id: "LEDRA-DEMO-0001", service_type: "glass-coating",    preset_title: "プレミアムガラスコーティング",    preset_products: ["9H Premium", "ホイールガラスコート"],            certificate_no: "2026-LDM-0001", daysAgo: 86,
+    free_text: "洗車・鉄粉除去のあと、膜厚計で塗装の状態を確認してから1段階研磨で小傷と水シミを除去しました。\n脱脂後に 9H Premium を2層塗布し、赤外線ヒーターで硬化。ホイール4本の表面にもガラスコートを施工しています。\n施工後2週間は洗車機・ワックスの使用をお控えください。" },
+  { idn: 2,  vehicleIdn: 2,  public_id: "LEDRA-DEMO-0002", service_type: "ceramic-coating",  preset_title: "セラミックコーティング（8層仕上げ）", preset_products: ["Ceramic Pro 9H", "Top Coat Light"],            certificate_no: "2026-LDM-0002", daysAgo: 72,
+    free_text: "納車直後の新車のため研磨は行わず、下地洗浄と脱脂のみで施工しました。\nCeramic Pro 9H を7層、仕上げに Top Coat Light を1層重ねた計8層仕上げです。各層の間に硬化時間を取り、最終層は24時間の室内保管で硬化させています。\n半年ごとのメンテナンス（トップコート再塗布）で艶と撥水を維持できます。" },
+  { idn: 3,  vehicleIdn: 3,  public_id: "LEDRA-DEMO-0003", service_type: "film-protection",  preset_title: "ヘッドライトプロテクション（PPF）", preset_products: ["XPEL Ultimate Plus"],                           certificate_no: "2026-LDM-0003", daysAgo: 65,
+    free_text: "左右ヘッドライトの黄ばみをポリッシュで除去したうえで、XPEL Ultimate Plus を車種別カットデータで貼り付けました。\n端部は巻き込み施工で剥がれにくくしています。飛び石・紫外線による再劣化を防ぎます。\n貼付後1週間は高圧洗浄機を端部に直接当てないでください。" },
+  { idn: 4,  vehicleIdn: 4,  public_id: "LEDRA-DEMO-0004", service_type: "glass-coating",    preset_title: "撥水ガラスコーティング",          preset_products: ["Aqua Repel"],                                    certificate_no: "2026-LDM-0004", daysAgo: 58,
+    free_text: "ボディ全体の洗車・鉄粉除去・脱脂のあと、撥水タイプの Aqua Repel を1層施工しました。\nルーフとボンネットの水シミは軽研磨で除去済み。窓ガラスにも撥水剤を塗布しています。\n月1回程度の手洗い洗車で撥水効果が長持ちします。" },
+  { idn: 5,  vehicleIdn: 5,  public_id: "LEDRA-DEMO-0005", service_type: "wrap-full",        preset_title: "フルラッピング（マットブラック）", preset_products: ["3M 2080 Matte Black"],                           certificate_no: "2026-LDM-0005", daysAgo: 52,
+    free_text: "ボディ外板（ルーフ・ドア内側の見える範囲を含む）を 3M 2080 Matte Black でフルラッピングしました。\nエンブレム・ドアハンドルは一度取り外して貼り込み、再取付しています。純正塗装は保護された状態です。\nマット面のため、ワックス・研磨剤入りのケミカルは使用しないでください。" },
+  { idn: 6,  vehicleIdn: 6,  public_id: "LEDRA-DEMO-0006", service_type: "interior-care",    preset_title: "本革シートメンテナンス",          preset_products: ["Leather Balm"],                                 certificate_no: "2026-LDM-0006", daysAgo: 48,
+    free_text: "本革シート（前後席）の汚れ落としと保湿・保護のメンテナンスです。\n専用クリーナーとブラシで皮脂汚れ・ジーンズの色移りを除去し、Leather Balm で保湿。運転席サイドサポートの擦れは補色で目立たなくしています。\n3〜6ヶ月ごとの保湿で、ひび割れと硬化を防げます。" },
+  { idn: 7,  vehicleIdn: 7,  public_id: "LEDRA-DEMO-0007", service_type: "film-window",      preset_title: "ウィンドウフィルム（IR-05 可視光）", preset_products: ["IKC IR-05"],                                    certificate_no: "2026-LDM-0007", daysAgo: 41,
+    free_text: "フロントガラスと運転席・助手席のドアガラスに、透明の赤外線カットフィルム IKC IR-05 を施工しました。\n施工後に可視光線透過率を測定し、全面で 70% 以上（保安基準）であることを確認しています。\n貼付後3日間は窓の開閉をお控えください。" },
+  { idn: 8,  vehicleIdn: 8,  public_id: "LEDRA-DEMO-0008", service_type: "glass-coating",    preset_title: "ガラスコーティング（スタンダード）", preset_products: ["9H Standard"],                                 certificate_no: "2026-LDM-0008", daysAgo: 34,
+    free_text: "洗車・鉄粉除去・脱脂のあと、9H Standard を1層施工しました。\n塗装状態が良好なため研磨は行っていません。\n施工後1週間は雨天走行後に水滴を拭き取ると、シミの予防になります。" },
+  { idn: 9,  vehicleIdn: 9,  public_id: "LEDRA-DEMO-0009", service_type: "detailing",       preset_title: "ファインディティーリング",        preset_products: ["Clay Bar", "Polish Stage 1", "Finishing Wax"],  certificate_no: "2026-LDM-0009", daysAgo: 27,
+    free_text: "粘土（Clay Bar）で塗装表面の鉄粉・ピッチを除去し、Polish Stage 1 で洗車傷を1段階研磨しました。\n仕上げに Finishing Wax を手塗りで施工。タイヤ・樹脂パーツの保護と室内の簡易清掃も含みます。" },
+  { idn: 10, vehicleIdn: 10, public_id: "LEDRA-DEMO-0010", service_type: "ceramic-coating",  preset_title: "セラミックコーティング（5年保証）", preset_products: ["Ceramic Pro Sport"],                           certificate_no: "2026-LDM-0010", daysAgo: 21,
+    free_text: "下地処理（洗車・鉄粉除去・2段階研磨・脱脂）のあと、Ceramic Pro Sport を施工しました。\n5年保証の対象です。保証の継続には年1回の当店でのメンテナンス受診が必要です。\n施工後2週間は洗車機の使用をお控えください。" },
+  { idn: 11, vehicleIdn: 2,  public_id: "LEDRA-DEMO-0011", service_type: "glass-coating",    preset_title: "ボディガラスコーティング再施工", preset_products: ["9H Maintenance"],                                certificate_no: "2026-LDM-0011", daysAgo: 17,
+    free_text: "前回施工（LEDRA-DEMO-0002）のコーティング被膜の上から行うメンテナンス施工です。\n被膜を傷めない中性シャンプーで洗車し、水垢・イオンデポジットを専用クリーナーで除去。撥水が落ちていたボンネットとルーフを中心に 9H Maintenance を再塗布しました。\n施工後は撥水角が新車施工時と同等まで回復しています。" },
+  { idn: 12, vehicleIdn: 5,  public_id: "LEDRA-DEMO-0012", service_type: "film-protection",  preset_title: "フロントバンパーPPF",           preset_products: ["SunTek Ultra"],                                  certificate_no: "2026-LDM-0012", daysAgo: 14,
+    free_text: "高速走行が多いとのことで、飛び石対策としてフロントバンパー全面に SunTek Ultra を施工しました。\nセンサー周りはフィルムを切り抜き、検知に影響がないことを確認済みです。" },
+  { idn: 13, vehicleIdn: 1,  public_id: "LEDRA-DEMO-0013", service_type: "detailing",       preset_title: "ホイール脱着・内側コーティング",   preset_products: ["Wheel Ceramic"],                                certificate_no: "2026-LDM-0013", daysAgo: 10,
+    free_text: "ホイール4本を脱着し、普段洗えないリム内側とスポーク裏のブレーキダストを鉄粉除去剤で洗浄しました。\n表裏に Wheel Ceramic を施工し、再装着時はトルクレンチで規定トルクに締め付けています。\n100km 走行後を目安に増し締め点検にお越しください。" },
+  { idn: 14, vehicleIdn: 3,  public_id: "LEDRA-DEMO-0014", service_type: "interior-care",    preset_title: "ファブリックシートクリーニング", preset_products: ["Fabric Guard Pro"],                              certificate_no: "2026-LDM-0014", daysAgo: 6,
+    free_text: "2列目・3列目シートの食べこぼし汚れを、リンサーで洗浄・吸引しました。\n乾燥後に防汚剤 Fabric Guard Pro を施工。飲み物などをこぼしても染み込みにくくなります。" },
+  { idn: 15, vehicleIdn: 10, public_id: "LEDRA-DEMO-0015", service_type: "ceramic-coating",  preset_title: "ホイールセラミックコーティング", preset_products: ["Wheel Ceramic Pro"],                             certificate_no: "2026-LDM-0015", daysAgo: 2,
+    free_text: "ボディのセラミックコーティング（LEDRA-DEMO-0010）に合わせて、ホイール4本の表面に Wheel Ceramic Pro を施工しました。\nブレーキダストが固着しにくくなり、水洗いだけで落ちやすくなります。" },
+  { idn: 16, vehicleIdn: 8,  public_id: "LEDRA-DEMO-0016", service_type: "glass-coating",    preset_title: "新車同時施工 ガラスコート",      preset_products: ["9H Premium", "Maintenance Kit"],                 certificate_no: "2026-LDM-0016", daysAgo: 1,
+    free_text: "9H Premium を2層施工しました。\nご自宅でのお手入れ用に Maintenance Kit（専用シャンプー・メンテナンス剤）をお渡ししています。月1回のメンテナンス剤の使用で艶が長持ちします。" },
 
   // ─── 撮影用ヒーロー車両 (vehicle 11) の履歴: 施工と整備を時系列で交互に ───
-  { idn: 17, vehicleIdn: 11, public_id: "LEDRA-DEMO-0017", service_type: "coating",     preset_title: "新車ガラスコーティング",           preset_products: ["9H Premium", "ホイールガラスコート"], daysAgo: 1280 },
-  { idn: 18, vehicleIdn: 11, public_id: "LEDRA-DEMO-0018", service_type: "ppf",         preset_title: "フロントプロテクションフィルム（PPF）", preset_products: ["XPEL Ultimate Plus"],                daysAgo: 1279 },
+  { idn: 17, vehicleIdn: 11, public_id: "LEDRA-DEMO-0017", service_type: "coating",     preset_title: "新車ガラスコーティング",           preset_products: ["9H Premium", "ホイールガラスコート"], daysAgo: 1280,
+    free_text: "納車前の新車に施工しました。輸送中に付いた鉄粉と洗車傷を除去するため、軽研磨のあと脱脂。\n9H Premium を2層塗布し、赤外線ヒーターで硬化させています。ホイール表面にもガラスコートを施工。\n1年ごとのメンテナンスで艶と撥水を維持します。" },
+  { idn: 18, vehicleIdn: 11, public_id: "LEDRA-DEMO-0018", service_type: "ppf",         preset_title: "フロントプロテクションフィルム（PPF）", preset_products: ["XPEL Ultimate Plus"],                daysAgo: 1279,
+    free_text: "飛び石が当たりやすいボンネット先端・フロントバンパー・左右ヘッドライト・ドアミラーに XPEL Ultimate Plus を施工しました。\n前日施工のガラスコーティングの硬化を確認してから貼り付けています。小傷はフィルム表面の自己修復機能で目立たなくなります。" },
   { idn: 19, vehicleIdn: 11, public_id: "LEDRA-DEMO-0019", service_type: "maintenance", preset_title: "6ヶ月点検",                       preset_products: [], daysAgo: 1100,
-    free_text: "6ヶ月点検を実施しました。異常なし。",
-    maintenance_json: { work_types: ["periodic_inspection"], mileage: 4800, findings: "全項目異常なし。" } },
+    free_text: "新車購入後6ヶ月の無料点検です。\nエンジンルーム・足回り・灯火類・タイヤの状態を点検し、異常はありませんでした。PPF とコーティングの状態も併せて確認しています。",
+    maintenance_json: { work_types: ["periodic_inspection"], mileage: 4800, mechanic_name: "木村 拓也", next_service_date: ymdOffset(-1100 + 180),
+      findings: "エンジンオイル量・汚れ：問題なし（次回の12ヶ月点検で交換予定）\nブレーキパッド残量：フロント 9mm / リア 9mm\nタイヤ溝：7.5mm、空気圧を規定値（前後 230kPa）に調整\n灯火類・ワイパー・バッテリー電圧：正常\n下回り：オイル漏れ・損傷なし" } },
   { idn: 20, vehicleIdn: 11, public_id: "LEDRA-DEMO-0020", service_type: "maintenance", preset_title: "12ヶ月法定点検・オイル交換",       preset_products: ["エンジンオイル", "オイルフィルター"], daysAgo: 915,
-    free_text: "12ヶ月法定点検とオイル交換を実施しました。",
-    maintenance_json: { work_types: ["periodic_inspection", "oil_change"], mileage: 10900, parts_replaced: "エンジンオイル 0W-16 4.2L\nオイルフィルター", findings: "ブレーキパッド残量 フロント8mm / リア8mm。" } },
-  { idn: 21, vehicleIdn: 11, public_id: "LEDRA-DEMO-0021", service_type: "coating",     preset_title: "ガラスコーティング 1年メンテナンス", preset_products: ["9H Maintenance"], daysAgo: 914 },
+    free_text: "道路運送車両法で定められた12ヶ月点検（法定点検）と、エンジンオイル・オイルフィルターの交換を行いました。\n点検29項目すべて実施し、整備が必要な箇所はありませんでした。",
+    maintenance_json: { work_types: ["periodic_inspection", "oil_change"], mileage: 10900, mechanic_name: "木村 拓也", next_service_date: ymdOffset(-915 + 182),
+      parts_replaced: "エンジンオイル 0W-16 4.2L\nオイルフィルター（純正品）",
+      findings: "ブレーキパッド残量：フロント 8mm / リア 8mm\nタイヤ溝：6.8mm、偏摩耗なし\n冷却水・ブレーキフルード量：規定範囲内\nハイブリッドシステム：故障コードなし（診断機で確認）\n次回オイル交換の目安：走行 15,900km または 6ヶ月後" } },
+  { idn: 21, vehicleIdn: 11, public_id: "LEDRA-DEMO-0021", service_type: "coating",     preset_title: "ガラスコーティング 1年メンテナンス", preset_products: ["9H Maintenance"], daysAgo: 914,
+    free_text: "新車時に施工したガラスコーティング（LEDRA-DEMO-0017）の1年メンテナンスです。\n中性シャンプーで洗車後、ボディに付いた水垢・イオンデポジット（水シミ）を専用クリーナーで除去。撥水が弱くなっていたボンネット・ルーフに 9H Maintenance を塗布しました。\nPPF 部分は専用ケミカルで洗浄し、端部の浮き・剥がれがないことを確認しています。" },
   { idn: 22, vehicleIdn: 11, public_id: "LEDRA-DEMO-0022", service_type: "body_repair", preset_title: "リアバンパー鈑金塗装",             preset_products: [], daysAgo: 700,
-    free_text: "駐車場での接触によるリアバンパーの擦り傷を修理しました。",
+    free_text: "駐車場での接触によるリアバンパーの擦り傷を修理しました。\nバンパーを取り外して損傷部をパテで成形し、カラーコード 218 に合わせて調色。周囲にぼかしながら塗装し、焼き付け乾燥後に磨いて仕上げています。\n塗装部にも改めてガラスコーティングを施工済みです。",
     body_repair_json: { repair_type: "bankin_paint", affected_panels: ["rear_bumper"], repair_methods: ["filler_repair", "blend_paint"], paint_color_code: "218（アティチュードブラックマイカ）", paint_type: "pearl", before_notes: "右後方に約15cmの擦り傷と軽微な凹み。", after_notes: "パテ修正後ボカシ塗装。色差なし。" } },
   { idn: 23, vehicleIdn: 11, public_id: "LEDRA-DEMO-0023", service_type: "maintenance", preset_title: "24ヶ月法定点検",                   preset_products: ["ブレーキフルード", "ワイパーブレード"], daysAgo: 550,
-    free_text: "24ヶ月法定点検を実施しました。",
-    maintenance_json: { work_types: ["periodic_inspection", "wiper_replacement"], mileage: 21300, parts_replaced: "ブレーキフルード\nワイパーブレード（前）", findings: "ブレーキパッド残量 フロント6mm。次回車検時に交換を推奨。" } },
-  { idn: 24, vehicleIdn: 11, public_id: "LEDRA-DEMO-0024", service_type: "coating",     preset_title: "ホイールセラミックコーティング",   preset_products: ["Wheel Ceramic Pro"], daysAgo: 400 },
+    free_text: "24ヶ月点検（法定点検）を実施し、2年ごとの交換時期を迎えたブレーキフルードと、拭きムラが出ていたフロントワイパーブレードを交換しました。\nブレーキパッドの摩耗が進んでいるため、次回車検時の交換をご提案しています。",
+    maintenance_json: { work_types: ["periodic_inspection", "wiper_replacement"], mileage: 21300, mechanic_name: "佐々木 健", next_service_date: ymdOffset(-550 + 365),
+      parts_replaced: "ブレーキフルード DOT3 0.8L（全量交換）\nワイパーブレード（フロント左右）",
+      findings: "ブレーキパッド残量：フロント 6mm / リア 7mm → 次回車検時に交換を推奨\nタイヤ溝：5.9mm\nバッテリー：CCA 値が新品比 78%（交換推奨ライン 60%）\nエアコンフィルター：汚れあり、次回交換を推奨\n下回り：異常なし" } },
+  { idn: 24, vehicleIdn: 11, public_id: "LEDRA-DEMO-0024", service_type: "coating",     preset_title: "ホイールセラミックコーティング",   preset_products: ["Wheel Ceramic Pro"], daysAgo: 400,
+    free_text: "ホイール4本を脱着し、リム内側まで洗浄・鉄粉除去したうえで Wheel Ceramic Pro を施工しました。\n新車時のホイールガラスコートより耐熱性が高く、ブレーキダストが固着しにくくなります。再装着は規定トルクで締め付け済みです。" },
   { idn: 25, vehicleIdn: 11, public_id: "LEDRA-DEMO-0025", service_type: "maintenance", preset_title: "初回車検（新車3年）",              preset_products: ["エンジンオイル", "ブレーキパッド", "補機バッテリー"], daysAgo: 185,
-    free_text: "初回車検整備を実施しました。前回点検で推奨したブレーキパッドを交換。",
-    maintenance_json: { work_types: ["vehicle_inspection", "oil_change", "brake_service", "battery_replacement"], mileage: 31800, parts_replaced: "エンジンオイル 0W-16 4.2L\nオイルフィルター\nブレーキパッド（フロント）\n補機バッテリー", findings: "ブレーキパッド フロント3mm → 新品交換。その他異常なし。" } },
-  { idn: 26, vehicleIdn: 11, public_id: "LEDRA-DEMO-0026", service_type: "coating",     preset_title: "ガラスコーティング 3年目再施工",   preset_products: ["9H Premium"], daysAgo: 30 },
+    free_text: "新車登録から3年目の初回車検です。保安基準の検査と、24ヶ月点検の整備を行いました。\n前回点検でご提案していたフロントブレーキパッドと、性能が落ちていた補機バッテリーを交換しています。",
+    maintenance_json: { work_types: ["vehicle_inspection", "oil_change", "brake_service", "battery_replacement"], mileage: 31800, mechanic_name: "佐々木 健", next_service_date: ymdOffset(-185 + 365),
+      parts_replaced: "エンジンオイル 0W-16 4.2L\nオイルフィルター\nブレーキパッド（フロント左右）\n補機バッテリー（純正同等品）\nエアコンフィルター",
+      findings: "ブレーキパッド フロント 3mm → 新品（10mm）に交換\nブレーキローター：摩耗・段付きなし、研磨不要\nバッテリー：CCA 値 58% → 交換\n灯火類・排ガス・スピードメーター：検査基準内\nタイヤ溝：5.6mm、次回点検時に再測定" } },
+  { idn: 26, vehicleIdn: 11, public_id: "LEDRA-DEMO-0026", service_type: "coating",     preset_title: "ガラスコーティング 3年目再施工",   preset_products: ["9H Premium"], daysAgo: 30,
+    free_text: "新車時のコーティングから3年が経ったため、被膜を一度リセットして施工し直しました。\n研磨で古い被膜と洗車傷を落とし、9H Premium を2層塗布。鈑金塗装したリアバンパーも含め、ボディ全体の艶が揃っています。" },
   { idn: 27, vehicleIdn: 11, public_id: "LEDRA-DEMO-0027", service_type: "maintenance", preset_title: "オイル交換・タイヤローテーション", preset_products: ["エンジンオイル"], daysAgo: 2,
-    free_text: "オイル交換とタイヤローテーションを実施しました。",
-    maintenance_json: { work_types: ["oil_change", "tire_change"], mileage: 34200, parts_replaced: "エンジンオイル 0W-16 4.2L", findings: "タイヤ残溝 5.5mm。偏摩耗なし。" } },
+    free_text: "エンジンオイルの交換と、摩耗を均一にするためのタイヤローテーション（前後入れ替え）を行いました。\n作業時にタイヤの溝と偏摩耗も点検しています。",
+    maintenance_json: { work_types: ["oil_change", "tire_change"], mileage: 34200, mechanic_name: "木村 拓也", next_service_date: ymdOffset(-2 + 180),
+      parts_replaced: "エンジンオイル 0W-16 4.2L",
+      findings: "タイヤ溝：前 5.5mm / 後 5.8mm、偏摩耗なし\nローテーション：前後入れ替え、ホイールナットは規定トルク（103N·m）で締め付け\n空気圧：前後 230kPa に調整\n次回オイル交換の目安：走行 39,200km または 6ヶ月後" } },
 ];
 
 // ヒーロー車両の NFC タグ。最新の記録 (CERTS 27) に貼付済みとして紐づけ、
@@ -461,7 +491,7 @@ async function main(): Promise<void> {
   //    HeroCard の施工記録数カウンタと、公開証明書ページのギャラリー件数を成立させるために投入。
   //    以前は行(メタデータ)だけを作り実ファイルを Storage に置かなかったため、公開ページの
   //    <img …/object/public/assets/demo/…> が全て 400 (Object not found) を返していた。
-  //    下の 5b) で各 storage_path に軽量プレースホルダ JPEG をアップロードして 400 を解消する。
+  //    下の 5b) で各 storage_path に施工の種類ごとのデモ写真をアップロードして 400 を解消する。
   console.log("─ Certificate images");
   // 既存の seed 残骸を一旦削除（storage_path UNIQUE 制約回避）
   const certIds = certRows.map((c) => c.id);
@@ -473,37 +503,39 @@ async function main(): Promise<void> {
     console.error("⚠️ 既存 certificate_images の掃除に失敗:", imgDelErr.message);
   }
 
-  // プレースホルダ本体を先に生成し、file_size をアップロードする実バイト数に一致させる
-  // (実ファイルが存在する以上、admin ギャラリーの容量表示と齟齬させない)。
-  const placeholder = await generateDemoPlaceholderJpeg();
-  const imageRows = certRows.flatMap((cert, certIdx) => {
-    // 1 枚の証明書につき 3〜5 枚の施工写真メタデータを作る
-    const count = 3 + (certIdx % 3);
+  // 施工の種類ごとのデモ写真（無い種類はプレースホルダ）を先に読み、file_size を
+  // アップロードする実バイト数に一致させる（admin ギャラリーの容量表示と齟齬させない）。
+  const imagePlan = await Promise.all(
+    certRows.flatMap((cert, certIdx) => {
+      // 1 枚の証明書につき 3〜5 枚の施工写真を作る
+      const count = 3 + (certIdx % 3);
+      return Array.from({ length: count }, async (_, i) => ({ cert, certIdx, i, body: await demoPhotoFor(cert.public_id, i) }));
+    }),
+  );
+  const imageRows = imagePlan.map(({ cert, certIdx, i, body }) => ({
+    id: uuid("cf01", certIdx * 10 + i + 1),
+    tenant_id: TENANT_ID,
+    certificate_id: cert.id,
     // storage_path はテーブル側に UNIQUE 制約があるので、cert 単位でユニーク化
-    return Array.from({ length: count }).map((_, i) => ({
-      id: uuid("cf01", certIdx * 10 + i + 1),
-      tenant_id: TENANT_ID,
-      certificate_id: cert.id,
-      storage_path: `demo/${cert.public_id}/${String(i + 1).padStart(2, "0")}.jpg`,
-      file_name: `${cert.public_id}-${String(i + 1).padStart(2, "0")}.jpg`,
-      content_type: "image/jpeg",
-      file_size: placeholder.length,
-      sort_order: i,
-    }));
-  });
+    storage_path: `demo/${cert.public_id}/${String(i + 1).padStart(2, "0")}.jpg`,
+    file_name: `${cert.public_id}-${String(i + 1).padStart(2, "0")}.jpg`,
+    content_type: "image/jpeg",
+    file_size: body.length,
+    sort_order: i,
+  }));
   await upsert("certificate_images", imageRows, "id");
   console.log(`  ✓ ${imageRows.length} 件`);
 
-  // 5b) 各 storage_path に同じプレースホルダ JPEG を配置 (upsert / 並列)。
-  //     これが無いと公開ページの <img> が全て Storage 400 を出す。同一バッファを
-  //     独立パスへ上げるだけなので順序非依存 → Promise.all でまとめて実行する。
-  console.log("─ Certificate image placeholders");
+  // 5b) 各 storage_path に画像を配置 (upsert / 並列)。これが無いと公開ページの <img> が
+  //     全て Storage 400 を出す。発行済み証明書の写真行は削除ガードで消せないが、Storage の
+  //     中身は upsert で差し替わるので、再実行すれば写真が入れ替わる。
+  console.log("─ Certificate image files");
   const uploadResults = await Promise.all(
-    imageRows.map(async (img) => {
+    imageRows.map(async (img, n) => {
       const { error } = await admin.storage
         .from(CERTIFICATE_IMAGE_BUCKET)
-        .upload(img.storage_path, placeholder, { contentType: "image/jpeg", upsert: true });
-      if (error) console.warn(`  ⚠️ placeholder upload 失敗 (${img.storage_path}): ${error.message}`);
+        .upload(img.storage_path, imagePlan[n].body, { contentType: "image/jpeg", upsert: true });
+      if (error) console.warn(`  ⚠️ image upload 失敗 (${img.storage_path}): ${error.message}`);
       return !error;
     }),
   );
@@ -691,7 +723,7 @@ async function main(): Promise<void> {
   // (公開ページの Storage 400 が残っているサイン)。
   if (placeholderUploadFailures > 0) {
     throw new Error(
-      `プレースホルダ画像 ${placeholderUploadFailures} 件のアップロードに失敗しました。` +
+      `デモ写真 ${placeholderUploadFailures} 件のアップロードに失敗しました。` +
         `公開証明書ページの該当画像は Storage 400 のままです。`,
     );
   }
@@ -716,37 +748,43 @@ function heroCertIds(): string[] {
 
 async function filmingSetup(): Promise<void> {
   console.log("─ Filming: anchors / passport / report order");
-  const placeholder = await generateDemoPlaceholderJpeg();
-  const imageSha = createHash("sha256").update(placeholder).digest("hex");
   const heroIds = heroCertIds();
 
-  // 1) 証明書ごとにアンカー済みの写真を 1 枚足す。既存の写真行は発行済み証明書の
-  //    証跡列（sha256 / authenticity_grade）が凍結されていて更新できないので、新しい行で足す。
-  const anchoredImages = heroIds.map((certId, i) => {
-    const publicId = `LEDRA-DEMO-${certId.slice(-4)}`;
-    return {
-      id: uuid("cf02", i + 1),
-      tenant_id: TENANT_ID,
-      certificate_id: certId,
-      storage_path: `demo/${publicId}/anchored.jpg`,
-      file_name: `${publicId}-anchored.jpg`,
-      content_type: "image/jpeg",
-      file_size: placeholder.length,
-      sort_order: 0,
-      sha256: imageSha,
-      authenticity_grade: "verified",
-      polygon_network: "amoy",
-      polygon_tx_hash: `0x${createHash("sha256").update(`ledra-demo-filming-image:${certId}`).digest("hex")}`,
-    };
-  });
-  await upsert("certificate_images", anchoredImages, "id");
+  // 1) 証明書ごとにアンカー済みの写真を 1 枚足す（その種類の最後の写真＝仕上がり）。既存の写真行は
+  //    発行済み証明書の証跡列（sha256 / authenticity_grade）が凍結されていて更新できないので、新しい行で足す。
+  //    写真を差し替えた後に --filming を再実行すると sha256 の変更がガードに拒否されるので、先に --filming-cleanup する。
+  const anchoredImages = await Promise.all(
+    heroIds.map(async (certId, i) => {
+      const publicId = `LEDRA-DEMO-${certId.slice(-4)}`;
+      const body = await demoPhotoFor(publicId, -1);
+      return {
+        body,
+        row: {
+          id: uuid("cf02", i + 1),
+          tenant_id: TENANT_ID,
+          certificate_id: certId,
+          storage_path: `demo/${publicId}/anchored.jpg`,
+          file_name: `${publicId}-anchored.jpg`,
+          content_type: "image/jpeg",
+          file_size: body.length,
+          sort_order: 0,
+          sha256: createHash("sha256").update(body).digest("hex"),
+          authenticity_grade: "verified",
+          polygon_network: "amoy",
+          polygon_tx_hash: `0x${createHash("sha256").update(`ledra-demo-filming-image:${certId}`).digest("hex")}`,
+        },
+      };
+    }),
+  );
+  await upsert("certificate_images", anchoredImages.map((a) => a.row), "id");
   await Promise.all(
-    anchoredImages.map((img) =>
+    anchoredImages.map(({ row, body }) =>
       admin.storage
         .from(CERTIFICATE_IMAGE_BUCKET)
-        .upload(img.storage_path, placeholder, { contentType: "image/jpeg", upsert: true }),
+        .upload(row.storage_path, body, { contentType: "image/jpeg", upsert: true }),
     ),
   );
+  const imageShaByCert = new Map(anchoredImages.map(({ row }) => [row.certificate_id, row.sha256]));
 
   // 2) 証明書記録のアンカー（cert_digest → Merkle → バッチ）
   const { data: certs, error: certErr } = await admin
@@ -769,7 +807,7 @@ async function filmingSetup(): Promise<void> {
       contentPreset: c.content_preset_json ?? null,
       expiryType: c.expiry_type ?? null,
       expiryValue: c.expiry_value ?? null,
-      imageSha256s: [imageSha],
+      imageSha256s: [imageShaByCert.get(c.id as string)!],
     }),
   }));
   const merkle = buildCertMerkle(digests.map((d) => d.digest));
