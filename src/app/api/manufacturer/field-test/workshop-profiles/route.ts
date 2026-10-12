@@ -48,6 +48,8 @@ export async function GET(req: NextRequest) {
           .eq("project_id", projectId)
           .eq("manufacturer_id", caller.manufacturerId),
       ]);
+      if (appResult.error) return apiInternalError(appResult.error, "workshop profiles GET applications");
+      if (jobResult.error) return apiInternalError(jobResult.error, "workshop profiles GET jobs");
 
       const tenantIds = [
         ...new Set([
@@ -58,9 +60,20 @@ export async function GET(req: NextRequest) {
 
       if (tenantIds.length === 0) return apiJson({ profiles: [] });
 
-      const { data, error } = await admin.from("workshop_capability_profiles").select("*").in("tenant_id", tenantIds);
+      const { data, error } = await admin
+        .from("workshop_capability_profiles")
+        .select("*, tenants(name)")
+        .in("tenant_id", tenantIds);
       if (error) return apiInternalError(error, "workshop profiles GET");
-      return apiJson({ profiles: data ?? [] });
+      // 施工店名はこのメーカーの案件に参加した施工店（この分岐）だけに付ける。設備タブは tenant_name を読む
+      type TenantJoinRow = Record<string, unknown> & {
+        tenants: { name: string | null } | { name: string | null }[] | null;
+      };
+      const profiles = (data ?? []).map((r: TenantJoinRow) => {
+        const tj = Array.isArray(r.tenants) ? r.tenants[0] : r.tenants;
+        return { ...r, tenant_name: tj?.name ?? null, tenants: undefined };
+      });
+      return apiJson({ profiles });
     }
 
     // No filter — return all profiles
