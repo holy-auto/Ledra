@@ -8,4 +8,5 @@
   撮影用（`--filming`）の `anchored.jpg` は各フォルダの最後の1枚。
 - 生成時の条件: ロゴ・エンブレム・ナンバー・読める文字・顔を入れない。目視で確認し、ロゴが写った1枚と
   不自然だった1枚は作り直した。
-- 1280px 幅・JPEG（品質 78）。差し替えたら `npx tsx scripts/setup-demo-tenant.ts` を再実行する。
+- 1280px 幅・JPEG（品質 78）。差し替えたら `npx tsx scripts/setup-demo-tenant.ts` を再実行する。撮影用データがあるときは
+  先に `--filming-cleanup`（残っているとシードは何も書かずに止まる）、最後に `--filming` で作り直す。
