@@ -88,7 +88,8 @@ jobs:
           # （job ログは Blob 経由で、取得できない環境がある）。
           if ! eas build --platform ios --profile demo --non-interactive --wait --json > /tmp/build.json 2> >(tee /tmp/build.err >&2); then
             sleep 2
-            tail -n 40 /tmp/build.err | sed 's/\x1b\[[0-9;]*m//g' | grep -v '^\s*$' | while IFS= read -r l; do echo "::error::$l"; done
+            # GitHub は1ステップの annotation を10件までしか残さないので、空行を除いた末尾9行だけ出す
+            sed 's/\x1b\[[0-9;]*m//g' /tmp/build.err | grep -v "^\s*$" | tail -n 9 | while IFS= read -r l; do echo "::error::$l"; done
             exit 1
           fi
           cat /tmp/build.json
@@ -108,6 +109,7 @@ jobs:
           rc=${PIPESTATUS[0]}
           set -e
           if [ "$rc" -ne 0 ]; then
-            tail -n 40 /tmp/submit.log | sed 's/\x1b\[[0-9;]*m//g' | grep -v '^\s*$' | while IFS= read -r l; do echo "::error::$l"; done
+            # GitHub は1ステップの annotation を10件までしか残さないので、空行を除いた末尾9行だけ出す
+            sed 's/\x1b\[[0-9;]*m//g' /tmp/submit.log | grep -v "^\s*$" | tail -n 9 | while IFS= read -r l; do echo "::error::$l"; done
             exit "$rc"
           fi
