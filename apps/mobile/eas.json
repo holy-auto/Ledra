@@ -64,6 +64,12 @@
         "EXPO_PUBLIC_API_URL": "https://app.ledra.co.jp",
         "EXPO_PUBLIC_CERTIFICATE_BASE_URL": "https://app.ledra.co.jp/c"
       }
+    },
+    "demo": {
+      "extends": "production",
+      "env": {
+        "LEDRA_IOS_PUSH": "off"
+      }
     }
   },
   "submit": {

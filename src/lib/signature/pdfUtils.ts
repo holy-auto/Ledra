@@ -130,7 +130,7 @@ export async function generateCertificatePdfBytes(certificateId: string): Promis
  * certificates/{certificateId}/signed_certificate.pdf に保存される。
  *
  * @param certificateId - 証明書 UUID
- * @param signatureInfo - 埋め込む署名情報（将来の UI 表示用）
+ * @param signatureInfo - 埋め込む署名情報（将来の UI 表示用。現状は PDF に入れず、ログにだけ使う。証明書の signed_at は呼び出し側の route が記録する）
  */
 export async function regenerateSignedPdf(certificateId: string, signatureInfo: PdfSignatureInfo): Promise<void> {
   try {
@@ -149,14 +149,7 @@ export async function regenerateSignedPdf(certificateId: string, signatureInfo: 
       return;
     }
 
-    // 署名完了日時を certificates テーブルに記録
-    const { error: signedAtErr } = await supabase
-      .from("certificates")
-      .update({ signed_at: signatureInfo.signedAt })
-      .eq("id", certificateId);
-    if (signedAtErr) throw new Error(`署名完了日時の記録に失敗: ${signedAtErr.message}`);
-
-    console.info("[pdfUtils] Signed PDF stored:", storagePath);
+    console.info("[pdfUtils] Signed PDF stored:", storagePath, "signed_at:", signatureInfo.signedAt);
   } catch (err) {
     console.error("[pdfUtils] regenerateSignedPdf failed:", err);
   }

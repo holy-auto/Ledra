@@ -3,6 +3,17 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## メーカー向け連携レポートの実データ化（2026-10-11）
+
+- 見本（`/manufacturer/report-samples`）はダミー固定値。実データの集計（証明書 × `vehicles`、ロット番号逆引き等）は未実装。
+  **どの業種から作るか**は提携の進み具合で決める。コーティング剤メーカー向けは、今のアクセス範囲（自社テンプレートの証明書）だけで作れる。
+- **自動車メーカー向け**は「どの店・どのテンプレートで発行されたかに関わらず自社車両を集める」形になり、施工店・車両所有者の同意と契約が先に要る。
+- 実証テスト（`ft_jobs`）には車両の列が無いので、不具合を車種・年式で分析するには案件に車両を紐づける変更が要る。
+- デモ用メーカーアカウントは**本番に作られている**（2026-10-12 に本番 DB を読み取りで確認）。`demo@manufacturer.ledra.test`（admin）と
+  `viewer@manufacturer.ledra.test`（viewer）が 2026-05-14 作成・有効・メール確認済み。admin の最終ログインは 2026-05-15。
+  パスワードが作成スクリプトの値のままかは DB からは分からない【要確認】。商談前に実際にログインして確かめる。
+  スクリプトの初期値はリポジトリに書かれているので、そのまま本番で使い続けるなら、商談後に変えるかを決める。
+
 ## Server Action の「ID が見つからない」の残り（2026-10-10）
 
 - **再発を数えられない。** #1298・#1301 で `UnrecognizedActionError` は読み直しに回し、Sentry に送らないようにした（ノイズを避けるため）。
@@ -52,9 +63,14 @@
   2. **点検記録の写真** → ✅ 公開 URL ではなく保存パスを保存する形に変更（2026-10-10、RELEASE_LOG）。本番は 0 件なので移行は不要。
   3. **バケットを非公開にする** → ✅ 本番に適用（2026-10-10、#1300、`20261010130513_make_assets_bucket_private.sql`、RELEASE_LOG）。
      適用後、写真の公開 URL は 400。**残り: 署名 URL での表示を本番で目視確認する**（適用後まだアクセスが無く未確認。
-     公開証明書・管理画面・代表の端末のアプリで写真が出るか）。
+     公開証明書・管理画面・代表の端末のアプリで写真が出るか）。→ **2026-10-12 代表判断で【要確認】のまま保留**。
 
 ## `assets` バケットの制限（画像のみ・10MB）が、アプリが受け付けるアップロードを弾いている（2026-10-10）
+
+- **→ 2026-10-12 代表判断で、許可形式に HEIC・動画・PDF を足し、上限を 20MB にした**（`20261012131344_widen_assets_bucket_limits.sql`、
+  DECISION_LOG・RELEASE_LOG 2026-10-12）。署名日時は署名の route で応答前に記録するようにした。
+  訂正: 下の「10〜20MB の写真」はバケットより手前、Vercel の関数の本文上限（約 4.5MB）で弾かれていた（Web は 3.5MB を超えると
+  JPEG に圧縮して送る）。バケットの 10MB が効いていたのは形式の方（MISTAKE_LEDGER `M-20261012-blamed-the-bucket-size-for-what-the-function-body-limit-blocks`）。
 
 - 状況: 本番の `assets` は `allowed_mime_types` が画像 5 種（jpeg/png/webp/gif/avif）、上限 10MB（2026-10-10 に storage.buckets で確認）。
   アプリはこれより広く受け付けて、そのままの形式で保存しようとするので、次が本番で弾かれる（以前から。#1300 の /code-review で判明）:
@@ -68,6 +84,27 @@
   `signature_sessions` は 0 件。弾かれた試行があったかは記録が無く【要確認】。
 - 選択肢: 許可する MIME に HEIC・動画・PDF を足し、上限を 20MB 以上にする（動画の上限は別途判断）/ HEIC は保存前に JPEG に変換する /
   動画・PDF は別の非公開バケットに分ける / 署名済み PDF の保存失敗で `signed_at` の記録まで止めない。
+- 公開区分: 非公開
+
+## 4.5MB を超える動画・写真をアプリが受け取れない（2026-10-12）
+
+- 状況: アプリへのアップロード（証明書写真・動画・部品の証跡・納品書・点検写真）は Vercel の関数に multipart で送っていて、
+  本文が約 4.5MB を超えると関数に届く前に弾かれる（コード内の記載: `src/lib/media/compressToJpeg.ts` ほか）。Web の証明書写真は
+  3.5MB を超えると JPEG に圧縮して送るので実害は小さいが、**証明書の動画は上限 100MB（`MAX_VIDEO_BYTES`）を約束しながら、
+  4.5MB を超えると保存できない**。モバイルの写真も圧縮の有無で同じ問題がありうる【要確認】。
+- 選択肢: 署名付きアップロード URL（`createSignedUploadUrl`）で Storage へ直接送る（agent-materials で実績あり）/
+  動画の上限を 4MB に下げて画面に出す。
+- 公開区分: 非公開
+
+## 本番に無いバケットへ保存しているコードがある（2026-10-12）
+
+- 状況: 本番の Storage バケットは agent-applications・agent-materials・agent-shared-files・assets・certificate-images・
+  ft-evidence・kyc-documents・line-media・market の 9 本（2026-10-10 に storage.buckets で確認）。コードには、このどれでもない
+  バケットへの保存がある:
+  - `certificates`: 証明書 PDF の一括生成（`src/app/api/qstash/batch-pdf/route.ts`）
+  - `case-attachments`: 保険会社の案件の添付（`src/app/api/insurer/cases/[id]/attachments/route.ts`）
+  本番では保存に失敗している【要確認: 呼ばれたことがあるか】。#1300 の保存先調査の途中で気づいた。
+- 選択肢: 既存の非公開バケット（`assets` 等）に寄せる / 専用の非公開バケットをマイグレーションで作る。
 - 公開区分: 非公開
 
 ## 証明書 PDF の冒頭文が、記録の刻印を無条件に書いている（2026-10-09）
@@ -4446,3 +4483,11 @@ DECISION_LOG「遷移表の未解決4件を代表判断で解決」参照。）
 - 次のアクション: 代表判断待ち。判断が付くまでは暫定対応（確認メール送信の明示表示）のまま。
 - 公開区分: 非公開（Apple 審査対応の内部検討事項）
 - 起票日: 2026-09-08
+
+## iOS App Store profile に Push Notifications が無く、production ビルドが署名で落ちる（2026-10-12）
+- 状況: EAS 保管の App Store profile（"[expo] com.ledra.app AppStore 2026-05-02..."）が expo-notifications 導入前の作成で、
+  `aps-environment` を含められない。JMS2026 向けは `demo` プロファイル（push 無し）で回避した（DECISION_LOG 2026-10-12）。
+- やること: Apple Developer で App ID `com.ledra.app` の Push Notifications を有効化 → `eas credentials --platform ios` で
+  App Store profile を削除・再生成 → production でビルドが通ることを確認（Apple ID ログインか ASC キーが要る）。
+- それまで production の iOS ビルドは通らず、TestFlight / App Store 版では push が届かない。
+

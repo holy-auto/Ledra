@@ -15,7 +15,7 @@
  * 8. 施工店への完了通知 ※非同期
  */
 
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { customerFacingDeliveryBlock } from "@/lib/delivery/deliveryConsent";
@@ -193,21 +193,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     "signature_audit_logs insert (POST)",
   );
 
+  // 証明書側の署名日時も、ここで同期的に記録する（以前は PDF 再生成の中で、PDF の保存に成功したときだけ記録していた）。
+  // 署名そのものは手順 5 で保存済みなので、ここで失敗しても応答は止めない。
+  const { error: certSignedAtError } = await supabase
+    .from("certificates")
+    .update({ signed_at: signedAt })
+    .eq("id", session.certificate_id);
+  if (certSignedAtError) console.error("[signature/sign] certificates.signed_at update failed:", certSignedAtError);
+
   const verifyUrl = `${VERIFY_BASE_URL}/${session.id}`;
 
-  // 7. PDF 再生成（非同期・レスポンスをブロックしない）
-  void regenerateSignedPdf(session.certificate_id, {
-    signedAt,
-    signerEmail: normalizedEmail,
-    signerName: session.signer_name ?? undefined,
-    signaturePreview: signature.slice(0, 20) + "...",
-    publicKeyFingerprint: keyInfo.fingerprint,
-    verifyUrl,
-    documentHash: session.document_hash,
-  });
+  // 7. PDF 再生成（応答の後に実行。`void` だとサーバーレスでは応答後に打ち切られうるので after() に載せる）
+  after(() =>
+    regenerateSignedPdf(session.certificate_id, {
+      signedAt,
+      signerEmail: normalizedEmail,
+      signerName: session.signer_name ?? undefined,
+      signaturePreview: signature.slice(0, 20) + "...",
+      publicKeyFingerprint: keyInfo.fingerprint,
+      verifyUrl,
+      documentHash: session.document_hash,
+    }),
+  );
 
-  // 8. 施工店への完了通知（非同期・テナントの contact_email に送信）
-  void (async () => {
+  // 8. 施工店への完了通知（応答の後に実行・テナントの contact_email に送信）
+  after(async () => {
     try {
       const { data: cert } = await supabase
         .from("certificates")
@@ -230,7 +240,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     } catch (err) {
       console.error("[signature/sign] Failed to send shop notification:", err);
     }
-  })();
+  });
 
   return apiOk({
     success: true,
