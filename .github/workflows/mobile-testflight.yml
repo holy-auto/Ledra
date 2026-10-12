@@ -77,11 +77,22 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
-          eas build --platform ios --profile production --non-interactive --wait --json > /tmp/build.json
+          # 失敗理由をログ本体を開かずに読めるよう、末尾を annotation に出す
+          # （job ログは Blob 経由で、取得できない環境がある）。
+          if ! eas build --platform ios --profile production --non-interactive --wait --json > /tmp/build.json 2> >(tee /tmp/build.err >&2); then
+            sleep 2
+            tail -n 40 /tmp/build.err | sed 's/\x1b\[[0-9;]*m//g' | grep -v '^\s*$' | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi
           cat /tmp/build.json
           echo "id=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("/tmp/build.json","utf8"))[0].id)')" >> "$GITHUB_OUTPUT"
 
       - name: Submit to TestFlight
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: eas submit --platform ios --profile production --id "${{ steps.build.outputs.id }}" --non-interactive
+        run: |
+          if ! eas submit --platform ios --profile production --id "${{ steps.build.outputs.id }}" --non-interactive 2> >(tee /tmp/submit.err >&2); then
+            sleep 2
+            tail -n 40 /tmp/submit.err | sed 's/\x1b\[[0-9;]*m//g' | grep -v '^\s*$' | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi
