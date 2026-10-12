@@ -4,7 +4,7 @@
  * 既存の `certificate_images` のうち storage_path が `demo/LEDRA-DEMO-…/NN.jpg` の行に対し、
  * Storage 実ファイル（施工の種類ごとのデモ写真。無い種類はプレースホルダ）を配置する。
  * フルデモシード (`setup-demo-tenant.ts`) を再実行せずに、写真の差し替えや公開ページの
- * Storage 400 の解消だけをしたいときに使う。DB は file_size（証跡列ではない）を実バイト数に合わせるだけ。
+ * Storage 400 の解消だけをしたいときに使う。DB は file_size を実バイト数に合わせ、縮小版のパスを空にするだけ（どちらも証跡列ではない）。
  * 撮影用の anchored.jpg は sha256 が DB に記録済みなので触らない。
  *
  * 前提:
@@ -58,8 +58,11 @@ async function main(): Promise<void> {
         console.warn(`  ⚠️ upload 失敗 (${path}): ${upErr.message}`);
         return false;
       }
-      // admin ギャラリーの容量表示を実ファイルと揃える
-      const { error: sizeErr } = await admin.from("certificate_images").update({ file_size: body.length }).eq("storage_path", path);
+      // admin ギャラリーの容量表示を実ファイルと揃え、古い画像から作られた縮小版を捨てる（cron が作り直す）
+      const { error: sizeErr } = await admin
+        .from("certificate_images")
+        .update({ file_size: body.length, thumbnail_path: null, medium_path: null })
+        .eq("storage_path", path);
       if (sizeErr) console.warn(`  ⚠️ file_size 更新失敗 (${path}): ${sizeErr.message}`);
       return !sizeErr;
     }),

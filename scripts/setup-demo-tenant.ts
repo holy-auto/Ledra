@@ -522,6 +522,10 @@ async function main(): Promise<void> {
     content_type: "image/jpeg",
     file_size: body.length,
     sort_order: i,
+    // 中身を差し替えたので、古い画像から作られた縮小版を捨てる（image-variants-backfill cron が作り直す）。
+    // ponytail: rendered_*（注釈の焼き込み）はデモに注釈が無いので触らない。注釈を足したら同じく捨てる。
+    thumbnail_path: null,
+    medium_path: null,
   }));
   await upsert("certificate_images", imageRows, "id");
   console.log(`  ✓ ${imageRows.length} 件`);
@@ -776,7 +780,8 @@ async function filmingSetup(): Promise<void> {
       };
     }),
   );
-  await upsert("certificate_images", anchoredImages.map((a) => a.row), "id");
+  // 先にアップロードし、1枚でも失敗したら行（verified・sha256）を書かずに止める。行を先に書くと、
+  // 失敗した分も公開ページで「検証済み」と出る（Storage に古い anchored.jpg が残っているとハッシュも食い違う）。
   const anchoredUploads = await Promise.all(
     anchoredImages.map(({ row, body }) =>
       admin.storage
@@ -784,12 +789,11 @@ async function filmingSetup(): Promise<void> {
         .upload(row.storage_path, body, { contentType: "image/jpeg", upsert: true }),
     ),
   );
-  // 1枚でも失敗したらアンカーを作らない（Storage に古い anchored.jpg が残っていると、
-  // 「検証済み」のアンカーと配信される画像のハッシュが食い違う）
   const failedUploads = anchoredUploads.filter((r) => r.error);
   if (failedUploads.length > 0) {
     throw new Error(`anchored.jpg ${failedUploads.length} 件のアップロードに失敗: ${failedUploads[0].error!.message}`);
   }
+  await upsert("certificate_images", anchoredImages.map((a) => ({ ...a.row, thumbnail_path: null, medium_path: null })), "id");
   const imageShaByCert = new Map(anchoredImages.map(({ row }) => [row.certificate_id, row.sha256]));
 
   // 2) 証明書記録のアンカー（cert_digest → Merkle → バッチ）
