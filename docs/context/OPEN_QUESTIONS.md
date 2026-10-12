@@ -1779,8 +1779,10 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
     推定: `require(C2PA_LIBRARY_PATH ?? "./index.node")` が静的に解けないので、tracing が
     `dist/` をまるごと取り込んでいる。この形は Next / パッケージの更新で変わりうるので、
     `npm run build` の最後に `node scripts/check-c2pa-binary.mjs --traced` を置いて見張ることにした
-    （パッケージを挙げている trace が全部バイナリも挙げていることを要求する。0本でも落とす ——
-    「全部入っている」と「何も見ていない」を同じ緑にしないため）。
+    （**#1209 のゲートの背後にある2本の route** の trace が実在し、バイナリの絶対パスを挙げていることを要求する。
+    全体条件ではなく route 単位にしたのは、tracing が entrypoint ごとに辿るため ——
+    「どれか1本が挙げていれば緑」では、まさに守りたい route が落ちた回を緑にする。
+    MISTAKE_LEDGER `M-20261012-checked-the-population-not-the-entrypoint`）。
     **原文が書いた塞ぎ方は誤りだった**: tracing はファイルを `.next/` へコピーしない
     （manifest に書くだけで、コピーはデプロイ時に Vercel のビルダーが行う）。
     「`.next/` 配下の実在を見る」では永久に見つからない —— 見るべきは manifest の方である

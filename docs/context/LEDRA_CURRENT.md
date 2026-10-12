@@ -122,7 +122,9 @@
 > `serverExternalPackages` に入れてあるので 48MB のバイナリは output file tracing 経由でだけ入る。
 > 手元の実測では `.next/server` の trace 1076 本のうちパッケージを挙げている9本が**全部 `index.node` を挙げていた**が、
 > それは静的解析の副作用（`require(C2PA_LIBRARY_PATH ?? "./index.node")` が解けず `dist/` が丸ごと入る）なので、
-> 更新で崩れうる。`npm run build` の最後に `node scripts/check-c2pa-binary.mjs --traced` を置いて見張る。
+> 更新で崩れうる。`npm run build` の最後に `node scripts/check-c2pa-binary.mjs --traced` を置いて見張る
+> （**ゲート背後の2本の route** の trace がバイナリを挙げていることを要求する。route 単位にした理由は
+> MISTAKE_LEDGER `M-20261012-checked-the-population-not-the-entrypoint`）。
 > **Vercel のビルドでも同じ形になるかは未確認**（`C2PA_MODE` がビルド時に見えないと skip するため、
 > オンにした最初のビルドのログで確かめる）。
 

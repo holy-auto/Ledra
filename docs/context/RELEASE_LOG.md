@@ -11,18 +11,24 @@
   前段のロード検査は**ビルド機で `require` できるか**しか見ない。`serverExternalPackages` に入れてあるので、
   48MB の `dist/index.node` は Turbopack のバンドルではなく **output file tracing 経由でだけ**関数に入る。
   tracing が拾わなければ、ビルドもデプロイも緑のまま**実行時に** `signer_unavailable` → #1209 のゲートが全アップロードを 503 で断る。
-- 見るもの: `.next/server` 配下の `*.nft.json` を読み、`@contentauth/c2pa-node` **内のファイル**を挙げている trace が
-  全部 `index.node` も挙げていることを要求する。**0本のときも落とす**（「全部入っている」と「何も見ていない」を同じ緑にしない）。
-  `C2PA_MODE=production` のときだけ走り、`C2PA_LIBRARY_PATH` が設定されているときは skip する
-  （実行時 env で決まるパスを tracing は辿れない）。
+- 見るもの: **#1209 のゲートの背後にある2本の route**（`/api/certificates/images/upload`、`/api/mobile/certificates/images/upload` ——
+  `uploadHandler` を呼んでいるのはこの2本だけ）の trace を読み、**その trace が実在し、`dist/index.node` の絶対パスを挙げていること**を要求する。
+  `C2PA_MODE=production` のときだけ走り、`C2PA_LIBRARY_PATH` が空でなく設定されているときは skip する
+  （実行時 env で決まるパスを tracing は辿れない。空文字は skip しない —— 見るものが変わらないため）。
+- **route 単位で見る。** 初版は「パッケージを挙げている trace が全部バイナリも挙げている」という全体条件で、
+  **ゲートの背後の route だけが落ちた回を緑にしていた**（無関係な route が1本挙げていれば exit 0。`/code-review` が実測）。
+  tracing は entrypoint ごとに辿るので、落ちるときも route ごとに落ちる。
 - 実測（2026-10-12・Next 16.3.8 の手元のビルド成果物）: trace 1076 本のうちパッケージを挙げているのは9本で、**9本とも `index.node` を挙げている**。
   `dist/` の 18 エントリのうち `types/`（ディレクトリ）以外の 17 が入っており、誰も import していない `Builder.spec.js` まで入っている
   → 推定: `require(C2PA_LIBRARY_PATH ?? "./index.node")` が静的に解けないので tracing が `dist/` を丸ごと取り込んでいる。
-- ディレクトリ名では数えない: Turbopack は `.next/node_modules/@contentauth/c2pa-node-<hash>` という symlink を作り、
-  trace にその行も載る。symlink の1行だけを「参照している」と数えると、**ディレクトリ1行で足りているケースを誤って赤にする**。
-- 検査: `scripts/__tests__/checkC2paBinary.test.ts` に8本追加（計18本）。使い捨てディレクトリに `.nft.json` を置いて
-  子プロセスで走らせる形なので、本物のビルドを回さずに全分岐を踏める。7種の変異（空振りを緑にする／バイナリ欠落を見逃す／
-  成果物が無くても進む／override で skip しない／壊れた trace を飛ばす／symlink の行を数える／mode の gate を外す）が**全部赤になる**ことを確認。
+- パスは `require.resolve` で解いた絶対パスと比べる（trace の行は trace ファイルのディレクトリ基準で解決する）。
+  **ファイル名（`index.node`）の一致では見ない** —— ネイティブモジュールの名前は被るので、無関係なバイナリで緑になる。
+- 検査: `scripts/__tests__/checkC2paBinary.test.ts` に9本追加（計19本）。使い捨てディレクトリに `.nft.json` を2本置いて
+  子プロセスで走らせる形なので、本物のビルドを回さずに全分岐を踏める。変異10種のうち**9種で赤**
+  （trace が無くても進む／`files` の形を見ない／バイナリ欠落を見逃す／空文字の override で skip する／mode の gate を外す／
+  壊れた JSON を飛ばす／1本目の route だけ見る／ファイル名だけ一致を見る／`--traced` の印を出さない）。
+  残る1種（trace の行を cwd 基準で解く）は fixture では差が出ない —— 使い捨て cwd と本物のバイナリの共通の先祖が `/` しか無く、
+  どの基準でも `..` が root でクランプして同じパスに着く。**本物の `.next` では赤になることを実測した**（テストの docblock に明記）。
 - OPEN_QUESTIONS の【要確認】を1件閉じた。原文の塞ぎ方（「ビルド後に `.next/` 配下の実在を見る」）は誤りで、
   tracing はファイルを `.next/` へコピーしない（manifest に書くだけ）—— MISTAKE_LEDGER `M-20261012-planned-to-look-for-a-file-tracing-never-copies`。
 

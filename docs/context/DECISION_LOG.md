@@ -19,11 +19,18 @@
    `require(C2PA_LIBRARY_PATH ?? "./index.node")` が静的に解けないために `dist/` が丸ごと入っている
    （推定。spec ファイルまで入っていることが根拠）ので、Next / Turbopack / パッケージの更新で変わりうる。
 5. 決めたこと: `scripts/check-c2pa-binary.mjs` に `--traced` を足し、`npm run build` の**最後**に置く。
-   `C2PA_MODE=production` のときだけ、`.next/server` 配下の trace を読み、
-   **パッケージ内のファイルを挙げている trace が全部 `index.node` も挙げていること**を要求する。
-   0本のときも落とす（「全部入っている」と「何も見ていない」を同じ緑にしない）。
-   `C2PA_LIBRARY_PATH` が設定されているときは skip する（実行時 env で決まるパスを tracing は辿れない）。
+   `C2PA_MODE=production` のときだけ、**#1209 のゲートの背後にある2本の route**
+   （`uploadHandler` を呼ぶ `/api/certificates/images/upload` と `/api/mobile/certificates/images/upload`）の
+   trace を読み、**実在し、`dist/index.node` の絶対パスを挙げていること**を要求する。
+   `C2PA_LIBRARY_PATH` が空でなく設定されているときは skip する（実行時 env で決まるパスを tracing は辿れない）。
+   **route 単位にしたのは `/code-review` の指摘による。** 初版は「パッケージを挙げている trace が全部
+   バイナリも挙げている」という全体条件で、**ゲート背後の route だけが落ちた回を緑にしていた**
+   （無関係な route が1本挙げていれば exit 0。実測）。tracing は entrypoint ごとに辿るので、
+   落ちるときも route ごとに落ちる（MISTAKE_LEDGER `M-20261012-checked-the-population-not-the-entrypoint`）。
 6. 捨てた選択肢: (a) `.next/` 配下にバイナリが在るかを見る —— 上記のとおり在らない。
+   (e) 全体条件（パッケージを挙げている trace は全部バイナリも挙げている）を**併せて**要求する ——
+   今は9本とも挙げているので通るが、tracing が精密になって「JS だけ要る route」が出た日に
+   **本番のデプロイが赤で止まる**。守りたいのはゲートの背後なので、止める基準をそこに合わせた。
    (b) デプロイ後のスモークテスト —— 本番に出てから気づく形になり、#1209 のゲートが全件 503 にしている最中に調べることになる。
    将来やるとしても、ビルドで止める方が先。(c) バイナリを `public/` などに置いて `C2PA_LIBRARY_PATH` で指す ——
    48MB を git に入れることになり、tracing が拾えている今やる理由が無い。
@@ -34,6 +41,8 @@
    tracing が拾わなかった場合の被害は「ビルドもデプロイも緑のまま、実行時に全アップロード 503」で、
    気づくのが最も遅い種類の失敗である。
 8. まだ答えが出ていないこと: Vercel のビルドでも同じ形になるか（手元のビルドでの実測なので）。
+   検証系の route（`/api/public/verify`、`/v/[vin]` など。実測で9本中7本）は見ていない ——
+   そちらが落ちても気づかない（被害は「検証が失敗する」で、全アップロード 503 ではない）。
    `--traced` も `C2PA_MODE` がビルド時に見えないと skip するため、`C2PA_MODE=production` を入れた
    最初のビルドのログに `[check:c2pa-binary --traced] OK —` が出るかで確かめる。
 9. 公開区分: 公開可（Next の output file tracing とネイティブバイナリの話で、顧客情報を含まない）
