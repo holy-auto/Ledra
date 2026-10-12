@@ -1,6 +1,7 @@
 name: Mobile TestFlight
 
-# iOS の production ビルドを EAS で作り、TestFlight に上げる。
+# iOS の demo ビルド（production + push 無し。plugins/withoutPushEntitlement.js）を
+# EAS で作り、TestFlight に上げる。
 # 手元の PC（eas-cli・Apple 証明書・D:\ の ASC キー）が無くても、
 # GitHub の Actions 画面（スマホのブラウザ可）から「Run workflow」で実行できる。
 #
@@ -79,7 +80,7 @@ jobs:
         run: |
           # 失敗理由をログ本体を開かずに読めるよう、末尾を annotation に出す
           # （job ログは Blob 経由で、取得できない環境がある）。
-          if ! eas build --platform ios --profile production --non-interactive --wait --json > /tmp/build.json 2> >(tee /tmp/build.err >&2); then
+          if ! eas build --platform ios --profile demo --non-interactive --wait --json > /tmp/build.json 2> >(tee /tmp/build.err >&2); then
             sleep 2
             tail -n 40 /tmp/build.err | sed 's/\x1b\[[0-9;]*m//g' | grep -v '^\s*$' | while IFS= read -r l; do echo "::error::$l"; done
             exit 1

@@ -4,6 +4,27 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-10-12 JMS2026 デモ配布用に、iOS の push を外した "demo" ビルドを GitHub Actions から TestFlight へ出す
+
+1. 日付: 2026-10-12（`date -u` で確認）
+2. 起きたこと: JMS2026（10/13〜）でモバイルアプリを実機デモするため、代表の iPhone に最新ビルドが要った。代表の普段の PC
+   （eas-cli・D:\ の ASC キー）が使えず、Claude の作業環境からは api.expo.dev に接続できなかった。そこで
+   `.github/workflows/mobile-testflight.yml`（#1311・#1312）を足し、GitHub Actions から EAS Build → TestFlight を回した。
+   初回の production ビルドは署名で失敗: EAS 保管の App Store profile（2026-05-02 作成）に Push Notifications が無く、
+   expo-notifications が入れる `aps-environment` と合わない。
+3. 以前の考え: production プロファイルはそのままビルドできる（最後に通ったのは profile 作成時）。
+4. 違和感・問題: profile の作り直しには Apple ID ログインか ASC キーが要り、どちらも今日は手元に無い。
+5. 決めたこと: eas.json に `demo` プロファイル（production を継承し `LEDRA_IOS_PUSH=off`）を足し、
+   `plugins/withoutPushEntitlement.js` でそのときだけ `aps-environment` を外す。ワークフローは `demo` でビルドし、
+   提出は production の submit 設定を使う。push 登録の失敗は `src/lib/push.ts` で握りつぶされるのでアプリは動く。
+6. 捨てた選択肢: (a) ad-hoc の preview ビルド —— 端末登録と Apple ID ログインが要る。(b) production プロファイル自体から
+   push を外す —— 本番配布で push が黙って消える。(c) CI 上で app.json を書き換えるだけ —— EAS へのアップロードに
+   未コミットの変更が載るか確認できない。
+7. 判断理由: 本番設定（production）は変えず、デモ用だけ PC 無しで今日中に配布できる。
+8. まだ答えが出ていないこと: App Store profile への Push Notifications 追加（OPEN_QUESTIONS に記載）。
+   ASC キーが EAS に保管されているかは、初回 submit の結果待ち【要確認】。
+9. 公開区分: 非公開（署名・配布の運用詳細）
+
 ## 2026-10-10 Server Action の鍵を Vercel の環境変数で固定し、デプロイをまたいでもログイン・保存が通るようにする
 
 1. 日付: 2026-10-10（`date -u` で確認）
