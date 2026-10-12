@@ -1,5 +1,3 @@
-
-
 import { escapeIlike } from "@/lib/sanitize";
 import { enforceBilling } from "@/lib/billing/guard";
 import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
@@ -10,6 +8,7 @@ import {
 } from "@/lib/validations/market";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { signAssetPaths } from "@/lib/signedUrl";
 const MV_COLS =
   "id, tenant_id, maker, model, grade, year, mileage, color, color_code, plate_number, chassis_number, engine_type, displacement, transmission, drive_type, fuel_type, door_count, seating_capacity, body_type, inspection_date, repair_history, condition_grade, condition_note, asking_price, wholesale_price, cost_price, supplier_name, acquisition_date, description, features, status, listed_at, created_at, updated_at";
 const MVI_COLS = "id, vehicle_id, tenant_id, storage_path, file_name, content_type, file_size, sort_order, created_at";
@@ -32,7 +31,6 @@ export const dynamic = "force-dynamic";
 export const GET = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const url = new URL(req.url);
       const singleId = url.searchParams.get("id") ?? "";
       const status = url.searchParams.get("status") ?? "";
@@ -61,7 +59,13 @@ export const GET = withCaller(
             .returns<MarketVehicleImageRow[]>();
           imgs = data ?? [];
         }
-        const enriched = (vehicles ?? []).map((v) => ({ ...v, images: imgs }));
+        const imgUrls = await signAssetPaths(
+          supabase,
+          imgs.map((i) => i.storage_path),
+          "market",
+        );
+        const withUrls = imgs.map((i) => ({ ...i, url: imgUrls.get(i.storage_path) ?? null }));
+        const enriched = (vehicles ?? []).map((v) => ({ ...v, images: withUrls }));
         return apiJson({ vehicles: enriched, stats: { total: enriched.length, listed: 0, draft: 0 } });
       }
 
@@ -99,7 +103,7 @@ export const GET = withCaller(
 
       // Fetch images for all vehicles
       const vehicleIds = (vehicles ?? []).map((v) => v.id);
-      const imagesMap: Record<string, MarketVehicleImageRow[]> = {};
+      const imagesMap: Record<string, Array<MarketVehicleImageRow & { url: string | null }>> = {};
 
       if (vehicleIds.length > 0) {
         const { data: images } = await supabase
@@ -109,9 +113,14 @@ export const GET = withCaller(
           .order("sort_order", { ascending: true })
           .returns<MarketVehicleImageRow[]>();
 
+        const urls = await signAssetPaths(
+          supabase,
+          (images ?? []).map((img) => img.storage_path),
+          "market",
+        );
         (images ?? []).forEach((img) => {
           if (!imagesMap[img.vehicle_id]) imagesMap[img.vehicle_id] = [];
-          imagesMap[img.vehicle_id].push(img);
+          imagesMap[img.vehicle_id].push({ ...img, url: urls.get(img.storage_path) ?? null });
         });
       }
 
@@ -141,7 +150,6 @@ export const GET = withCaller(
 export const POST = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const deny = await enforceBilling(req, {
         minPlan: "standard",
         action: "market_create",
@@ -182,7 +190,6 @@ export const POST = withCaller(
 export const PUT = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const deny = await enforceBilling(req, {
         minPlan: "standard",
         action: "market_update",
@@ -290,7 +297,8 @@ export const DELETE = withCaller(
       if (images && images.length > 0) {
         const paths = images.map((img) => img.storage_path).filter(Boolean);
         if (paths.length > 0) {
-          await supabase.storage.from("market-vehicle-images").remove(paths);
+          // 保存先は market（images/route.ts の upload と同じ）。以前は存在しないバケット名で、画像が残っていた
+          await supabase.storage.from("market").remove(paths);
         }
         await supabase.from("market_vehicle_images").delete().eq("vehicle_id", id).eq("tenant_id", caller.tenantId);
       }

@@ -22,7 +22,7 @@ type MarketVehicle = {
   listed_at: string | null;
   description: string | null;
   features: string[] | null;
-  images?: { id: string; storage_path: string; sort_order: number }[];
+  images?: { id: string; storage_path: string; url: string | null; sort_order: number }[];
   tenant_name?: string;
 };
 
@@ -165,9 +165,9 @@ export default function MarketClient({ vehicles }: { vehicles: MarketVehicle[] }
               >
                 {/* Image */}
                 <div className="relative aspect-[16/10] bg-surface-hover flex items-center justify-center text-muted">
-                  {v.images && v.images.length > 0 ? (
+                  {v.images?.[0]?.url ? (
                     <Image
-                      src={v.images[0].storage_path}
+                      src={v.images[0].url}
                       alt={`${v.maker} ${v.model}`}
                       fill
                       sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"

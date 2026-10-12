@@ -4,6 +4,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { escapeIlike } from "@/lib/sanitize";
 import MarketClient from "./MarketClient";
+import { signAssetPaths } from "@/lib/signedUrl";
 
 export const dynamic = "force-dynamic";
 
@@ -41,9 +42,15 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
       .in("vehicle_id", vehicleIds)
       .order("sort_order", { ascending: true });
 
+    // 保存パスはそのままでは画像として開けないので、署名 URL にして渡す
+    const urls = await signAssetPaths(
+      supabase,
+      (images ?? []).map((img: { storage_path: string }) => img.storage_path),
+      "market",
+    );
     (images ?? []).forEach((img: any) => {
       if (!imagesMap[img.vehicle_id]) imagesMap[img.vehicle_id] = [];
-      imagesMap[img.vehicle_id].push(img);
+      imagesMap[img.vehicle_id].push({ ...img, url: urls.get(img.storage_path) ?? null });
     });
   }
 

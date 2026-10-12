@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 
-type VehicleImage = { id: string; storage_path: string; file_name: string | null; sort_order: number };
+type VehicleImage = { id: string; url: string | null; file_name: string | null; sort_order: number };
 
 export default function ImageGallery({ images, alt }: { images: VehicleImage[]; alt: string }) {
   const [mainImage, setMainImage] = useState(0);
@@ -12,9 +12,9 @@ export default function ImageGallery({ images, alt }: { images: VehicleImage[]; 
     <div className="space-y-3">
       {/* Main image */}
       <div className="relative aspect-[4/3] glass-card overflow-hidden flex items-center justify-center bg-surface-hover">
-        {images.length > 0 ? (
+        {images[mainImage]?.url ? (
           <Image
-            src={images[mainImage]?.storage_path}
+            src={images[mainImage].url}
             alt={alt}
             fill
             sizes="(max-width: 1024px) 100vw, 50vw"
@@ -37,7 +37,7 @@ export default function ImageGallery({ images, alt }: { images: VehicleImage[]; 
                 idx === mainImage ? "border-accent" : "border-transparent"
               }`}
             >
-              <Image src={img.storage_path} alt="" width={64} height={64} className="w-full h-full object-cover" />
+              {img.url && <Image src={img.url} alt="" width={64} height={64} className="w-full h-full object-cover" />}
             </button>
           ))}
         </div>

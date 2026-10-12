@@ -11,7 +11,7 @@ import EquipmentPicker from "@/components/EquipmentPicker";
 import { formatJpy, formatDate } from "@/lib/format";
 import MarketVehicleAiDescButton from "./MarketVehicleAiDescButton";
 
-type VehicleImage = { id: string; storage_path: string; file_name: string | null; sort_order: number };
+type VehicleImage = { id: string; url: string | null; file_name: string | null; sort_order: number };
 
 type CustomerInterest = {
   id: string;
@@ -557,9 +557,9 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-3">
               <div className="relative aspect-[4/3] glass-card overflow-hidden flex items-center justify-center bg-surface-hover">
-                {images.length > 0 ? (
+                {images[mainIdx]?.url ? (
                   <Image
-                    src={images[mainIdx]?.storage_path}
+                    src={images[mainIdx].url}
                     alt={`${vehicle.maker} ${vehicle.model}`}
                     fill
                     sizes="(max-width: 1024px) 100vw, 50vw"
@@ -579,13 +579,9 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                         onClick={() => setMainIdx(idx)}
                         className={`w-16 h-16 rounded-lg overflow-hidden border-2 ${idx === mainIdx ? "border-accent" : "border-transparent"}`}
                       >
-                        <Image
-                          src={img.storage_path}
-                          alt=""
-                          width={64}
-                          height={64}
-                          className="w-full h-full object-cover"
-                        />
+                        {img.url && (
+                          <Image src={img.url} alt="" width={64} height={64} className="w-full h-full object-cover" />
+                        )}
                       </button>
                       <button
                         type="button"

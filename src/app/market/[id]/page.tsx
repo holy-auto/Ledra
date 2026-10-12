@@ -6,6 +6,7 @@ import { formatJpy, formatDate } from "@/lib/format";
 import Badge from "@/components/ui/Badge";
 import ImageGallery from "./ImageGallery";
 import InquiryForm from "./InquiryForm";
+import { signAssetPaths } from "@/lib/signedUrl";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,13 @@ export default async function MarketVehicleDetailPage({ params }: { params: Prom
     .eq("vehicle_id", id)
     .order("sort_order", { ascending: true });
 
-  const vehicleImages = images ?? [];
+  // 保存パスはそのままでは画像として開けないので、署名 URL にして渡す
+  const urls = await signAssetPaths(
+    supabase,
+    (images ?? []).map((img) => img.storage_path),
+    "market",
+  );
+  const vehicleImages = (images ?? []).map((img) => ({ ...img, url: urls.get(img.storage_path) ?? null }));
 
   const specRows: [string, string | null][] = [
     ["メーカー", vehicle.maker],
