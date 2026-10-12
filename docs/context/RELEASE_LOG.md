@@ -4,6 +4,16 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-12 写真の保存先の制限を、アプリが受け付けるものに合わせて広げる（HEIC・動画・PDF・100MB）
+
+- 内容: `assets` バケットの制限（画像 5 種・10MB）がアプリより狭く、iPhone の HEIC 写真・10MB 超の写真・証明書の動画・署名済み PDF の
+  保存が Storage に弾かれていた。許可する形式に `image/heic`・`video/mp4`・`video/quicktime`・`application/pdf` を足し、上限を
+  アプリの最大（動画の 100MB）にした（`20261012131344_widen_assets_bucket_limits.sql`。マージで本番に適用）。
+  `assets` への書き込み口 15 箇所が付ける形式がすべて一覧に入ることを確認。
+- 署名日時: 署名済み PDF の保存に失敗すると `regenerateSignedPdf` が早期 return して `certificates.signed_at` まで記録されなかった。
+  署名日時を PDF の生成・保存より先に記録するようにした（`regenerateSignedPdf.test.ts`。旧コードでは赤になることを確認）。
+- 残り【要確認】: プロジェクト全体の上限（Global file size limit）が 100MB 未満なら、動画はそちらで弾かれる。
+
 ## 2026-10-10 施工写真の保存先（`assets` バケット）を非公開にする（写真の非公開化 ③）
 
 - 内容: `assets` バケット（施工写真・動画・ロゴ・印影・点検写真・部品の証跡）を `public = false` にするマイグレーション
