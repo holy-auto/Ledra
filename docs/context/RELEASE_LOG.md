@@ -4,6 +4,14 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-12 モバイルアプリの起動オープニング動画を一旦止める
+
+- 内容: `apps/mobile/src/app/_layout.tsx` に `INTRO_ENABLED = false` を置き、`AppIntro` を出さずに本体へ入るようにした。
+  スプラッシュは `useAuthInit` の完了（`isReady`）で剥がす。初期化が返らない場合は従来どおり `SPLASH_FAILSAFE_MS`（5秒）で剥がす。
+- 理由: 素材が 608px 幅を 1080 幅へ約1.8倍に引き伸ばしたもので画質が荒い（DECISION_LOG 2026-10-12）。
+- 復帰: 高画質素材に差し替えて `INTRO_ENABLED = true`。`AppIntro`・`ledra-intro.mp4`・`introTiming` は残してある。
+- 確認: `apps/mobile` の `tsc --noEmit` と `npm test` が通ることを確認。実機での起動確認は未実施（ストアへの反映は次のビルドから）。
+
 ## 2026-10-12 写真の保存先が HEIC・動画・PDF を受け付けるようにし、署名日時を確実に記録する
 
 - 内容: `assets` バケットの許可形式（画像 5 種）に無かった `image/heic`・`video/mp4`・`video/quicktime`・`application/pdf` を足した
