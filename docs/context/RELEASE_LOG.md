@@ -33,6 +33,12 @@
 - OPEN_QUESTIONS の【要確認】を1件閉じた。原文の塞ぎ方（「ビルド後に `.next/` 配下の実在を見る」）は誤りで、
   tracing はファイルを `.next/` へコピーしない（manifest に書くだけ）—— MISTAKE_LEDGER `M-20261012-planned-to-look-for-a-file-tracing-never-copies`。
 
+## 2026-10-12 デモの施工写真に「AI で生成したイメージ」と表示
+
+- 内容: 管理画面上部のデモ帯（`DemoTenantBanner`）に「施工写真は AI で生成したイメージで、実際の施工写真ではありません」を足した。
+  公開証明書ページ（`/c/[public_id]`）でも、店舗がデモテナント（slug `ledra-motors-demo`、本番の tenants で確認）で写真が見えているときだけ、写真の上に同じ注記を出す。
+- モバイルアプリには出していない（OPEN_QUESTIONS）。
+
 ## 2026-10-12 ブランド証明書のロゴと、マーケットの車両画像が出ていなかったのを直す
 
 - ブランド証明書のロゴ: テンプレート設定で上げたロゴ（`branding.logo_asset_id` = `template_assets` の行 ID）を、
