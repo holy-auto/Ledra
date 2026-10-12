@@ -15,6 +15,11 @@ name: Mobile TestFlight
 
 on:
   workflow_dispatch:
+    inputs:
+      submit_only:
+        description: "ビルドせず、EAS 上の最新 iOS ビルドを TestFlight に提出だけする"
+        type: boolean
+        default: false
 
 concurrency:
   group: mobile-testflight
@@ -73,8 +78,9 @@ jobs:
             fs.writeFileSync("eas.json", JSON.stringify(j, null, 2));
           '
 
-      - name: Build (EAS, iOS production)
+      - name: Build (EAS, iOS demo)
         id: build
+        if: ${{ !inputs.submit_only }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
@@ -91,9 +97,17 @@ jobs:
       - name: Submit to TestFlight
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          BUILD_ID: ${{ steps.build.outputs.id }}
         run: |
-          if ! eas submit --platform ios --profile production --id "${{ steps.build.outputs.id }}" --non-interactive 2> >(tee /tmp/submit.err >&2); then
-            sleep 2
-            tail -n 40 /tmp/submit.err | sed 's/\x1b\[[0-9;]*m//g' | grep -v '^\s*$' | while IFS= read -r l; do echo "::error::$l"; done
-            exit 1
+          # submit_only のときは build ステップが飛ぶので、EAS 上の最新ビルドを使う
+          if [ -n "$BUILD_ID" ]; then target="--id $BUILD_ID"; else target="--latest"; fi
+          echo "::notice::submit target: $target"
+          # eas submit はエラーを stdout に出すことがあるので両方を拾う
+          set +e
+          eas submit --platform ios --profile production $target --non-interactive 2>&1 | tee /tmp/submit.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            tail -n 40 /tmp/submit.log | sed 's/\x1b\[[0-9;]*m//g' | grep -v '^\s*$' | while IFS= read -r l; do echo "::error::$l"; done
+            exit "$rc"
           fi
