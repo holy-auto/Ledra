@@ -35,7 +35,9 @@ export default function DemoTenantBanner() {
           <a href="/signup" className="ml-1 underline underline-offset-2 hover:text-white">
             新規登録
           </a>
-          からどうぞ。
+          からどうぞ。施工写真は
+          <span className="font-medium text-amber-200">AI で生成したイメージ</span>
+          で、実際の施工写真ではありません。
         </div>
       </div>
     </div>
