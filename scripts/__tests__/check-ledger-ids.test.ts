@@ -17,7 +17,15 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 // @ts-expect-error -- .mjs に型定義は無い。検査対象は実行時の挙動。
-import { checkLedger, fixLedger, KNOWN_LEGACY_EXCESS, MIN_ENTRIES, MIN_TYPE_ROWS } from "../check-ledger-ids.mjs";
+import {
+  checkLedger,
+  fixLedger,
+  KNOWN_LEGACY_EXCESS,
+  MIN_ENTRIES,
+  MIN_LEGACY_ROWS,
+  MIN_TYPE_ROWS,
+  MIN_TYPED_HEADINGS,
+} from "../check-ledger-ids.mjs";
 
 const LEDGER = join(dirname(fileURLToPath(import.meta.url)), "../../docs/context/MISTAKE_LEDGER.md");
 const real: string = readFileSync(LEDGER, "utf8");
@@ -442,6 +450,99 @@ describe("checkLedger（陰性対照 — Codex 2026-10-10 の7件）", () => {
     // `| ` で始まる全行を見ていたので、それを索引の参照と読んで全コミットを止めていた。
     const text = `${real}\n## 付録\n\n| 事例 | 結果 |\n|---|---|\n| \`M-20260915-deleted-entry\` を参照していた | 落ちた |\n`;
     expect(checkLedger(text).error, "正しい文書が落ちている").toBe(null);
+  });
+});
+
+describe("checkLedger（陰性・陽性対照 — /code-review 2026-10-10 の2巡目10件）", () => {
+  function editRow(text: string, type: string, fn: (row: string) => string): string {
+    const lines = text.split("\n");
+    const i = lines.findIndex((l) => l.startsWith(`| **${type}. `));
+    if (i < 0) throw new Error(`型 ${type} の行が無い`);
+    const before = lines[i];
+    lines[i] = fn(before);
+    if (lines[i] === before) throw new Error("書き換えが当たっていない");
+    return lines.join("\n");
+  }
+  /** 中身のセルにテキストを足す（行の列数は変えない）。 */
+  const addToMiddle = (row: string, extra: string) => {
+    const cells = row.split("|");
+    cells[2] = `${cells[2]}${extra}`;
+    return cells.join("|");
+  };
+
+  it("型表の中身セルに区切り無しで ID を書いても落ちない（索引の列だけ見る）", () => {
+    // `（M-20260915-brand-new の形）` は `M-20260915-brand-newの形` というトークンになる。
+    // 行を丸ごと走査していたので、これが「実在しない ID」として全コミットを止めていた。
+    const text = editRow(real, "G", (row) => addToMiddle(row, "（M-20260915-brand-new の形）"));
+    expect(checkLedger(text).error, "正しい文書が落ちている").toBe(null);
+  });
+
+  it("旧番号の対応表の表題に ID を書いても落ちない", () => {
+    const text = real.replace(
+      "| `M-060` | 2026-09-07 | `M-20260907-no-negative-control` |",
+      "| `M-060` | 2026-09-07 | `M-20260907-no-negative-control` | M-060の件。",
+    );
+    expect(text, "置換が当たっていない").not.toBe(real);
+    expect(checkLedger(text).error, "正しい文書が落ちている").toBe(null);
+  });
+
+  it("本物の表より前にヘッダ＋行1本を引用しても、行数の多いブロックを採る", () => {
+    const text = real.replace(
+      "| 型 | 中身 | 該当 |",
+      "書式の例:\n\n| 型 | 中身 | 該当 |\n|---|---|---|\n| **A. 道具を検証しない** | 例 | M-001 |\n\n| 型 | 中身 | 該当 |",
+    );
+    expect(text, "置換が当たっていない").not.toBe(real);
+    const r = checkLedger(text);
+    expect(r.error, "引用のブロックを本物として採っている").toBe(null);
+    expect(r.typeRows).toBeGreaterThanOrEqual(MIN_TYPE_ROWS);
+  });
+
+  it("該当列が落ちて中身にパイプが入った行を落とす（列数では判別できない形）", () => {
+    // 内側3セルなので「正しい3列」と区別が付かない。該当列が ID の並びであることで判別する。
+    const text = editRow(real, "G", (row) => {
+      const cells = row.split("|");
+      return `|${cells[1]}| 説明 \`a|b\` |`;
+    });
+    const r = checkLedger(text);
+    expect(r.error).toContain("「該当」列が読めない");
+    // そのまま --fix させると散文セルに ID を書き込んでいた。置かないことを固定する。
+    expect(fixLedger(text).added).toEqual([]);
+  });
+
+  it("中身セルにパイプが入った正しい行でも --fix が該当列に置ける", () => {
+    const text = `${editRow(real, "G", (row) => addToMiddle(row, " \`a|b\` の例"))}\n## M-20260915-pipe-case 中身にパイプ（2026-09-15・型 G）\n\n本文。\n`;
+    const before = checkLedger(text);
+    expect(before.kind).toBe("unindexed");
+    const { text: fixed, added } = fixLedger(text, before.pairs);
+    expect(added).toEqual(["M-20260915-pipe-case → 型 G"]);
+    expect(checkLedger(fixed).error, "置いたのに緑にならない").toBe(null);
+  });
+
+  it("旧番号の対応表が読めなくなったら落ちる（被覆が黙って消える形）", () => {
+    const text = real.replace("| 旧番号 | 日付 | 新 ID | 表題 |", "| 旧番号 | 日付 | 新ID | 表題 |");
+    expect(text, "置換が当たっていない").not.toBe(real);
+    const r = checkLedger(text);
+    expect(r.error).toContain("旧番号の対応表の行が");
+    expect(r.error).toContain(`下限は ${MIN_LEGACY_ROWS} 行`);
+  });
+
+  it("見出しの型の書き方が変わったら落ちる（検査8が0件＝永久に緑になる形）", () => {
+    const text = real.replace(/・型 ([A-Z])）/g, "・分類$1）");
+    expect(text, "置換が当たっていない").not.toBe(real);
+    const r = checkLedger(text);
+    expect(r.error).toContain("型を名乗る見出しが");
+    expect(r.error).toContain(`下限は ${MIN_TYPED_HEADINGS} 件`);
+  });
+
+  it("行数の床は REQUIRED_TYPES から導いている（同じ事実を2箇所に持たない）", () => {
+    expect(MIN_TYPE_ROWS).toBe(12);
+  });
+
+  it("検査が出した欠落の組を --fix にそのまま渡せる", () => {
+    const text = withEntry("## M-20260915-pass-pairs 組を渡す（2026-09-15・型 A）");
+    const before = checkLedger(text);
+    expect(before.pairs).toEqual([{ id: "M-20260915-pass-pairs", type: "A" }]);
+    expect(fixLedger(text, before.pairs).added).toEqual(["M-20260915-pass-pairs → 型 A"]);
   });
 });
 
