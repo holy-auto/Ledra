@@ -204,15 +204,23 @@ export async function applyStripeCredit(rewardId: string): Promise<ApplyResult> 
       { idempotencyKey: `academy-reward:${rewardId}` },
     );
 
-    const { error: appliedErr } = await supabase
-      .from("academy_creator_rewards")
-      .update({
-        status: "applied",
-        stripe_credit_id: txn.id,
-        applied_at: new Date().toISOString(),
-      })
-      .eq("id", rewardId);
-    if (appliedErr) throw new Error(`academy reward applied の記録に失敗: ${appliedErr.message}`);
+    // **ここで throw してはいけない。** クレジットは Stripe で既に付与済みで、
+    // 同じ try の catch が status を `failed` にしてしまう（＝付与済みなのに失敗の記録が残り、
+    // 手で付与し直すと二重付与になる）。/code-review #1306 の指摘。
+    // 記録の失敗は失敗として**ログに出す**に留め、付与済みであることを壊さない。
+    // 再実行時は idempotencyKey `academy-reward:<id>` が Stripe 側の二重付与を止める。
+    await bestEffortWrite(
+      supabase
+        .from("academy_creator_rewards")
+        .update({
+          status: "applied",
+          stripe_credit_id: txn.id,
+          applied_at: new Date().toISOString(),
+        })
+        .eq("id", rewardId),
+      "academy_creator_rewards update — applied の記録。失敗すると Stripe には付与済みなのに台帳が pending のまま残る",
+      { rewardId, stripeCreditId: txn.id },
+    );
 
     logger.info("[rewards] stripe credit applied", { rewardId, txnId: txn.id });
     return { ok: true, stripe_credit_id: txn.id };

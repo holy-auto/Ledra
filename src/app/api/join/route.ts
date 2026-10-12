@@ -4,6 +4,7 @@ import { checkRateLimit as checkUpstashRateLimit } from "@/lib/api/rateLimit";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { joinSchemaV2, parseBody } from "@/lib/validation/schemas";
 import { apiJson, apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const runtime = "nodejs";
 
@@ -182,12 +183,15 @@ export async function POST(req: NextRequest) {
   }
 
   // Step 3: Consume the email verification token (one-time use)
-  const { error: consumeErr } = await supabase
-    .from("insurer_email_verifications")
-    .delete()
-    .eq("email", data.email.toLowerCase())
-    .eq("verified", true);
-  if (consumeErr) return apiInternalError(consumeErr, "join POST: consume email verification");
+  //
+  // **ここで 500 を返さない。** 認証ユーザ（Step 1）と保険会社（Step 2）は既に作られていて、
+  // ロールバックも無い。500 にすると**登録は成功しているのに失敗として見える**
+  // （/code-review #1306）。消し損ねたトークンは自分の expires_at で切れる。
+  await bestEffortWrite(
+    supabase.from("insurer_email_verifications").delete().eq("email", data.email.toLowerCase()).eq("verified", true),
+    "insurer_email_verifications delete — 確認トークンの消費。失敗すると同じトークンが期限まで残る",
+    { email_domain: data.email.toLowerCase().split("@")[1] ?? null },
+  );
 
   return apiJson(
     {

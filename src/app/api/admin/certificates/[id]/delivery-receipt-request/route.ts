@@ -35,6 +35,7 @@ import { sendEmail } from "@/lib/email/sendEmail";
 
 import { withCaller } from "@/lib/api/withCaller";
 import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
+import { logger } from "@/lib/logger";
 export const dynamic = "force-dynamic";
 
 const SIGN_BASE_URL = process.env.NEXT_PUBLIC_SIGN_BASE_URL ?? "/sign";
@@ -78,7 +79,17 @@ async function markReservationAwaitingSignoff(
     .eq("id", reservationId)
     .eq("tenant_id", tenantId)
     .neq("signoff_status", "signed");
-  if (signoffErr) throw new Error(`markReservationAwaitingSignoff failed: ${signoffErr.message}`);
+  // **throw しない。** この関数は受領サイン依頼を作った**後**に呼ばれる（246 行・372 行）。
+  // throw すると 500 で sign_url が返らず、押し直しても既存依頼の再利用分岐が同じところで
+  // 止まるので、**有効なサイン依頼が API から永久に取り出せなくなる**（/code-review #1306）。
+  // 予約の署名待ち表示はサイン依頼そのものより後段なので、失敗はログに出すに留める。
+  if (signoffErr) {
+    logger.error("delivery-receipt-request: 予約の署名待ちへの遷移に失敗", signoffErr, {
+      route: "admin/certificates/[id]/delivery-receipt-request",
+      reservation_id: reservationId,
+      tenant_id: tenantId,
+    });
+  }
 }
 
 async function sendDeliveryReceiptEmail(params: {

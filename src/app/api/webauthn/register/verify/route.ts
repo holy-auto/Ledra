@@ -68,11 +68,14 @@ export const POST = withCaller(
         .from("webauthn_challenges")
         .update({ consumed_at: new Date().toISOString() })
         .eq("id", ch.id);
-      if (consumeErr) return apiInternalError(consumeErr, "webauthn/register/verify: consume challenge");
+      // **insert の結果を先に見る。** 逆にすると、登録が成功していても消費の失敗で 500 になり、
+      // 23505（既に登録済み）の 400 も潰れる（/code-review #1306）。
       if (insErr) {
         if (insErr.code === "23505") return apiValidationError("この認証器は既に登録済みです。");
         return apiInternalError(insErr, "webauthn/register/verify insert");
       }
+      // 消費できていないチャレンジはリプレイに使えるので、登録が通っていても失敗として返す。
+      if (consumeErr) return apiInternalError(consumeErr, "webauthn/register/verify: consume challenge");
 
       return apiOk({ verified: true, credential_id: row.credential_id });
     } catch (e) {

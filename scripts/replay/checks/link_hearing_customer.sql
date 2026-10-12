@@ -1,7 +1,7 @@
 -- `public.link_hearing_customer` が「全部か、何も残らないか」になっているかを、行を入れて確かめる。
 --
 -- なぜ要るか: この関数は**部分成功を無くすため**に入れた
--- （`20261012131100_link_hearing_customer_transaction.sql`、DECISION_LOG 2026-10-12）。
+-- （`20261012140200_link_hearing_customer_transaction.sql`、DECISION_LOG 2026-10-12）。
 -- 守るべき性質は4つあり、どれも**型も構文も通ったまま壊れる**。
 --
 --   1. 正常系: 顧客・車両が作られ、ヒアリングが linked になる

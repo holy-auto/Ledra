@@ -54,7 +54,7 @@
 
 - 内容（DECISION_LOG 2026-10-12・代表判断「全部修正しろ」）:
   - 顧客・車両・ヒアリング更新の3つを DB 関数 `public.link_hearing_customer` にまとめた
-    （`supabase/migrations/20261012131100_link_hearing_customer_transaction.sql`）。SECURITY INVOKER なので
+    （`supabase/migrations/20261012140200_link_hearing_customer_transaction.sql`）。SECURITY INVOKER なので
     テナント分離は今までどおり RLS が見る。`for update` で二度押しを直列化し、車両だけは副トランザクションで
     best-effort（失敗コードを返して画面に出す）。ルートは 60 行減って関数を1回呼ぶだけになった。
   - `hearings.status` の zod の値を本番 DB の CHECK（`draft` / `completed` / `linked`）に揃えた。

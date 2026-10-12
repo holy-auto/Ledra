@@ -164,7 +164,18 @@ export const POST = withCaller(
         order_id: order.id,
       }));
       const { error: itemsErr } = await supabase.from("shop_order_items").insert(itemsToInsert);
-      if (itemsErr) return apiInternalError(itemsErr, "shop checkout: order items insert");
+      if (itemsErr) {
+        // 明細の無い仮オーダーを残さない（Stripe 失敗側と同じ後片付け・/code-review #1306）。
+        await bestEffortWrite(
+          admin.from("shop_order_items").delete().eq("order_id", order.id),
+          "shop_order_items delete — 明細 insert 失敗の後片付け",
+        );
+        await bestEffortWrite(
+          admin.from("shop_orders").update({ status: "checkout_failed" }).eq("id", order.id),
+          "shop_orders update — 明細 insert 失敗の後片付け",
+        );
+        return apiInternalError(itemsErr, "shop checkout: order items insert");
+      }
 
       // Step 2: Stripe Checkout Session作成
       const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL;

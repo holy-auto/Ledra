@@ -107,12 +107,14 @@ export const POST = withCaller(
 
       if (data.action === "disconnect") {
         const { admin } = createTenantScopedAdmin(caller.tenantId);
-        await writeGcalRefreshToken(admin, caller.tenantId, null);
+        // **フラグを先に下ろす。** 順番を逆にすると、トークンを消した後にこの更新が落ちて
+        // 「同期は有効・トークン無し」が残り、以後の同期が失敗し続ける（/code-review #1306）。
         const { error: disconnectErr } = await admin
           .from("tenants")
           .update({ gcal_sync_enabled: false })
           .eq("id", caller.tenantId);
         if (disconnectErr) return apiInternalError(disconnectErr, "gcal POST: disconnect");
+        await writeGcalRefreshToken(admin, caller.tenantId, null);
         return apiOk({ connected: false });
       }
 
