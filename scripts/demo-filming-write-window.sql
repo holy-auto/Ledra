@@ -9,13 +9,15 @@
 --
 -- 撮影で作った証明書の後片付けは `npx tsx scripts/setup-demo-tenant.ts --filming-cleanup`。
 
--- ── OPEN（2026-10-08 本番に適用済み）────────────────────
-ALTER POLICY demo_tenant_readonly_insert ON certificates
-  WITH CHECK (
-    tenant_id <> '00000000-0000-0000-0000-de0000000010'::uuid
-    OR vehicle_id = '00000000-0000-0000-0000-000100000011'::uuid
-  );
+-- ファイルをそのまま流すと CLOSE（安全な側）が走る。OPEN は撮影するときだけ、コメントを外して流す。
+
+-- ── OPEN（2026-10-08 本番に適用、2026-10-13 に CLOSE で戻した）───────
+-- ALTER POLICY demo_tenant_readonly_insert ON certificates
+--   WITH CHECK (
+--     tenant_id <> '00000000-0000-0000-0000-de0000000010'::uuid
+--     OR vehicle_id = '00000000-0000-0000-0000-000100000011'::uuid
+--   );
 
 -- ── CLOSE（元の定義に戻す。2026-10-13 12:41 UTC 直前に本番に適用済み）──
--- ALTER POLICY demo_tenant_readonly_insert ON certificates
---   WITH CHECK (tenant_id <> '00000000-0000-0000-0000-de0000000010'::uuid);
+ALTER POLICY demo_tenant_readonly_insert ON certificates
+  WITH CHECK (tenant_id <> '00000000-0000-0000-0000-de0000000010'::uuid);
