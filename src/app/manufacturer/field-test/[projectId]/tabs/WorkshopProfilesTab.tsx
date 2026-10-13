@@ -64,7 +64,7 @@ export default function WorkshopProfilesTab({ projectId }: { projectId: string }
   if (profiles.length === 0) {
     return (
       <div className="rounded-2xl border border-border-subtle bg-surface p-6 text-center text-sm text-secondary">
-        参加施工店のプロファイルがありません。応募が承認された施工店のプロファイルがここに表示されます。
+        参加施工店の設備・資格はまだ登録されていません。応募が承認された施工店が自分で登録すると、ここに表示されます。
       </div>
     );
   }

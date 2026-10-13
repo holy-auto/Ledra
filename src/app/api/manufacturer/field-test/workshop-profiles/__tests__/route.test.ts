@@ -6,11 +6,10 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/auth/manufacturerCaller", () => ({ resolveManufacturerCaller: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createServiceRoleAdmin: vi.fn() }));
-vi.mock("@/lib/fieldTest/applicationGate", () => ({ isParticipatingTenant: vi.fn() }));
 
-import * as route from "@/app/api/manufacturer/field-test/workshop-profiles/[tenantId]/route";
+import * as route from "@/app/api/manufacturer/field-test/workshop-profiles/route";
 
-describe("メーカー向け 施工店の設備・資格（個別）", () => {
+describe("メーカー向け 施工店の設備・資格", () => {
   it("GET だけを出し、書き込みのメソッドを出さない", () => {
     expect(typeof route.GET).toBe("function");
     for (const m of ["POST", "PUT", "PATCH", "DELETE"]) expect(route).not.toHaveProperty(m);
