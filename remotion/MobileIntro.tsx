@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AbsoluteFill, Easing, continueRender, delayRender, interpolate, staticFile, useCurrentFrame } from "remotion";
+import { AbsoluteFill, Easing, cancelRender, continueRender, delayRender, interpolate, staticFile, useCurrentFrame } from "remotion";
 
 /**
  * モバイルアプリの起動オープニング（apps/mobile/assets/ledra-intro.mp4 の生成元）。
@@ -35,11 +35,15 @@ function useCinzel() {
   const [handle] = useState(() => delayRender("Loading Cinzel"));
   useEffect(() => {
     const face = new FontFace("Cinzel", `url(${staticFile("fonts/Cinzel-800.woff2")})`, { weight: "800" });
+    // 読めなければ書き出しごと止める。代替のセリフ体で黙って書き出すと、
+    // そのまま ledra-intro.mp4 を上書きして違う書体の動画が出荷される。
     face
       .load()
-      .then((f) => document.fonts.add(f))
-      .catch((e) => console.warn("[MobileIntro] Cinzel load failed:", e))
-      .finally(() => continueRender(handle));
+      .then((f) => {
+        document.fonts.add(f);
+        continueRender(handle);
+      })
+      .catch((e) => cancelRender(e));
   }, [handle]);
 }
 
