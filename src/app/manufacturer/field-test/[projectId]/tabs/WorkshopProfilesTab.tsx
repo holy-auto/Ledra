@@ -204,6 +204,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function ProfileEditForm({ profile, onSaved }: { profile: Profile; onSaved: () => void }) {
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Boolean capabilities
   const [bools, setBools] = useState<Record<BoolKey, boolean>>(
@@ -228,6 +229,7 @@ function ProfileEditForm({ profile, onSaved }: { profile: Profile; onSaved: () =
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setSaveError(null);
 
     const splitJa = (s: string) =>
       s
@@ -248,12 +250,17 @@ function ProfileEditForm({ profile, onSaved }: { profile: Profile; onSaved: () =
       mechanic_certifications: certs.filter((c) => c.grade),
     };
 
-    await fetch(`/api/manufacturer/field-test/workshop-profiles/${profile.tenant_id}`, {
+    const res = await fetch(`/api/manufacturer/field-test/workshop-profiles/${profile.tenant_id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    });
+    }).catch(() => null);
     setSaving(false);
+    if (!res?.ok) {
+      const json = await res?.json().catch(() => null);
+      setSaveError(json?.message ?? "保存できませんでした。もう一度お試しください。");
+      return;
+    }
     onSaved();
   };
 
@@ -440,6 +447,11 @@ function ProfileEditForm({ profile, onSaved }: { profile: Profile; onSaved: () =
       >
         {saving ? "保存中..." : "保存"}
       </button>
+      {saveError && (
+        <p role="alert" className="text-xs text-danger-text">
+          {saveError}
+        </p>
+      )}
     </form>
   );
 }

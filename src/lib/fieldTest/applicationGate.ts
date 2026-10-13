@@ -28,6 +28,30 @@ export async function hasApprovedApplication(
   return (data ?? []).length > 0;
 }
 
+/**
+ * 施工店がこのメーカーの実証テストに参加しているか（どれかのプロジェクトで応募が承認済み、または案件を割り当て済み）。
+ * 設備・資格（workshop_capability_profiles）はメーカーをまたいで1施工店1行なので、参加していない施工店の行を
+ * メーカーが読む・書き換えることはできない。条件は設備・資格タブ（プロジェクトの参加施工店）と同じ。
+ */
+export async function isParticipatingTenant(
+  admin: Supa,
+  p: { manufacturerId: string; tenantId: string },
+): Promise<boolean> {
+  const [apps, jobs] = await Promise.all([
+    admin
+      .from("ft_applications")
+      .select("id")
+      .eq("manufacturer_id", p.manufacturerId)
+      .eq("tenant_id", p.tenantId)
+      .eq("status", "approved")
+      .limit(1),
+    admin.from("ft_jobs").select("id").eq("manufacturer_id", p.manufacturerId).eq("tenant_id", p.tenantId).limit(1),
+  ]);
+  if (apps.error) throw apps.error;
+  if (jobs.error) throw jobs.error;
+  return (apps.data ?? []).length > 0 || (jobs.data ?? []).length > 0;
+}
+
 export type ApprovedTenant = { id: string; name: string | null };
 
 type ApplicationRow = {

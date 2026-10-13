@@ -4,6 +4,20 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-12 メーカーが他社の施工店の設備・資格を読めた・書き換えられた穴を塞いだ
+
+- 内容: 施工店の設備・資格（`workshop_capability_profiles`。許可番号・整備士の資格者名・対応地域。1施工店1行でメーカーをまたいで共有）を、
+  **自社の実証テストに参加している施工店（どれかのプロジェクトで応募承認済み、または案件割当済み）だけ**に絞った。
+  - `GET /api/manufacturer/field-test/workshop-profiles`: `project_id` を必須にした。条件なし（全施工店 200件）と `tenant_id` 指定の分岐を消した（画面はプロジェクト指定でしか呼んでいない）。
+  - `GET / PUT /api/manufacturer/field-test/workshop-profiles/[tenantId]`: 参加していない施工店は GET が 404、PUT が 403。**以前は、どのメーカーの管理者でも任意の施工店の設備・資格を上書きできた。**
+  - 判定は `isParticipatingTenant()`（`src/lib/fieldTest/applicationGate.ts`、テスト4件）。設備・資格タブが出す施工店と同じ条件。
+  - **DB の参照ポリシーも絞った**（`20261012222500_workshop_profiles_select_own_tenant.sql`）。以前は `USING (true)` で、ログインした人なら誰でも PostgREST から全施工店の行を読めた
+    （API を通らない経路。本番の `pg_policies` で確認）。自分の施工店の行だけ読める（`my_tenant_ids()`）に変えた。施工店の画面（Web・モバイル）は自分の行しか読まず、メーカーは service role で読むので影響しない。
+  - 設備・資格タブの編集で保存に失敗したとき、黙って閉じずにエラーを出す。施工店 ID・プロジェクト ID が UUID でなければ 404 / 400（以前は 500）。
+- 見つけた経緯: #1323 の `/code-review` で一覧 API の分岐が指摘され、直す際に個別ルートの GET/PUT にも同じ穴があることを見つけた。
+- 実害: 本番の `workshop_capability_profiles` は 2026-10-12 時点で1行だけで、それはデモ施工店の行（同日 `demo-manufacturer-portal.sql` で入れたもの。それ以前は0行）。
+  実在の施工店の設備・資格は1件も無かったので、読まれた・書き換えられたものは無い（本番 DB で件数を確認）。
+
 ## 2026-10-12 デモの施工写真に「AI で生成したイメージ」と表示
 
 - 内容: 管理画面上部のデモ帯（`DemoTenantBanner`）に「施工写真は AI で生成したイメージで、実際の施工写真ではありません」を足した。
