@@ -17,6 +17,7 @@
 - 見つけた経緯: #1323 の `/code-review` で一覧 API の分岐が指摘され、直す際に個別ルートの GET/PUT にも同じ穴があることを見つけた。
 - 実害: 本番の `workshop_capability_profiles` は 2026-10-12 時点で1行だけで、それはデモ施工店の行（同日 `demo-manufacturer-portal.sql` で入れたもの。それ以前は0行）。
   実在の施工店の設備・資格は1件も無かったので、読まれた・書き換えられたものは無い（本番 DB で件数を確認）。
+- 本番反映: 2026-10-13 に #1329 をマージ。DB のポリシーは `db-migrate.yml` で自動適用され、本番の `pg_policies` で SELECT が `workshop_cap_profiles_tenant_select`（`my_tenant_ids()`）だけになり、`USING (true)` の旧ポリシーが消えたことを確認。
 
 ## 2026-10-12 デモの施工写真に「AI で生成したイメージ」と表示
 
