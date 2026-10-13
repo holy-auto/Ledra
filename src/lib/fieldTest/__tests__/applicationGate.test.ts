@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { approvedTenants, hasApprovedApplication, isParticipatingTenant } from "../applicationGate";
+import { approvedTenants, hasApprovedApplication } from "../applicationGate";
 
 /** ft_applications への eq 条件を記録し、limit で結果を返すだけの最小モック。 */
 function mockAdmin(result: { data: unknown[] | null; error: unknown }) {
@@ -62,58 +62,5 @@ describe("approvedTenants", () => {
 
   it("承認済みが無ければ空", () => {
     expect(approvedTenants([{ tenant_id: "t1", status: "withdrawn" }])).toEqual([]);
-  });
-});
-
-/** 表ごとに結果を返し、表ごとの eq 条件を記録するモック。 */
-function mockAdminByTable(results: Record<string, { data: unknown[] | null; error: unknown }>) {
-  const eqs: Record<string, [string, unknown][]> = {};
-  const from = vi.fn((table: string) => {
-    eqs[table] = [];
-    const chain = {
-      select: vi.fn(() => chain),
-      eq: vi.fn((col: string, v: unknown) => {
-        eqs[table].push([col, v]);
-        return chain;
-      }),
-      limit: vi.fn(async () => results[table]),
-    };
-    return chain;
-  });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { admin: { from } as any, eqs };
-}
-
-describe("isParticipatingTenant", () => {
-  const Q = { manufacturerId: "m1", tenantId: "t1" };
-  const none = { data: [], error: null };
-
-  it("承認済みの応募があれば true（メーカー・施工店・approved で絞る）", async () => {
-    const { admin, eqs } = mockAdminByTable({ ft_applications: { data: [{ id: "a1" }], error: null }, ft_jobs: none });
-    expect(await isParticipatingTenant(admin, Q)).toBe(true);
-    expect(eqs.ft_applications).toEqual([
-      ["manufacturer_id", "m1"],
-      ["tenant_id", "t1"],
-      ["status", "approved"],
-    ]);
-    expect(eqs.ft_jobs).toEqual([
-      ["manufacturer_id", "m1"],
-      ["tenant_id", "t1"],
-    ]);
-  });
-
-  it("応募が無くても案件を割り当てていれば true", async () => {
-    const { admin } = mockAdminByTable({ ft_applications: none, ft_jobs: { data: [{ id: "j1" }], error: null } });
-    expect(await isParticipatingTenant(admin, Q)).toBe(true);
-  });
-
-  it("どちらも無ければ false（他社だけに参加している施工店）", async () => {
-    const { admin } = mockAdminByTable({ ft_applications: none, ft_jobs: none });
-    expect(await isParticipatingTenant(admin, Q)).toBe(false);
-  });
-
-  it("問い合わせが失敗したら投げる（黙って通さない）", async () => {
-    const { admin } = mockAdminByTable({ ft_applications: none, ft_jobs: { data: null, error: new Error("db down") } });
-    await expect(isParticipatingTenant(admin, Q)).rejects.toThrow("db down");
   });
 });

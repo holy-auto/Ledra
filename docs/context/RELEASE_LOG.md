@@ -14,6 +14,14 @@
 - アプリ: 前日に入れた `INTRO_ENABLED = false` を外し、オープニング停止前の `_layout.tsx` に戻した。`introTiming.ts` のコメントを新しい素材に合わせた。
 - 確認: `apps/mobile` の `tsc --noEmit` と `npm test` が通ることを確認。実機での確認は未実施（ストアへの反映は次のビルドから）。
 
+## 2026-10-13 メーカーは施工店の設備・資格を閲覧だけに（編集をなくした）
+
+- 内容: メーカーポータルの実証テスト「設備・資格」タブから、編集ボタンと編集フォームを消した。メーカー向けの個別ルート `/api/manufacturer/field-test/workshop-profiles/[tenantId]` は
+  GET・PUT とも消した（GET は編集フォームを消すとどこからも呼ばれなくなった。判定用の `isParticipatingTenant` とそのテストも一緒に削除）。メーカーが読むのはプロジェクト指定の一覧 GET だけ。
+  タブの上に「設備・資格は各施工店が登録・更新します。メーカーからは閲覧のみです。」と出し、未登録のときの文言を「施工店が自分で登録すると表示されます」に変えた。
+- 登録・更新は施工店本人の口（管理画面 `/api/admin/field-test/workshop-profile`、モバイル `/api/mobile/field-test/workshop-profile`）だけ。DB の更新ポリシーも自分の施工店の行だけ（変更なし）。
+- テスト: メーカー向けの一覧ルートが GET だけを出し、POST/PUT/PATCH/DELETE を出さないこと（同じ検査を旧個別ルートに当てて赤になるのを確認済み）。
+
 ## 2026-10-12 ビルドの最後に「C2PA のバイナリが関数バンドルに入ったか」を確かめる（`--traced`）
 
 - 内容: `scripts/check-c2pa-binary.mjs` に `--traced` を追加し、`npm run build` の最後に置いた
