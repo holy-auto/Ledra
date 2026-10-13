@@ -4,6 +4,13 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-13 メーカーは施工店の設備・資格を閲覧だけに（編集をなくした）
+
+- 内容: メーカーポータルの実証テスト「設備・資格」タブから、編集ボタンと編集フォームを消した。メーカー向けの `PUT /api/manufacturer/field-test/workshop-profiles/[tenantId]` も消した（GET は残す。書き込みのメソッドは 405）。
+  タブの上に「設備・資格は各施工店が登録・更新します。メーカーからは閲覧のみです。」と出す。
+- 登録・更新は施工店本人の口（管理画面 `/api/admin/field-test/workshop-profile`、モバイル `/api/mobile/field-test/workshop-profile`）だけ。DB の更新ポリシーも自分の施工店の行だけ（変更なし）。
+- テスト: 個別ルートが GET だけを出し、POST/PUT/PATCH/DELETE を出さないこと（旧ルートでは赤になるのを確認）。
+
 ## 2026-10-12 ビルドの最後に「C2PA のバイナリが関数バンドルに入ったか」を確かめる（`--traced`）
 
 - 内容: `scripts/check-c2pa-binary.mjs` に `--traced` を追加し、`npm run build` の最後に置いた
