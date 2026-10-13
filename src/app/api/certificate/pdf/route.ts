@@ -271,6 +271,7 @@ export async function GET(req: Request) {
           certRow,
           publicUrl,
           mfrTemplate.config_json as TemplateConfig,
+          null,
         );
 
         return new NextResponse(new Uint8Array(brandedBuf), {
@@ -314,6 +315,7 @@ export async function GET(req: Request) {
             certRow,
             publicUrl,
             tplConfig.config_json as TemplateConfig,
+            fullCert.tenant_id,
           );
 
           // Copy out of Node's shared Buffer pool before handing to the

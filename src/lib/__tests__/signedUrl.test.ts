@@ -25,6 +25,21 @@ describe("signAssetPaths [写真の署名 URL をまとめて発行]", () => {
     expect(m.size).toBe(0);
   });
 
+  it("バケットを指定できる（マーケットの車両画像は market バケット）。既定は assets", async () => {
+    const buckets: string[] = [];
+    const dbWithBucket = {
+      storage: {
+        from: (b: string) => {
+          buckets.push(b);
+          return { createSignedUrls: async () => ({ data: [], error: null }) };
+        },
+      },
+    } as never;
+    await signAssetPaths(dbWithBucket, ["v/1.jpg"], "market");
+    await signAssetPaths(dbWithBucket, ["a.jpg"]);
+    expect(buckets).toEqual(["market", "assets"]);
+  });
+
   it("パスが無ければ Storage を呼ばない", async () => {
     const fn = vi.fn();
     expect((await signAssetPaths(db(fn), [null])).size).toBe(0);

@@ -2,6 +2,7 @@ import React from "react";
 import { Document, Page, Text, View, Image, StyleSheet, Font } from "@react-pdf/renderer";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { createSignedAssetUrl } from "@/lib/signedUrl";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import QRCode from "qrcode";
 import type { TemplateConfig } from "@/types/templateOption";
 import type { CertRow } from "@/lib/pdfCertificate";
@@ -221,9 +222,51 @@ function buildPresetLines(schema: TemplateSchema | null, values: Record<string, 
 }
 
 /**
- * ブランドカスタム証明書PDFを生成する
+ * ブランド証明書のロゴの署名 URL。
+ * テンプレートで選んだロゴ（`branding.logo_asset_id` = `template_assets` の行 ID）を優先し、無ければ証明書側のロゴ。
+ * ロゴの保存パスは `template_assets.storage_path`（`template-logos/<テナント>/<時刻>.<拡張子>`）にあるので、ID から引く
+ * （以前は `template-logos/<ID>` という存在しないパスを署名していて、ロゴが黙って出なかった）。
+ * 引くのは `tenantId` のテナントが上げたロゴだけ（設定 JSON の ID を書き換えて他店のロゴを出させない）。
+ * テンプレートのロゴが引けない・署名できないときは、証明書側のロゴ（同じ店のロゴ）に落とす。
+ * `tenantId` が無い呼び出し（メーカー指定デザイン）でテンプレートにロゴ ID があるときは、ロゴを出さない
+ * （メーカーのデザインに施工店のロゴを差し込まない。以前と同じ見た目）。
  */
-export async function renderBrandedCertificatePdf(row: CertRow, publicUrl: string, config: TemplateConfig) {
+export async function resolveBrandedLogoUrl(
+  config: TemplateConfig,
+  row: Pick<CertRow, "logo_asset_path">,
+  tenantId: string | null,
+): Promise<string | null> {
+  try {
+    const assetId = config.branding.logo_asset_id;
+    if (assetId && !tenantId) return null;
+    if (assetId && tenantId) {
+      const { data } = await createServiceRoleAdmin("branded certificate — resolve template logo path")
+        .from("template_assets")
+        .select("storage_path")
+        .eq("id", assetId)
+        .eq("tenant_id", tenantId)
+        .eq("asset_type", "logo")
+        .maybeSingle();
+      const path = (data as { storage_path: string | null } | null)?.storage_path;
+      const url = path ? await createSignedAssetUrl(path, 3600) : null;
+      if (url) return url;
+    }
+    return row.logo_asset_path ? await createSignedAssetUrl(row.logo_asset_path, 3600) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ブランドカスタム証明書PDFを生成する
+ * @param tenantId テンプレートのロゴ（template_assets）を引くテナント。メーカー指定デザインでは null
+ */
+export async function renderBrandedCertificatePdf(
+  row: CertRow,
+  publicUrl: string,
+  config: TemplateConfig,
+  tenantId: string | null,
+) {
   const s = buildStyles(config);
 
   const preset = row.content_preset_json ?? {};
@@ -240,18 +283,7 @@ export async function renderBrandedCertificatePdf(row: CertRow, publicUrl: strin
   const presetLines = buildPresetLines(schema, values);
 
   // ロゴ
-  let logoUrl: string | null = null;
-  try {
-    if (config.branding.logo_asset_id) {
-      // template_assets から storage_path を引いて signed URL を生成
-      // ここでは logo_asset_path として扱う
-      logoUrl = await createSignedAssetUrl(`template-logos/${config.branding.logo_asset_id}`, 3600);
-    } else if (row.logo_asset_path) {
-      logoUrl = await createSignedAssetUrl(row.logo_asset_path, 3600);
-    }
-  } catch {
-    logoUrl = null;
-  }
+  const logoUrl = await resolveBrandedLogoUrl(config, row, tenantId);
 
   // QRコード
   const qrDataUrl = await QRCode.toDataURL(publicUrl, { margin: 1, width: 240 });
