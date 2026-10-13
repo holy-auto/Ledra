@@ -16,6 +16,6 @@ ALTER POLICY demo_tenant_readonly_insert ON certificates
     OR vehicle_id = '00000000-0000-0000-0000-000100000011'::uuid
   );
 
--- ── CLOSE（元の定義に戻す）──────────────────────────────
+-- ── CLOSE（元の定義に戻す。2026-10-13 12:41 UTC 直前に本番に適用済み）──
 -- ALTER POLICY demo_tenant_readonly_insert ON certificates
 --   WITH CHECK (tenant_id <> '00000000-0000-0000-0000-de0000000010'::uuid);
