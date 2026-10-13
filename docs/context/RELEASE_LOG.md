@@ -6,6 +6,9 @@
 
 ## 2026-10-12 ビルドの最後に「C2PA のバイナリが関数バンドルに入ったか」を確かめる（`--traced`）
 
+- **2026-10-13 に `main` へマージ（squash `0a3c02e9`・PR #1326）。** GitHub Actions は11本すべて緑か skip、Codex のレビューは指摘なし。
+  Vercel のプレビューは OOM で赤のままだが、ログで**この PR の差分は関与していない**ことを確定済み（DECISION_LOG 2026-10-12）。
+
 - 内容: `scripts/check-c2pa-binary.mjs` に `--traced` を追加し、`npm run build` の最後に置いた
   （`node scripts/check-c2pa-binary.mjs && next build && node scripts/prune-build-cache.mjs && node scripts/check-c2pa-binary.mjs --traced`）。
   前段のロード検査は**ビルド機で `require` できるか**しか見ない。`serverExternalPackages` に入れてあるので、
