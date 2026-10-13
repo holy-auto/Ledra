@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -43,9 +43,13 @@ describe("check-c2pa-binary.mjs", () => {
     }
   }
 
-  function run(env: Record<string, string | undefined>, cwd: string = ROOT): { code: number; out: string } {
+  function run(
+    env: Record<string, string | undefined>,
+    cwd: string = ROOT,
+    args: string[] = [],
+  ): { code: number; out: string } {
     try {
-      const out = execFileSync(process.execPath, [SCRIPT], {
+      const out = execFileSync(process.execPath, [SCRIPT, ...args], {
         cwd,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
@@ -259,5 +263,188 @@ describe("check-c2pa-binary.mjs", () => {
     const { code, out } = run({ C2PA_MODE: "production", C2PA_LIBRARY_PATH: "./index.node" });
     expect(code, `相対パスを scripts/ 基準で解いている: ${out}`).toBe(0);
     expect(out).toMatch(/OK —/);
+  });
+
+  /**
+   * ## `--traced`（ビルド後の検査）
+   *
+   * こちらは**名指しした route の trace manifest を2本読むだけ**なので、本物のビルドを
+   * 走らせずに外から試せる。使い捨てディレクトリに `.nft.json` を置いて cwd にする。
+   *
+   * 本物の成果物に対しては手で当たりを取っている（2026-10-12、Next 16.3.8）:
+   * `.next/server` 配下でパッケージ内のファイルを挙げている trace は9本、
+   * **9本とも `index.node` を挙げていた**（ゲート背後の2本を含む）。同日に2回、別のツリーで実測。
+   * ここで見張るのは「その形が崩れたときに赤になるか」である。
+   *
+   * **期待するパスは実物から作る。** スクリプトは `require.resolve` で解いた
+   * `dist/index.node` の絶対パスと、trace の行を解決した絶対パスを比べる。
+   * テスト側で文字列を組み立てると、比べ方を変えたときに**テストだけが通る**形になる。
+   *
+   * **この fixture で見張れない1点**（変異で確認）: trace の行を解決する基準を
+   * trace のディレクトリから cwd に取り違えても、ここは緑のままになる。使い捨て cwd は
+   * `/tmp` 配下で本物のバイナリ（repo 配下）と共通の先祖が `/` しか無いため、相対パスが
+   * 「root まで上がって下る」形になり、**どの基準から解いても `..` が root でクランプされて
+   * 同じ絶対パスに着く**（深さを足しても変わらない）。基準ちがいは本物の `.next` でだけ
+   * 差が出る —— 手で当たりを取っており（上の 2/2）、cwd 基準に変えると赤になることも実測した。
+   */
+  const GATED_TRACES = [
+    "app/api/certificates/images/upload/route.js.nft.json",
+    "app/api/mobile/certificates/images/upload/route.js.nft.json",
+  ];
+
+  /**
+   * trace の `files` に置く目印。**書き出すときに、その trace から見た本物のバイナリへの
+   * 相対パスへ差し替える。** 相対パスは trace の置き場所で変わるので、テスト側で組み立てると
+   * 深さを1つ間違えただけで「正常形」が赤になる（初版でそうなった）。
+   */
+  const BINARY = "<<BINARY>>";
+
+  /**
+   * `.next/server/<name>` に trace を並べた使い捨て cwd で `--traced` を走らせる。
+   * 値は「その trace の `files`」。文字列を渡すとそのまま本文として書き（壊れた JSON 用）、
+   * `null` を渡すとそのファイルを置かない。
+   */
+  function runTraced(
+    traces: Record<string, unknown> | null,
+    env: Record<string, string | undefined> = {},
+  ): { code: number; out: string } {
+    const dir = mkdtempSync(path.join(tmpdir(), "c2pa-traced-"));
+    try {
+      if (traces !== null) {
+        for (const [name, files] of Object.entries(traces)) {
+          if (files === null) continue;
+          const file = path.join(dir, ".next", "server", name);
+          mkdirSync(path.dirname(file), { recursive: true });
+          const body =
+            typeof files === "string"
+              ? files
+              : JSON.stringify({
+                  version: 1,
+                  files: Array.isArray(files)
+                    ? files.map((f) => (f === BINARY ? path.relative(path.dirname(file), binary()) : f))
+                    : files,
+                });
+          writeFileSync(file, body);
+        }
+      }
+      return run({ C2PA_MODE: "production", ...env }, dir, ["--traced"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  /** 実バイナリの絶対パス。無い環境では「何も見ていない」と分かる形で落とす。 */
+  function binary(): string {
+    const bin = binaryPath();
+    expect(bin, "パッケージが無い環境では、この検査自体が何も見ていない").not.toBeNull();
+    return bin!;
+  }
+
+  /** 2本とも「バイナリを挙げている」正常形。 */
+  function healthyTraces(): Record<string, unknown> {
+    return Object.fromEntries(GATED_TRACES.map((n) => [n, ["../chunks/a.js", BINARY]]));
+  }
+
+  it("--traced: ゲート背後の route が2本ともバイナリを挙げていれば成功する", () => {
+    const { code, out } = runTraced(healthyTraces());
+    expect(code, out).toBe(0);
+    expect(out).toMatch(/OK —/);
+  });
+
+  it("--traced: 片方の route がバイナリを落としていれば exit 1（どちらかを名指しする）", () => {
+    // これが本番で起きると、ビルドもデプロイも緑のまま**実行時に**全アップロードが 503 になる
+    // （#1209 のゲート）。tracing が拾うかは静的解析の副作用なので、Next / パッケージの
+    // 更新で崩れうる。崩れたらここで赤くする。
+    for (const dropped of GATED_TRACES) {
+      const traces = healthyTraces();
+      traces[dropped] = ["../chunks/a.js"];
+      const { code, out } = runTraced(traces);
+      expect(code, `${dropped} を落としても緑: ${out}`).toBe(1);
+      expect(out).toContain(dropped.replace(/\.js\.nft\.json$/, ".ts").replace(/^app\//, "src/app/"));
+    }
+  });
+
+  it("--traced: 他の route が挙げていても、ゲート背後が落ちていれば exit 1", () => {
+    // **「どれか1本が挙げていれば緑」では、まさに守りたい route が落ちた回を緑にする。**
+    // 初版はこの形で、無関係な route 1本で exit 0 になっていた（/code-review が実測）。
+    const traces = healthyTraces();
+    traces[GATED_TRACES[0]] = ["../chunks/a.js"];
+    traces["app/api/cron/polygon-signer/route.js.nft.json"] = [BINARY];
+    const { code, out } = runTraced(traces);
+    expect(code, `無関係な route の1本で緑になった: ${out}`).toBe(1);
+  });
+
+  it("--traced: 別のパッケージの index.node では満たさない（名前ではなくパスで見る）", () => {
+    // ネイティブモジュールのファイル名は `index.node` で被る。**名前だけで一致を見ると、
+    // 無関係なバイナリが入っているだけで緑になる。** 陰性対照をここに置く
+    // （MISTAKE_LEDGER `M-20260907-no-negative-control`: 自作の検査に陽性対照だけ置いた)。
+    const traces = healthyTraces();
+    traces[GATED_TRACES[0]] = ["../chunks/a.js", "../../../../node_modules/other-native-pkg/index.node"];
+    const { code, out } = runTraced(traces);
+    expect(code, `別パッケージの index.node で緑になった: ${out}`).toBe(1);
+    expect(out).toMatch(/index\.node を挙げていない/);
+  });
+
+  it("--traced: ゲート背後の trace が無ければ exit 1（route を動かした／ビルド前に走らせた）", () => {
+    const traces = healthyTraces();
+    traces[GATED_TRACES[1]] = null;
+    const { code, out } = runTraced(traces);
+    expect(code, `trace が無いのに緑になった: ${out}`).toBe(1);
+    expect(out).toMatch(/trace が無い/);
+    // 直し方（GATED_ROUTES も一緒に直す）を出していること。
+    expect(out).toMatch(/GATED_ROUTES/);
+
+    // 成果物がまるごと無い形（`next build` の前に走らせた）も同じ出口。
+    const nothing = runTraced(null);
+    expect(nothing.code, `成果物が無いのに緑になった: ${nothing.out}`).toBe(1);
+  });
+
+  it("--traced: JSON として読めても形が違う trace を「空」として飲まない", () => {
+    // `?? []` で空扱いにすると、Next が manifest の形を変えた日から**黙って何も見なくなる**
+    // （/code-review が実測: `{}` も `{"files":null}` も exit 0、`{"files":{}}` は
+    //  `files.some is not a function` で素の stack を吐いていた）。
+    for (const shape of ["{}", '{"version":1}', '{"version":1,"files":null}', '{"version":1,"files":{"a":"b"}}']) {
+      const traces = healthyTraces();
+      traces[GATED_TRACES[0]] = shape;
+      const { code, out } = runTraced(traces);
+      expect(code, `${shape} で緑になった: ${out}`).toBe(1);
+      expect(out, `${shape} で素の例外が出ている`).toMatch(/trace の形が想定と違う/);
+      expect(out).not.toMatch(/is not a function/);
+    }
+  });
+
+  it("--traced: 壊れた JSON を黙って飛ばさない", () => {
+    const traces = healthyTraces();
+    traces[GATED_TRACES[0]] = "{ not json";
+    const { code, out } = runTraced(traces);
+    expect(code, `読めない trace を飛ばして緑になった: ${out}`).toBe(1);
+    expect(out).toMatch(/trace を読めない/);
+  });
+
+  it("--traced: C2PA_MODE が production 以外なら何も読まずに成功する", () => {
+    for (const mode of [undefined, "disabled", "dev-signed"]) {
+      // 赤になる形を置いてあっても、mode が production でなければ見ない。
+      const { code, out } = runTraced(null, { C2PA_MODE: mode });
+      expect(code, `C2PA_MODE=${String(mode)} で落ちた: ${out}`).toBe(0);
+      expect(out).toMatch(/skip/);
+      // **どちらの検査の行なのかが読めること。** `npm run build` は2回呼ぶので、
+      // 印が無いと同じ skip が2本並び、手順書の「この行を見る」が成立しない。
+      expect(out, "--traced の印が無い").toContain("--traced");
+    }
+  });
+
+  it("--traced: C2PA_LIBRARY_PATH が設定されていれば skip する（空文字は除く）", () => {
+    // 実行時 env で決まるパスは tracing が辿れない（だから dist/ 丸ごとになる）。
+    // override 構成でバイナリを本番へ届けるのは、この検査の範囲外である。
+    const skipped = runTraced(null, { C2PA_LIBRARY_PATH: "/opt/c2pa/index.node" });
+    expect(skipped.code, skipped.out).toBe(0);
+    expect(skipped.out).toMatch(/skip/);
+
+    // **空文字は「設定されている」ではない。** ロード検査は空文字を専用の文言で落とすので、
+    // ここで skip にすると同じ値の扱いが2つに割れる（/code-review 指摘）。
+    // 見るもの（パッケージ内の index.node が入っているか）は変わらないので、検査を続ける。
+    const empty = runTraced(healthyTraces(), { C2PA_LIBRARY_PATH: "" });
+    expect(empty.code, `空文字で skip している: ${empty.out}`).toBe(0);
+    expect(empty.out, `空文字で skip している: ${empty.out}`).toMatch(/OK —/);
   });
 });

@@ -129,9 +129,13 @@ jobs:
           fi
           if [ ! -f .next/build-manifest.json ]; then
             # Do not assert the cause here: `npm run build` also runs
-            # scripts/check-c2pa-binary.mjs first, and a gate failure stops the
-            # build before next ever compiles. Point at the log instead.
-            echo "::error::.next/build-manifest.json missing — the build produced no client manifest. Check the log above: a check:c2pa-binary failure exits before next build runs; otherwise client compilation failed (not a secrets issue)"
+            # scripts/check-c2pa-binary.mjs — once before `next build` (the load
+            # gate, which exits before next ever compiles) and once after it with
+            # `--traced` (the bundling gate, which only runs if the build
+            # succeeded, so it cannot be the reason a manifest is missing).
+            # Both skip unless C2PA_MODE=production, which CI does not set.
+            # Point at the log instead.
+            echo "::error::.next/build-manifest.json missing — the build produced no client manifest. Check the log above: a check:c2pa-binary failure (the pre-build load gate) exits before next build runs; otherwise client compilation failed (not a secrets issue)"
             exit 1
           fi
       - name: Check client bundle size

@@ -34,6 +34,11 @@ const nextConfig: NextConfig = {
   compress: true,
   poweredByHeader: false,
 
+  // Vercel のビルドで型チェックをしない（2026-10-12、DECISION_LOG）。型は CI の
+  // 「Lint, Type Check & Unit Tests」（`tsc --noEmit`）が PR と main への push のたびに見ている。
+  // ビルド内の tsc は単独でピーク約 5.3GB（手元実測）あり、キャッシュの無いビルドで 8GB のビルド機を圧迫する山の一つ。
+  typescript: { ignoreBuildErrors: true },
+
   serverExternalPackages: [
     "@react-pdf/renderer",
     // Native binary module — cannot be bundled by Turbopack
@@ -49,6 +54,10 @@ const nextConfig: NextConfig = {
 
   // Next 16.1.6: Server Actions config is under experimental
   experimental: {
+    // サーバー側のソースマップを作らない（2026-10-12、DECISION_LOG）。キャッシュの無いビルドで
+    // コンパイルのピークが約 1〜1.6GB 下がる（手元実測、Sentry ありで 7.6GB→6.0〜6.8GB）。代わりに Sentry のサーバー側エラーの
+    // 位置はビルド後のファイル上になる（ブラウザ側のソースマップは Sentry の設定どおり作る）。
+    serverSourceMaps: false,
     serverActions: {
       bodySizeLimit: "10mb",
     },
