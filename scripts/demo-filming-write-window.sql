@@ -9,7 +9,8 @@
 --
 -- 撮影で作った証明書の後片付けは `npx tsx scripts/setup-demo-tenant.ts --filming-cleanup`。
 
--- ファイルをそのまま流すと CLOSE（安全な側）が走る。OPEN は撮影するときだけ、コメントを外して流す。
+-- ファイルをそのまま流すと CLOSE（安全な側）が走る。撮影で開けるときは、OPEN のコメントを外し、**CLOSE をコメントにして**流す
+-- （両方生きていると OPEN の直後に CLOSE が走り、窓は開かない）。流し終えたら、ファイルの書き換えは元に戻す（撮影後の CLOSE はそのまま流せばよい）。
 
 -- ── OPEN（2026-10-08 本番に適用、2026-10-13 に CLOSE で戻した）───────
 -- ALTER POLICY demo_tenant_readonly_insert ON certificates
