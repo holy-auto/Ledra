@@ -120,7 +120,7 @@ export default function ProjectDetailClient({ projectId, isAdmin }: { projectId:
         {tab === "overview" && <OverviewTab project={project} isAdmin={isAdmin} onUpdate={reload} />}
         {tab === "recruitment" && <RecruitmentTab projectId={projectId} isAdmin={isAdmin} />}
         {tab === "applications" && <ApplicationsTab projectId={projectId} isAdmin={isAdmin} />}
-        {tab === "workshops" && <WorkshopProfilesTab projectId={projectId} isAdmin={isAdmin} />}
+        {tab === "workshops" && <WorkshopProfilesTab projectId={projectId} />}
         {tab === "agreements" && <AgreementsTab projectId={projectId} isAdmin={isAdmin} />}
         {tab === "training" && <TrainingTab projectId={projectId} isAdmin={isAdmin} />}
         {tab === "jobs" && <JobsTab projectId={projectId} isAdmin={isAdmin} />}
