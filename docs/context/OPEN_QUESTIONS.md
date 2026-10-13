@@ -440,6 +440,32 @@ opt-in `tenants.require_inspector_qualification`・既定 false）。残って�
   10:51:26 UTC の58秒後。**SIGKILL までの所要は約2分18秒**（19:52:24.424 → 19:54:42.403）。
   なお install は正常（1199 packages・33 秒）で、死んだのは Turbopack の
   `Creating an optimized production build` の最中。
+- **2026-10-12: 5回目。PR #1326 の*プレビュー*（`ae2b495`）。** 代表が貼ったログで確定。
+  `Build machine configuration: 4 cores, 8 GB`、
+  `Previous build cache of deployment 'dpl_13adh43K719QqT6CoRFHRhVCibi1' was too large, starting from a clean state.`、
+  `Error: Command "npm run build" exited with 137`、
+  `At least one "Out of Memory" ("OOM") event was detected during the build.`。
+  これで OOM は**5回（プレビュー3回: 09-29 #1172・10-08 #1272・10-12 #1326／本番2回: 10-01 `5f54e29`・10-06 `9df2d3c`）**。
+  死んだのは今回も Turbopack の `Creating an optimized production build` の最中で、
+  **コンパイル開始から 2分58.5秒**（ログの 23:56:58.603 → 23:59:57.143。デプロイ全体は 3分34.6秒）。
+  install は正常（1198 packages・29 秒）。
+  今回あらたに分かったこと:
+  - **文言が `SIGKILL` ではなく `exited with 137`** だった（137 = 128 + 9 = SIGKILL）。
+    `SIGKILL` で grep すると今回のログは引っかからない。**両方で見ること。**
+  - **破棄されたキャッシュは、同じブランチの直前の*成功した*ビルドが書いたもの**
+    （`dpl_13adh43K…` = PR #1308 の 13:29→13:33 の緑のビルド、4分02秒）。
+    そのビルドは `npm run build` を完走しているので **`prune-build-cache.mjs` も走っている**。
+    つまり**古い Turbopack 版を消す今の prune では足りず、現行版1つ分のキャッシュだけで上限を超えている**。
+    対策3（キャッシュを小さくする）を選ぶなら、消す対象を変える必要がある。
+  - **OOM で落ちた回は `prune` に到達しない**（チェーンは `&&` で、`next build` の途中で死ぬ）。
+    成功した回しかキャッシュを整理できないので、**一度この状態に入ると自力では出られない**
+    （破棄→フルビルド→OOM→整理されない→次も破棄）。4回連続で赤になったのはこの形と整合する。
+  - **同ブランチで4回連続の赤**（9分21秒 / 約9分 / 13分17秒 / 3分34.6秒）。最後の回の機械が 8 GB だったので、
+    (iii)（OOM の後に自動で上の機械へ上がる）の反証としてはやや強まったが、
+    **直前3回が OOM だったかは依然未確認**なので、まだ決め手ではない。
+  - 所要のばらつきにこの4件を足すと **3分34秒〜13分17秒**（同一ブランチ・同一キャッシュ状態で）。
+    **所要時間から中身を推し量らないこと** —— 途中で殺されたビルドの所要は、完走したビルドの所要と
+    比較できない（MISTAKE_LEDGER `M-20261012-read-a-3-minute-failure-as-a-completed-build`）。
 - **同ブランチの直前3回の赤（`f09301f9` 約26分・`47fcc644` 約22分・`d65994b5` 約41分）が同じ OOM かは未確認【要確認】。**
   所要が1桁違う（2分 vs 22〜41分）ので同一視しない。ログは代表にしか出せない。
 - **(iii)（Elastic は OOM の後に上の機械で自動的に走らせる）との整合は、まだ付かない。** 同ブランチで赤が3回続いた
@@ -1822,11 +1848,41 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
     検査8はこの向きを見ない —— 誤りとして扱うと、付け足した分類を消すことになる。
     決めること: 9組を1つずつ見て、意図的なら見出しにも型を足す／残骸なら表から外す。
     あるいは「表は見出しより多く挙げてよい」を正式な規則にする（今の実装はこちら）。
-  - 【要確認】**output file tracing が `index.node` を本番の関数バンドルに入れているか。**
-    `next.config.ts` の `serverExternalPackages` に入れてあるので、48MB のバイナリは tracing 経由でしか
-    入らない。`scripts/check-c2pa-binary.mjs` が見るのは**ビルド機でロードできるか**までで、
-    DL 成功（検査は緑）でも tracing が拾わなければ実行時は `signer_unavailable` → #1209 のゲートで
-    全件 503 になる。塞ぐならビルド後に `.next/` 配下の実在を見るか、デプロイ後のスモークが要る。
+  - ~~【要確認】**output file tracing が `index.node` を本番の関数バンドルに入れているか。**~~
+    **2026-10-12 に実測して解決（入っている）。** 手元の `.next`（Next 16.3.8 のビルド成果物）で、
+    `.next/server` 配下でパッケージ内のファイルを挙げている trace は9本（同日に2回、別のツリーで）、
+    **9本とも `dist/index.node` を挙げていた**。`dist/` の 18 エントリのうち `types/`（ディレクトリ）
+    以外の 17 が入っており、**誰も import していない `Builder.spec.js` まで入っている** ——
+    推定: `require(C2PA_LIBRARY_PATH ?? "./index.node")` が静的に解けないので、tracing が
+    `dist/` をまるごと取り込んでいる。この形は Next / パッケージの更新で変わりうるので、
+    `npm run build` の最後に `node scripts/check-c2pa-binary.mjs --traced` を置いて見張ることにした
+    （**#1209 のゲートの背後にある2本の route** の trace が実在し、バイナリの絶対パスを挙げていることを要求する。
+    全体条件ではなく route 単位にしたのは、tracing が entrypoint ごとに辿るため ——
+    「どれか1本が挙げていれば緑」では、まさに守りたい route が落ちた回を緑にする。
+    MISTAKE_LEDGER `M-20261012-checked-the-population-not-the-entrypoint`）。
+    **原文が書いた塞ぎ方は誤りだった**: tracing はファイルを `.next/` へコピーしない
+    （manifest に書くだけで、コピーはデプロイ時に Vercel のビルダーが行う）。
+    「`.next/` 配下の実在を見る」では永久に見つからない —— 見るべきは manifest の方である
+    （MISTAKE_LEDGER `M-20261012-planned-to-look-for-a-file-tracing-never-copies`）。
+  - **確定（2026-10-12）: `C2PA_MODE` は Vercel のビルド時に見えていない。**
+    代表が貼った #1326 のプレビューのログに
+    `[check:c2pa-binary] skip — C2PA_MODE=(未設定)（production のときだけ検査する／出典: @next/env…）`
+    がそのまま出ている。つまり **今の本番ビルドでは、ロード検査も `--traced` も何も見ていない**
+    （天井1がそのまま現実になっている）。`build` の前段に検査を置いた 10-07 以降
+    「Vercel のビルド機で検査が通ること自体は実測済み」と書いていたが、**それは「通った」のではなく
+    「skip した」**のであって、保護は一度も働いていない。
+    → **C2PA をオンにする日の手順に「Vercel の env を Build にも露出させる」を入れた**
+    （`docs/c2pa-production-deployment.md` §3）。露出させない限り、バイナリが無いまま
+    デプロイが成功する経路（#1209 の 503）は塞がらない。
+  - 【要確認】**Vercel のビルドでも trace の形が同じ（9本とも index.node を挙げる）か。**
+    上の実測は手元のビルド2回である。Vercel のログで確かめられるのは、env を Build に
+    露出させた後 —— `[check:c2pa-binary --traced] OK —` の行が出るかで分かる。
+  - 【要確認】**「manifest に載っていれば関数に入る」は前提のままである。**
+    確かめたのは「trace manifest が `dist/index.node` を挙げているか」まで。Vercel のビルダーが
+    その列挙をもとにコピーする、という理解に乗っており、**ここから検証できない**。
+    実際に関数へ入ったかは、`C2PA_MODE=production` にしたあと本番で1枚アップロードして
+    `signer_unavailable` が出ないことを見る（＝デプロイ後のスモーク）しか道が無い。
+    オンにする日の手順に入れること。
   - 【要確認】**本番（Vercel）で `@contentauth/c2pa-node` が実際にビルドできているか。**
     できていなければ、`C2PA_MODE=production` にした瞬間に全アップロードが
     `signer_unavailable` で断られる。**オンにする前に本番環境での読み込み可否を確かめること。**

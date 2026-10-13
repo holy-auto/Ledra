@@ -65,6 +65,37 @@ C2PA Trust List の CA から署名証明書を得るには、Ledra を「Confor
 > バイナリが無いまま本番に出ると、#1209 の先行検査で**写真アップロードが全件 503** になるため。
 > 単体でも確かめられる: `C2PA_MODE=production npm run check:c2pa-binary`。
 >
+> **ビルドの最後にはもう1本走る**（`node scripts/check-c2pa-binary.mjs --traced`）。
+> こちらは **#1209 のゲートの背後にある2本の route**（`/api/certificates/images/upload` と
+> `/api/mobile/certificates/images/upload`）の trace manifest を読み、
+> **その関数バンドルにバイナリが入ったか**を見る（`serverExternalPackages` に入れてあるので、
+> 48MB のバイナリは output file tracing 経由でだけ入る）。
+>
+> ビルドログの `[check:c2pa-binary --traced]` の行は、次の4つのどれかである。
+>
+> | 行 | 意味 | すること |
+> |---|---|---|
+> | `OK — 2 本のゲート背後の route すべてが …` | 入っている | 何もしない |
+> | `skip — C2PA_MODE=…` | **検査が走っていない**（env がビルド時に見えていない） | Vercel の env を Build にも露出させる |
+> | `skip — C2PA_LIBRARY_PATH=…` | override 構成のため範囲外（実行時 env のパスは tracing が辿れない） | バイナリを本番へ届ける経路を自分で確かめる |
+> | `::error::… 関数バンドルに入っていません` | **入っていない**（ビルドは赤で止まる） | 出力の「原因の候補」を見る |
+>
+> **2026-10-12 実測: 今の Vercel のビルドは `C2PA_MODE` を見ていない。**
+> #1326 のプレビューのログに `[check:c2pa-binary] skip — C2PA_MODE=(未設定)` がそのまま出ていた。
+> つまり**前段のロード検査もこの `--traced` も、現状の本番ビルドでは何も見ていない**。
+> **`C2PA_MODE` を入れるときは、Vercel の Environment Variables で Build にも露出させること**
+> （Production/Preview の「Environment」に加えて、ビルド時に読まれる設定になっているかを確認する）。
+> 露出させない限り、バイナリが無いままデプロイが成功する経路は塞がらない。
+>
+> **`OK` でも「関数に入った」の確証ではない。** 確かめているのは trace manifest が挙げているかまでで、
+> Vercel のビルダーがその列挙どおりにコピーする、という理解に乗っている。
+> **オンにした日は、本番で1枚アップロードして `signer_unavailable` が出ないことを必ず見る**
+> （これがデプロイ後のスモークで、ここだけが最後の確証になる）。
+>
+> `npm run build` はこのスクリプトを**2回**呼ぶ（前段のロード検査と、この `--traced`）。
+> 行の頭の `--traced` の有無で区別する。前段のロード検査も同じ `C2PA_MODE` で skip するので、
+> `skip` が2本並んでいたら**どちらも走っていない**。
+>
 > この検査は `.env` 系も読む。**読み方は next 本体のもの**（`next` 経由で `@next/env` の
 > `loadEnvConfig` を呼ぶ）なので、同じキーが2行あるとき後の行が勝つ・行内の `#` 以降はコメント、
 > といった細かいところまで `next build` と一致する。`NODE_ENV` の既定も next の CLI と同じ

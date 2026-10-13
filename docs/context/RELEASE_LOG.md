@@ -4,6 +4,35 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-12 ビルドの最後に「C2PA のバイナリが関数バンドルに入ったか」を確かめる（`--traced`）
+
+- 内容: `scripts/check-c2pa-binary.mjs` に `--traced` を追加し、`npm run build` の最後に置いた
+  （`node scripts/check-c2pa-binary.mjs && next build && node scripts/prune-build-cache.mjs && node scripts/check-c2pa-binary.mjs --traced`）。
+  前段のロード検査は**ビルド機で `require` できるか**しか見ない。`serverExternalPackages` に入れてあるので、
+  48MB の `dist/index.node` は Turbopack のバンドルではなく **output file tracing 経由でだけ**関数に入る。
+  tracing が拾わなければ、ビルドもデプロイも緑のまま**実行時に** `signer_unavailable` → #1209 のゲートが全アップロードを 503 で断る。
+- 見るもの: **#1209 のゲートの背後にある2本の route**（`/api/certificates/images/upload`、`/api/mobile/certificates/images/upload` ——
+  `uploadHandler` を呼んでいるのはこの2本だけ）の trace を読み、**その trace が実在し、`dist/index.node` の絶対パスを挙げていること**を要求する。
+  `C2PA_MODE=production` のときだけ走り、`C2PA_LIBRARY_PATH` が空でなく設定されているときは skip する
+  （実行時 env で決まるパスを tracing は辿れない。空文字は skip しない —— 見るものが変わらないため）。
+- **route 単位で見る。** 初版は「パッケージを挙げている trace が全部バイナリも挙げている」という全体条件で、
+  **ゲートの背後の route だけが落ちた回を緑にしていた**（無関係な route が1本挙げていれば exit 0。`/code-review` が実測）。
+  tracing は entrypoint ごとに辿るので、落ちるときも route ごとに落ちる。
+- 実測（2026-10-12・Next 16.3.8 の手元のビルド成果物。同日に2回、別のツリーで）: パッケージを挙げている trace は9本で、**9本とも `index.node` を挙げている**。
+  **trace の総数は書かない** —— route が増えるたびに動く（2回で 1076 → 1082）。
+  `dist/` の 18 エントリのうち `types/`（ディレクトリ）以外の 17 が入っており、誰も import していない `Builder.spec.js` まで入っている
+  → 推定: `require(C2PA_LIBRARY_PATH ?? "./index.node")` が静的に解けないので tracing が `dist/` を丸ごと取り込んでいる。
+- パスは `require.resolve` で解いた絶対パスと比べる（trace の行は trace ファイルのディレクトリ基準で解決する）。
+  **ファイル名（`index.node`）の一致では見ない** —— ネイティブモジュールの名前は被るので、無関係なバイナリで緑になる。
+- 検査: `scripts/__tests__/checkC2paBinary.test.ts` に9本追加（計19本）。使い捨てディレクトリに `.nft.json` を2本置いて
+  子プロセスで走らせる形なので、本物のビルドを回さずに全分岐を踏める。変異10種のうち**9種で赤**
+  （trace が無くても進む／`files` の形を見ない／バイナリ欠落を見逃す／空文字の override で skip する／mode の gate を外す／
+  壊れた JSON を飛ばす／1本目の route だけ見る／ファイル名だけ一致を見る／`--traced` の印を出さない）。
+  残る1種（trace の行を cwd 基準で解く）は fixture では差が出ない —— 使い捨て cwd と本物のバイナリの共通の先祖が `/` しか無く、
+  どの基準でも `..` が root でクランプして同じパスに着く。**本物の `.next` では赤になることを実測した**（テストの docblock に明記）。
+- OPEN_QUESTIONS の【要確認】を1件閉じた。原文の塞ぎ方（「ビルド後に `.next/` 配下の実在を見る」）は誤りで、
+  tracing はファイルを `.next/` へコピーしない（manifest に書くだけ）—— MISTAKE_LEDGER `M-20261012-planned-to-look-for-a-file-tracing-never-copies`。
+
 ## 2026-10-12 メーカーが他社の施工店の設備・資格を読めた・書き換えられた穴を塞いだ
 
 - 内容: 施工店の設備・資格（`workshop_capability_profiles`。許可番号・整備士の資格者名・対応地域。1施工店1行でメーカーをまたいで共有）を、
