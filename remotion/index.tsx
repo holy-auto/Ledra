@@ -2,6 +2,9 @@ import React from "react";
 import { registerRoot, Composition } from "remotion";
 import { Slideshow, totalFrames } from "./Slideshow";
 
+// ── モバイルアプリ起動オープニング (apps/mobile/assets/ledra-intro.mp4) ──
+import { MobileIntro, MOBILE_INTRO_FPS, MOBILE_INTRO_FRAMES } from "./MobileIntro";
+
 // ── 説明会 ────────────────────────────────────────────────────────────
 import { LedraVideo } from "./LedraVideo";
 
@@ -386,6 +389,15 @@ const AgentFullGuideVideo: React.FC = () => (
 
 export const RemotionRoot: React.FC = () => (
   <>
+    {/* モバイルアプリの起動オープニング — 縦 1080x1920 / 2.0s。npm run video:render:mobile-intro */}
+    <Composition
+      id="MobileIntro"
+      component={MobileIntro}
+      durationInFrames={MOBILE_INTRO_FRAMES}
+      fps={MOBILE_INTRO_FPS} width={1080} height={1920}
+      defaultProps={{}}
+    />
+
     {/* 短尺プロダクトツアー — LP/商談/SNS 向け (約28s) */}
     <Composition
       id="ProductTour"
