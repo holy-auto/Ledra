@@ -44,9 +44,11 @@ const edges = new Map();
 for (const file of files) {
   const src = readFileSync(file, "utf8");
   // Conservative lexical import scan; may include comments and miss dynamic computed imports.
-  const specs = /(?:\bimport\s*(?:[\s\S]*?\sfrom\s*)?|\bexport\s+(?:[^;]*?\sfrom\s*)?|\brequire\s*\(|\bimport\s*\()\s*["']([^"'\n]+)["']/g;
+  // Static import/export, bare side-effect import, and literal dynamic import/require.
+  // Avoid a cross-statement regex that could accidentally attach an unrelated string.
+  const specs = /\\b(?:import|export)\\s+(?:(?:[^;"'\\n]*?\\s+from\\s*)?["']([^"'\\n]+)["'])|\\b(?:import|require)\\s*\\(\\s*["']([^"'\\n]+)["']/g;
   for (const match of src.matchAll(specs)) {
-    const dep = resolveImport(file, match[1]);
+    const dep = resolveImport(file, match[1] || match[2]);
     if (!dep) continue;
     if (!reverse.has(dep)) reverse.set(dep, new Set());
     reverse.get(dep).add(file);
@@ -76,7 +78,7 @@ for (const target of changed.filter((f) => known.has(f))) {
     }
   }
 }
-const githubUrl = "https://github.com/holy-auto/Ledra/blob/HEAD/";
+const githubUrl = "https://github.com/holy-auto/Ledra/blob/" + encodeURIComponent(process.env.GITHUB_SHA || "main") + "/";
 const fileLink = (f) => "[`" + f.replaceAll("|", "\\|") + "`](" + githubUrl + f.split("/").map(encodeURIComponent).join("/") + ")";
 const relevant = new Set(changed.filter((f) => known.has(f)));
 for (const file of affected.keys()) relevant.add(file);
