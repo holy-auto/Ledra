@@ -43,6 +43,14 @@
   10/8〜10/13 に作られてシード以外で残っているものは無い。
 - 残したもの: 撮影用のアンカー表示（ダミー tx・11 件）とパスポート・購入済みレポート（`--filming-cleanup` は未実行。OPEN_QUESTIONS「撮影用の特例を戻す」(1)）。
 
+## 2026-10-15 Remotion をアプリの依存から外す（Vercel のビルドキャッシュを小さくする）
+
+- 内容: 動画書き出しにしか使わない `remotion` と `@remotion/cli`（rspack 等を含め 168 パッケージ）を package.json から外した。
+- 実装: `npm uninstall`（ロックの差分は削除だけで、ほかのパッケージの版は変わっていないことを確認）。`video:deps` を追加し、
+  `video:studio` / `video:render` / `video:render:tour` は先に入れてから動く。`render-video.yml` は `npm ci` の後に `npm run video:deps`。
+- 検証: 外した状態でアプリの tsc・eslint が通る。`video:deps` の後で `tsc -p tsconfig.remotion.json` と `remotion --version` が通る。
+  node_modules は gzip 換算で約 564 MB → 472 MB。動画の実際の書き出し（`render-video.yml`）は次に動かしたときに確認【要確認】。
+
 ## 2026-10-13 メーカーは施工店の設備・資格を閲覧だけに（編集をなくした）
 
 - 内容: メーカーポータルの実証テスト「設備・資格」タブから、編集ボタンと編集フォームを消した。メーカー向けの個別ルート `/api/manufacturer/field-test/workshop-profiles/[tenantId]` は
