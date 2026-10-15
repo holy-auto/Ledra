@@ -38,6 +38,7 @@ import crypto from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { anchorToPolygon } from "@/lib/anchoring/providers";
 import { logger } from "@/lib/logger";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminDb = SupabaseClient<any, any, any>;
@@ -159,18 +160,21 @@ export async function recomputeAndMaybeAnchor(
       vin,
       metaHash: metaHash.slice(0, 12),
     });
-    await admin
-      .from("vehicle_passports")
-      .update({
-        meta_anchor_hash: metaHash,
-        meta_anchor_image_count: imageCount,
-        meta_anchor_cert_count: certCount,
-      })
-      .eq("vin_code_normalized", vin);
+    await bestEffortWrite(
+      admin
+        .from("vehicle_passports")
+        .update({
+          meta_anchor_hash: metaHash,
+          meta_anchor_image_count: imageCount,
+          meta_anchor_cert_count: certCount,
+        })
+        .eq("vin_code_normalized", vin),
+      "vehicle_passports update — アンカー失敗時のハッシュ記録（cron が再試行する）",
+    );
     return { status: "anchor_failed", metaHash, reason: "polygon_disabled_or_error" };
   }
 
-  await admin
+  const { error: anchorErr } = await admin
     .from("vehicle_passports")
     .update({
       meta_anchor_hash: metaHash,
@@ -181,6 +185,7 @@ export async function recomputeAndMaybeAnchor(
       meta_anchor_cert_count: certCount,
     })
     .eq("vin_code_normalized", vin);
+  if (anchorErr) throw new Error(`アンカーの記録に失敗（Polygon には載っている）: ${anchorErr.message}`);
 
   return {
     status: "anchored",
@@ -231,7 +236,7 @@ export async function retryAnchorForPendingPassport(
     return { status: "anchor_failed", metaHash: row.meta_anchor_hash };
   }
 
-  await admin
+  const { error: retryAnchorErr } = await admin
     .from("vehicle_passports")
     .update({
       meta_anchor_tx_hash: anchorResult.txHash,
@@ -239,6 +244,7 @@ export async function retryAnchorForPendingPassport(
       meta_anchor_anchored_at: new Date().toISOString(),
     })
     .eq("vin_code_normalized", vin);
+  if (retryAnchorErr) throw new Error(`アンカーの記録に失敗（Polygon には載っている）: ${retryAnchorErr.message}`);
 
   return {
     status: "anchored",

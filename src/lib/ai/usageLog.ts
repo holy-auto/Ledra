@@ -18,6 +18,7 @@
  *   - "error": 500 系 / 例外
  */
 import { createTenantScopedAdmin, createInsurerScopedAdmin } from "@/lib/supabase/admin";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export type AiUsageOutcome = "ok" | "ai_disabled" | "plan_limit" | "rate_limit" | "schema_error" | "error";
 
@@ -67,7 +68,7 @@ export async function recordAiUsage(log: AiUsageLog): Promise<void> {
     if (error && isMissingColumnError(error)) {
       const { cost_jpy: _omit, ...rest } = row;
       void _omit;
-      await admin.from("ai_usage_logs").insert(rest);
+      await bestEffortWrite(admin.from("ai_usage_logs").insert(rest), "ai_usage_logs insert (recordAiUsage)");
     }
   } catch (e) {
     // テーブル未マイグレーション (42P01) や RLS 拒否 (PGRST301) はサイレント

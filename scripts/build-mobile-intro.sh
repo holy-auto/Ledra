@@ -1,39 +1,24 @@
 #!/usr/bin/env bash
-# モバイルアプリの起動オープニング動作と起動アセットを、ブランドのマスター素材から生成する。
+# モバイルアプリの起動オープニング動画と起動アセットを生成する。
 #
-#   ./scripts/build-mobile-intro.sh <イントロ動画のマスター.mp4>
+#   ./scripts/build-mobile-intro.sh
 #
-# 必要なもの: ffmpeg のみ（画像処理も ffmpeg で完結させ、依存を1つに抑えている）
+# 必要なもの: ffmpeg と、ルートの npm 依存（Remotion）。
+# Remotion が自前のヘッドレス Chrome を取得できない環境では、手元の Chrome を
+# REMOTION_BROWSER=/path/to/headless_shell で渡す。
 #
-# マスター素材はリポジトリに入れていない（生成ツールのウォーターマークが乗っているため、
-# 誤ってそのまま使われるのを避ける）。代表が保持しているものを引数で渡す。
+# オープニング動画の生成元は remotion/MobileIntro.tsx（ロゴを SVG で描き直したもの）。
+# 以前は外部ツールで作った横長動画の一部を約1.8倍に引き伸ばしていて画質が荒かった
+# （DECISION_LOG 2026-10-12）。ベクターから端末の解像度で直接書き出すので、拡大で荒れない。
 #
-# 素材を差し替えたら、下の定数を必ず測り直すこと。測定コマンドは
-# docs/context/RELEASE_LOG.md の該当エントリと、この下のコメントに書いてある。
+# 動きの時間を変えたら apps/mobile/src/lib/introTiming.ts の前提
+# （1.2 秒で完成・1.2〜2.0 秒は静止・2.0 秒で終わり）と突き合わせること。
 
 set -euo pipefail
-
-MASTER="${1:-}"
-if [[ -z "$MASTER" || ! -f "$MASTER" ]]; then
-  echo "usage: $0 <イントロ動画のマスター.mp4>" >&2
-  exit 1
-fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ASSETS="$ROOT/apps/mobile/assets"
 BADGE="$ROOT/public/login-badge-source.png"
-
-# --- マスター素材の実測値 -------------------------------------------------
-# マスターは 1920x1080 のキャンバスに 9:16 の縦パネルが白でピラーボックスされている。
-PANEL_X=656          # 縦パネルの左端
-PANEL_W=608          # 縦パネルの幅 (608:1080 = 0.5630 ≒ 9:16)
-PANEL_H=970          # 下端 110px を落とす。ウォーターマーク(中心 y≈997, 半径≈23)を画角外にするため。
-                     # LEDRA の下端は y≈732 なのでロゴは切れない。
-CUT_SEC=2.00         # 1回目のハイライトスイープが始まる 2.20 秒の手前で切る。
-                     # 末尾フレームの高輝度画素が 0 = 完全に静止した状態で終わるので、
-                     # 動きが途中で断ち切られない。末尾2秒の白い余り尺もこれで落ちる。
-                     # 測定: ffmpeg -i <master> -vf "crop=608:560:656:220,scale=76:70" \
-                     #   -f rawvideo -pix_fmt gray - | (30fps 刻みで v>=238 の画素数を数える)
 
 # --- ブランドロゴ(Lマーク)の実測クロップ座標 ------------------------------
 # public/login-badge-source.png (1376x768, RGBA, 背景透過) 内の L マークの bbox
@@ -50,18 +35,21 @@ place_mark() {
     -pix_fmt rgba -frames:v 1 "$out"
 }
 
-echo "==> イントロ動画 (${CUT_SEC}s, 音声なし)"
-# crop        : 白のピラーボックスを除去し、同時にウォーターマークを画角外へ
-# 下端 198px  : 切り落とした分を最下行の色を引き伸ばして埋め戻す。
-#               scale=16:2 を挟んで横方向を平均化しているのは、素の引き伸ばしだと縦縞が出るため。
-# -an         : 音声トラックを削除（起動のたびに音が鳴る／他アプリの再生を止めるのを防ぐ）
-# +faststart  : moov を先頭に置き、頭出しを速くする
-ffmpeg -hide_banner -loglevel error -y -t "$CUT_SEC" -i "$MASTER" -filter_complex \
-  "[0:v]crop=${PANEL_W}:${PANEL_H}:${PANEL_X}:0,scale=1080:1722,format=yuv420p,split=2[m][b];\
-   [b]crop=1080:6:0:1716,scale=16:2,scale=1080:198:flags=bicubic,format=yuv420p[bot];\
-   [m][bot]vstack=inputs=2" \
-  -an -c:v libx264 -crf 24 -preset slow -pix_fmt yuv420p -movflags +faststart \
-  "$ASSETS/ledra-intro.mp4"
+echo "==> イントロ動画 (Remotion: MobileIntro 1080x1920 / 60fps / 2.0s, 音声なし)"
+# 拡張子に見える名前（mktemp 既定の tmp.XXXX）だと Remotion が連番の出力先と認めないので、点を含めない
+FRAMES="$(mktemp -d "${TMPDIR:-/tmp}/mobile-intro-XXXXXX")"
+trap 'rm -rf "$FRAMES"' EXIT
+( cd "$ROOT" && npx remotion render remotion/index.tsx MobileIntro "$FRAMES" \
+    --sequence --image-format=png ${REMOTION_BROWSER:+--browser-executable="$REMOTION_BROWSER"} --log=error )
+# 連番 PNG から自分でエンコードする。Remotion の直接書き出しは yuvj420p（フルレンジ）になり、
+# 端末によって背景のクリームがスプラッシュ（#d6d0cb）とずれうるため、BT.709 の TV レンジに揃える。
+# -an        : 音声トラックを持たせない（起動のたびに音が鳴る／他アプリの再生を止めるのを防ぐ）
+# +faststart : moov を先頭に置き、頭出しを速くする
+ffmpeg -hide_banner -loglevel error -y -framerate 60 -i "$FRAMES/element-%03d.png" \
+  -vf "scale=out_color_matrix=bt709:out_range=tv:flags=lanczos+accurate_rnd+full_chroma_int,format=yuv420p" \
+  -c:v libx264 -preset slow -crf 16 \
+  -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv \
+  -an -movflags +faststart "$ASSETS/ledra-intro.mp4"
 
 echo "==> スプラッシュ (背景と同色 = 見えないアイコン)"
 # 狙いは「単色スプラッシュ」だが、画像を持たせない設定は Expo からは選べない。

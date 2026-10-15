@@ -255,7 +255,7 @@ export async function runMonthlyInvoices(targetDate?: Date): Promise<{ sent: num
 
           // 全案件の invoice_sent_at を更新
           const nowIso = now.toISOString();
-          await supabase
+          const { error: stampErr } = await supabase
             .from("job_orders")
             .update({
               invoice_number: invoiceNumber,
@@ -268,6 +268,7 @@ export async function runMonthlyInvoices(targetDate?: Date): Promise<{ sent: num
               "id",
               tenantOrders.map((o) => o.id),
             );
+          if (stampErr) throw new Error(`月次請求の stamp に失敗（二重請求の恐れ）: ${stampErr.message}`);
 
           logger.info("[monthlyInvoice] sent", {
             fromTenantId,

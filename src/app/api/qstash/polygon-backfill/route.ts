@@ -8,6 +8,7 @@ import { computeAuthenticityGrade, highestGrade, type AuthenticityGrade } from "
 import { upsertVehiclePassport } from "@/lib/passport/upsertVehiclePassport";
 import { enqueuePolygonBackfillNextBatch } from "@/lib/qstash/publish";
 import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2paMode";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 const polygonBackfillSchema = z.object({
   job_id: z.string().uuid(),
@@ -28,10 +29,13 @@ async function handler(req: NextRequest) {
 
   const { admin } = createTenantScopedAdmin(tenant_id);
 
-  await admin
-    .from("polygon_backfill_jobs")
-    .update({ status: "processing", updated_at: new Date().toISOString() })
-    .eq("id", job_id);
+  await bestEffortWrite(
+    admin
+      .from("polygon_backfill_jobs")
+      .update({ status: "processing", updated_at: new Date().toISOString() })
+      .eq("id", job_id),
+    "polygon_backfill_jobs update (handler)",
+  );
 
   try {
     // **生の env を読まない。** `getMode()` が唯一の正規化源（`c2pa.ts`）。素のキャストだと
@@ -209,15 +213,18 @@ async function handler(req: NextRequest) {
       // ponytail: バッチ単位の全滅検知のみ。upgrade path は画像単位の retry budget
       // （certificate_images に試行カウンタを持たせて毒画像だけスキップ）。
       if (succeededCount === 0 && (candidates?.length ?? 0) > 0) {
-        await admin
-          .from("polygon_backfill_jobs")
-          .update({
-            status: "failed",
-            processed_count: totalProcessed,
-            error_message: `batch made no progress: 0/${candidates?.length ?? 0} images anchored (remaining=${remaining})`,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", job_id);
+        await bestEffortWrite(
+          admin
+            .from("polygon_backfill_jobs")
+            .update({
+              status: "failed",
+              processed_count: totalProcessed,
+              error_message: `batch made no progress: 0/${candidates?.length ?? 0} images anchored (remaining=${remaining})`,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", job_id),
+          "polygon_backfill_jobs update (handler)",
+        );
         console.error(`[polygon-backfill] job=${job_id} stalled: zero successes in batch, not requeueing`);
         // 200 を返して QStash 側のメッセージ再試行も止める（ジョブは failed 記録済み）
         return apiJson({ success: false, stalled: true, processed: processedCount });
@@ -225,23 +232,29 @@ async function handler(req: NextRequest) {
 
       await enqueuePolygonBackfillNextBatch({ job_id, tenant_id, total_processed: totalProcessed });
 
-      await admin
-        .from("polygon_backfill_jobs")
-        .update({
-          processed_count: totalProcessed,
-          status: "processing",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", job_id);
+      await bestEffortWrite(
+        admin
+          .from("polygon_backfill_jobs")
+          .update({
+            processed_count: totalProcessed,
+            status: "processing",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", job_id),
+        "polygon_backfill_jobs update (handler)",
+      );
     } else {
-      await admin
-        .from("polygon_backfill_jobs")
-        .update({
-          processed_count: totalProcessed,
-          status: "completed",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", job_id);
+      await bestEffortWrite(
+        admin
+          .from("polygon_backfill_jobs")
+          .update({
+            processed_count: totalProcessed,
+            status: "completed",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", job_id),
+        "polygon_backfill_jobs update (handler)",
+      );
     }
 
     console.info(`[polygon-backfill] job=${job_id} batch=${processedCount} remaining=${remaining ?? 0}`);
@@ -249,14 +262,17 @@ async function handler(req: NextRequest) {
     return apiJson({ success: true, processed: processedCount });
   } catch (e) {
     console.error("[polygon-backfill] job failed:", e);
-    await admin
-      .from("polygon_backfill_jobs")
-      .update({
-        status: "failed",
-        error_message: e instanceof Error ? e.message : String(e),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", job_id);
+    await bestEffortWrite(
+      admin
+        .from("polygon_backfill_jobs")
+        .update({
+          status: "failed",
+          error_message: e instanceof Error ? e.message : String(e),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", job_id),
+      "polygon_backfill_jobs update (handler)",
+    );
     return apiJson({ error: "Job failed" }, { status: 500 });
   }
 }

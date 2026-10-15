@@ -1,4 +1,5 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export type CertificateAuditType =
   | "certificate_issued"
@@ -156,15 +157,18 @@ export async function logCertificateAction(params: {
         .filter(Boolean)
         .join(" / ");
 
-    await admin.from("vehicle_histories").insert({
-      tenant_id: params.tenantId,
-      vehicle_id: params.vehicleId ?? null,
-      certificate_id: params.certificateId ?? null,
-      type: params.type,
-      title: TITLE_MAP[params.type] ?? params.type,
-      description: desc,
-      performed_at: new Date().toISOString(),
-    });
+    await bestEffortWrite(
+      admin.from("vehicle_histories").insert({
+        tenant_id: params.tenantId,
+        vehicle_id: params.vehicleId ?? null,
+        certificate_id: params.certificateId ?? null,
+        type: params.type,
+        title: TITLE_MAP[params.type] ?? params.type,
+        description: desc,
+        performed_at: new Date().toISOString(),
+      }),
+      "vehicle_histories insert (logCertificateAction)",
+    );
   } catch (e) {
     console.error("[audit] logCertificateAction failed:", e);
   }
@@ -184,15 +188,18 @@ export async function logAuditEvent(params: {
 }): Promise<void> {
   try {
     const { admin } = createTenantScopedAdmin(params.tenantId);
-    await admin.from("vehicle_histories").insert({
-      tenant_id: params.tenantId,
-      vehicle_id: params.vehicleId ?? null,
-      certificate_id: params.certificateId ?? null,
-      type: params.type,
-      title: params.title ?? TITLE_MAP[params.type] ?? params.type,
-      description: params.description ?? null,
-      performed_at: new Date().toISOString(),
-    });
+    await bestEffortWrite(
+      admin.from("vehicle_histories").insert({
+        tenant_id: params.tenantId,
+        vehicle_id: params.vehicleId ?? null,
+        certificate_id: params.certificateId ?? null,
+        type: params.type,
+        title: params.title ?? TITLE_MAP[params.type] ?? params.type,
+        description: params.description ?? null,
+        performed_at: new Date().toISOString(),
+      }),
+      "vehicle_histories insert (logAuditEvent)",
+    );
   } catch (e) {
     console.error("[audit] logAuditEvent failed:", e);
   }

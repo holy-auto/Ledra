@@ -138,11 +138,12 @@ export async function POST(req: Request) {
   // 一度もコードを入力せずに /api/join の確認済み判定を通過できた
   // (join は `verified=true` の行があるかしか見ていない)。
   // 無効化は「もう使えない」ことだけを表す expires_at の更新に閉じる。
-  await supabase
+  const { error: expirePrevErr } = await supabase
     .from("insurer_email_verifications")
     .update({ expires_at: new Date().toISOString() })
     .eq("email", email.toLowerCase())
     .eq("verified", false);
+  if (expirePrevErr) return apiInternalError(expirePrevErr, "join/send-code: expire previous codes");
 
   // Generate and store code
   const code = genCode6();

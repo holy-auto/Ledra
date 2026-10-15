@@ -16,7 +16,6 @@ export const runtime = "nodejs";
 export const POST = withCaller(
   async (_req, { caller, supabase }) => {
     try {
-
       const { data: userRes } = await supabase.auth.getUser();
       const userName = userRes?.user?.email ?? caller.userId;
 
@@ -40,13 +39,14 @@ export const POST = withCaller(
         excludeCredentials: (existing ?? []).map((c) => ({ id: c.credential_id as string })),
       });
 
-      await admin.from("webauthn_challenges").insert({
+      const { error: challengeErr } = await admin.from("webauthn_challenges").insert({
         tenant_id: caller.tenantId,
         user_id: caller.userId,
         purpose: "registration",
         challenge: options.challenge,
         expires_at: new Date(Date.now() + REGISTRATION_CHALLENGE_TTL_MS).toISOString(),
       });
+      if (challengeErr) return apiInternalError(challengeErr, "webauthn/register/options: challenge insert");
 
       return apiOk({ options });
     } catch (e) {

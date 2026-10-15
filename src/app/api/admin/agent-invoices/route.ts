@@ -93,7 +93,8 @@ export const POST = withCaller(
           unit_price: line.unit_price ?? 0,
           amount: line.amount ?? (line.quantity ?? 1) * (line.unit_price ?? 0),
         }));
-        await admin.from("agent_invoice_lines").insert(lines);
+        const { error: linesErr } = await admin.from("agent_invoice_lines").insert(lines);
+        if (linesErr) return apiInternalError(linesErr, "agent-invoices POST: lines insert");
       }
 
       return apiJson({ invoice }, { status: 201 });

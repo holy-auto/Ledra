@@ -15,6 +15,7 @@ import { signPayloadWithProvider } from "@/lib/signature/signer";
 import { verifyPhoneLast4, SECONDARY_FACTOR_MAX_ATTEMPTS } from "@/lib/signature/deliveryReceipt";
 import { buildBodyRepairConsentPayload, type BodyRepairConsentKind } from "@/lib/signature/bodyRepairConsent";
 import { anchorToPolygon } from "@/lib/anchoring/providers/polygon";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -82,8 +83,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     }
 
     if (new Date(session.expires_at) < new Date()) {
-      await admin.from("signature_sessions").update({ status: "expired" }).eq("id", session.id);
-      await admin.from("body_repair_consents").update({ status: "expired" }).eq("signature_session_id", session.id);
+      await bestEffortWrite(
+        admin.from("signature_sessions").update({ status: "expired" }).eq("id", session.id),
+        "signature_sessions update (POST)",
+      );
+      await bestEffortWrite(
+        admin.from("body_repair_consents").update({ status: "expired" }).eq("signature_session_id", session.id),
+        "body_repair_consents update (POST)",
+      );
       return apiError({ code: "not_found", message: "同意サインリンクの有効期限が切れています", status: 404 });
     }
 
@@ -102,29 +109,44 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     if (!factorResult.ok) {
       const newAttempts =
         factorResult.reason === "mismatch" ? factorResult.attempts : (session.secondary_factor_attempts ?? 0);
-      await admin.from("signature_sessions").update({ secondary_factor_attempts: newAttempts }).eq("id", session.id);
-      await admin.from("signature_audit_logs").insert({
-        session_id: session.id,
-        event: "secondary_factor_failed",
-        ip,
-        user_agent: ua,
-        metadata: { reason: factorResult.reason, attempts: newAttempts },
-      });
+      const { error: attemptsErr } = await admin
+        .from("signature_sessions")
+        .update({ secondary_factor_attempts: newAttempts })
+        .eq("id", session.id);
+      if (attemptsErr) return apiError({ code: "db_error", message: "認証の記録に失敗しました", status: 500 });
+      await bestEffortWrite(
+        admin.from("signature_audit_logs").insert({
+          session_id: session.id,
+          event: "secondary_factor_failed",
+          ip,
+          user_agent: ua,
+          metadata: { reason: factorResult.reason, attempts: newAttempts },
+        }),
+        "signature_audit_logs insert (POST)",
+      );
 
       if (factorResult.reason === "locked" || newAttempts >= SECONDARY_FACTOR_MAX_ATTEMPTS) {
         const cancelledAt = new Date().toISOString();
-        await admin
+        const { error: lockSessErr } = await admin
           .from("signature_sessions")
           .update({ status: "cancelled", cancelled_at: cancelledAt, cancel_reason: "secondary_factor_locked" })
           .eq("id", session.id);
-        await admin.from("body_repair_consents").update({ status: "cancelled" }).eq("signature_session_id", session.id);
-        await admin.from("signature_audit_logs").insert({
-          session_id: session.id,
-          event: "secondary_factor_locked",
-          ip,
-          user_agent: ua,
-          metadata: { attempts: newAttempts },
-        });
+        if (lockSessErr) return apiError({ code: "db_error", message: "セッションの停止に失敗しました", status: 500 });
+        const { error: lockConsentErr } = await admin
+          .from("body_repair_consents")
+          .update({ status: "cancelled" })
+          .eq("signature_session_id", session.id);
+        if (lockConsentErr) return apiError({ code: "db_error", message: "同意の停止に失敗しました", status: 500 });
+        await bestEffortWrite(
+          admin.from("signature_audit_logs").insert({
+            session_id: session.id,
+            event: "secondary_factor_locked",
+            ip,
+            user_agent: ua,
+            metadata: { attempts: newAttempts },
+          }),
+          "signature_audit_logs insert (POST)",
+        );
         return apiError({
           code: "forbidden",
           message: "本人確認の試行回数を超えました。施工店にリンクの再発行を依頼してください。",
@@ -142,13 +164,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       });
     }
 
-    await admin.from("signature_audit_logs").insert({
-      session_id: session.id,
-      event: "secondary_factor_passed",
-      ip,
-      user_agent: ua,
-      metadata: { method: "phone_last4" },
-    });
+    await bestEffortWrite(
+      admin.from("signature_audit_logs").insert({
+        session_id: session.id,
+        event: "secondary_factor_passed",
+        ip,
+        user_agent: ua,
+        metadata: { method: "phone_last4" },
+      }),
+      "signature_audit_logs insert (POST)",
+    );
 
     // ── 署名 ──
     const signedAt = new Date().toISOString();
@@ -207,41 +232,48 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       return apiError({ code: "conflict", message: "この同意はすでに署名されています", status: 409 });
     }
 
-    await admin
+    const { error: signedErr } = await admin
       .from("body_repair_consents")
       .update({ status: "signed", signed_at: signedAt })
       .eq("signature_session_id", session.id);
+    if (signedErr) return apiError({ code: "db_error", message: "同意の保存に失敗しました", status: 500 });
 
-    await admin.from("signature_audit_logs").insert({
-      session_id: session.id,
-      event: "signed",
-      ip,
-      user_agent: ua,
-      metadata: {
-        purpose: session.purpose,
-        kind: consent.kind,
-        body_repair_job_id: consent.body_repair_job_id,
-        signer_email,
-        signed_at: signedAt,
-        key_version: keyInfo.version,
-        public_key_fingerprint: keyInfo.fingerprint,
-        consent_version: consentVersion,
-        consent_text_hash: consentTextHash,
-        document_hash: session.document_hash,
-        signature_preview: signature.slice(0, 32) + "...",
-      },
-    });
+    await bestEffortWrite(
+      admin.from("signature_audit_logs").insert({
+        session_id: session.id,
+        event: "signed",
+        ip,
+        user_agent: ua,
+        metadata: {
+          purpose: session.purpose,
+          kind: consent.kind,
+          body_repair_job_id: consent.body_repair_job_id,
+          signer_email,
+          signed_at: signedAt,
+          key_version: keyInfo.version,
+          public_key_fingerprint: keyInfo.fingerprint,
+          consent_version: consentVersion,
+          consent_text_hash: consentTextHash,
+          document_hash: session.document_hash,
+          signature_preview: signature.slice(0, 32) + "...",
+        },
+      }),
+      "signature_audit_logs insert (POST)",
+    );
 
     // Polygon アンカリング (非同期)
     void (async () => {
       try {
         const result = await anchorToPolygon(session.document_hash);
         if (result.anchored && result.txHash) {
-          await admin.from("signature_audit_logs").insert({
-            session_id: session.id,
-            event: "receipt_anchored",
-            metadata: { tx_hash: result.txHash, network: result.network },
-          });
+          await bestEffortWrite(
+            admin.from("signature_audit_logs").insert({
+              session_id: session.id,
+              event: "receipt_anchored",
+              metadata: { tx_hash: result.txHash, network: result.network },
+            }),
+            "signature_audit_logs insert (POST)",
+          );
         }
       } catch (err) {
         console.error("[body-repair-consent/sign] anchoring failed:", err);

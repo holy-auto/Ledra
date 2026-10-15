@@ -1,14 +1,10 @@
 import { NextRequest } from "next/server";
 import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import {
-  apiJson,
-  apiNotFound,
-  apiValidationError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { sendLineBroadcast, type BroadcastRecipient } from "@/lib/line/broadcast";
 import { segmentSchema, type LineBroadcastSegment } from "@/lib/validations/line-broadcast";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -75,11 +71,14 @@ export const POST = withCaller<{ id: string }>(
     try {
       recipients = await resolveRecipients(admin, caller.tenantId, segment);
     } catch (e) {
-      await admin
-        .from("line_broadcasts")
-        .update({ status: "draft", updated_at: new Date().toISOString() })
-        .eq("id", id)
-        .eq("tenant_id", caller.tenantId);
+      await bestEffortWrite(
+        admin
+          .from("line_broadcasts")
+          .update({ status: "draft", updated_at: new Date().toISOString() })
+          .eq("id", id)
+          .eq("tenant_id", caller.tenantId),
+        "line_broadcasts update (POST)",
+      );
       return apiInternalError(e, "line-broadcasts send resolveRecipients");
     }
 
@@ -93,11 +92,14 @@ export const POST = withCaller<{ id: string }>(
 
     // LINE 未設定なら status を draft に戻し、設定を促す。
     if (result.notConfigured) {
-      await admin
-        .from("line_broadcasts")
-        .update({ status: "draft", updated_at: new Date().toISOString() })
-        .eq("id", id)
-        .eq("tenant_id", caller.tenantId);
+      await bestEffortWrite(
+        admin
+          .from("line_broadcasts")
+          .update({ status: "draft", updated_at: new Date().toISOString() })
+          .eq("id", id)
+          .eq("tenant_id", caller.tenantId),
+        "line_broadcasts update (POST)",
+      );
       return apiValidationError("このテナントは LINE 連携が未設定です。設定後に再度お試しください。");
     }
 

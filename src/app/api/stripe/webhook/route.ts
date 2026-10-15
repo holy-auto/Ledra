@@ -20,6 +20,7 @@ import { recordVehicleReportRevenueShares } from "@/lib/vehicleReport/revenueSha
 import { reverseVehicleReportRevenueSharesForOrder } from "@/lib/vehicleReport/payout";
 import { recordSubscriptionCommission, advanceReferralToContracted } from "@/lib/agents/commission";
 import { recordInvoicePaymentBalance } from "@/lib/invoice/recordPayment";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -1179,7 +1180,10 @@ export async function POST(req: NextRequest) {
           .maybeSingle();
 
         if (tenant && tenant.stripe_connect_onboarded !== onboarded) {
-          await supabase.from("tenants").update({ stripe_connect_onboarded: onboarded }).eq("id", tenant.id);
+          await bestEffortWrite(
+            supabase.from("tenants").update({ stripe_connect_onboarded: onboarded }).eq("id", tenant.id),
+            "tenants update (account.updated) — Connect の onboarded 同期",
+          );
           console.info("webhook: connect account synced", { accountId, onboarded });
         }
         break;
@@ -1263,10 +1267,13 @@ export async function POST(req: NextRequest) {
     // Mark the event complete so the monitor cron does NOT later alert on it.
     // This is best-effort: if the UPDATE itself fails we just return 200 and
     // let the cron detect the stuck row a few minutes later.
-    await supabase
-      .from("stripe_processed_events")
-      .update({ processed_at: new Date().toISOString(), error_message: null })
-      .eq("event_id", event.id);
+    await bestEffortWrite(
+      supabase
+        .from("stripe_processed_events")
+        .update({ processed_at: new Date().toISOString(), error_message: null })
+        .eq("event_id", event.id),
+      "stripe_processed_events update (POST)",
+    );
   } catch (e) {
     const errorMessage = e instanceof Error ? e.message : String(e);
     console.error("stripe webhook handler failed", {
@@ -1276,10 +1283,13 @@ export async function POST(req: NextRequest) {
     });
     // Record the failure on the claim row so the monitor cron has context
     // when it alerts. processed_at stays NULL → it WILL alert.
-    await supabase
-      .from("stripe_processed_events")
-      .update({ error_message: errorMessage.slice(0, 1000) })
-      .eq("event_id", event.id);
+    await bestEffortWrite(
+      supabase
+        .from("stripe_processed_events")
+        .update({ error_message: errorMessage.slice(0, 1000) })
+        .eq("event_id", event.id),
+      "stripe_processed_events update (POST)",
+    );
     return apiInternalError(e, "stripe webhook handler");
   }
 

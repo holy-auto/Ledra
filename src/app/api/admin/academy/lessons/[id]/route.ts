@@ -6,17 +6,12 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { withCaller } from "@/lib/api/withCaller";
-import {
-  apiOk,
-  apiInternalError,
-  apiValidationError,
-  apiNotFound,
-  apiForbidden,
-} from "@/lib/api/response";
+import { apiOk, apiInternalError, apiValidationError, apiNotFound, apiForbidden } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { resolveLessonPlayback, type LessonVideoFields } from "@/lib/video/resolveLessonPlayback";
 import { canModifyLesson } from "@/lib/academy/createLesson";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 
@@ -65,10 +60,13 @@ export const GET = withCaller<{ id: string }>(
     // view_count をインクリメント (公開レッスンを他者が閲覧したときのみ)
     if (isPublished && !isAuthor) {
       const admin = createPlatformScopedAdmin("academy lessons: increment view_count cross-tenant");
-      await admin
-        .from("academy_lessons")
-        .update({ view_count: (data.view_count ?? 0) + 1 })
-        .eq("id", id);
+      await bestEffortWrite(
+        admin
+          .from("academy_lessons")
+          .update({ view_count: (data.view_count ?? 0) + 1 })
+          .eq("id", id),
+        "academy_lessons update (GET)",
+      );
     }
 
     // 自身の評価を取得

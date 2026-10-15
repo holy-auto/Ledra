@@ -22,6 +22,7 @@ import { enqueueOutboxEvent, type Dispatcher } from "@/lib/outbox";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { withRetry } from "@/lib/http/withRetry";
 import { logger } from "@/lib/logger";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminDb = SupabaseClient<any, any, any>;
@@ -159,21 +160,31 @@ export function buildWebhookDispatcher(admin: AdminDb): Dispatcher {
           }
           return res;
         });
-        await admin
-          .from("tenant_webhooks")
-          .update({ last_delivery_at: new Date().toISOString(), last_delivery_status: "ok", last_delivery_error: null })
-          .eq("id", t.id);
+        await bestEffortWrite(
+          admin
+            .from("tenant_webhooks")
+            .update({
+              last_delivery_at: new Date().toISOString(),
+              last_delivery_status: "ok",
+              last_delivery_error: null,
+            })
+            .eq("id", t.id),
+          "tenant_webhooks update (buildWebhookDispatcher)",
+        );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         firstError ||= `${t.url}: ${msg}`;
-        await admin
-          .from("tenant_webhooks")
-          .update({
-            last_delivery_at: new Date().toISOString(),
-            last_delivery_status: "errored",
-            last_delivery_error: msg.slice(0, 500),
-          })
-          .eq("id", t.id);
+        await bestEffortWrite(
+          admin
+            .from("tenant_webhooks")
+            .update({
+              last_delivery_at: new Date().toISOString(),
+              last_delivery_status: "errored",
+              last_delivery_error: msg.slice(0, 500),
+            })
+            .eq("id", t.id),
+          "tenant_webhooks update (buildWebhookDispatcher)",
+        );
         logger.warn("webhook delivery failed", { url: t.url, error: msg });
       }
     }

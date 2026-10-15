@@ -19,6 +19,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { logger } from "@/lib/logger";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export type OutboxStatus = "pending" | "in_flight" | "delivered" | "errored" | "dead_letter";
 
@@ -98,11 +99,14 @@ export async function processOutboxBatch(
   // TTL 15 分は「1 バッチの dispatch 所要時間より十分長い」決め打ち
   // （updated_at は claim 時に trigger で更新される）。upgrade path: claimed_at +
   // worker id での正確な lease 管理。
-  await admin
-    .from("outbox_events")
-    .update({ status: "pending" })
-    .eq("status", "in_flight")
-    .lte("updated_at", new Date(Date.now() - STALE_IN_FLIGHT_MS).toISOString());
+  await bestEffortWrite(
+    admin
+      .from("outbox_events")
+      .update({ status: "pending" })
+      .eq("status", "in_flight")
+      .lte("updated_at", new Date(Date.now() - STALE_IN_FLIGHT_MS).toISOString()),
+    "outbox_events update (processOutboxBatch)",
+  );
 
   // DB 側で SELECT ... FOR UPDATE SKIP LOCKED + UPDATE を1文で行い、複数workerが
   // 同じ行を読んでから競合する余地を無くす。
@@ -131,38 +135,47 @@ export async function processOutboxBatch(
     const nextAttempts = row.attempts + 1;
 
     if (result.ok) {
-      await admin
-        .from("outbox_events")
-        .update({
-          status: "delivered",
-          delivered_at: new Date().toISOString(),
-          attempts: nextAttempts,
-          last_error: null,
-        })
-        .eq("id", row.id);
+      await bestEffortWrite(
+        admin
+          .from("outbox_events")
+          .update({
+            status: "delivered",
+            delivered_at: new Date().toISOString(),
+            attempts: nextAttempts,
+            last_error: null,
+          })
+          .eq("id", row.id),
+        "outbox_events update (processOutboxBatch)",
+      );
       counters.delivered += 1;
     } else if (nextAttempts >= maxAttempts) {
-      await admin
-        .from("outbox_events")
-        .update({
-          status: "dead_letter",
-          attempts: nextAttempts,
-          last_error: result.error.slice(0, 1000),
-        })
-        .eq("id", row.id);
+      await bestEffortWrite(
+        admin
+          .from("outbox_events")
+          .update({
+            status: "dead_letter",
+            attempts: nextAttempts,
+            last_error: result.error.slice(0, 1000),
+          })
+          .eq("id", row.id),
+        "outbox_events update (processOutboxBatch)",
+      );
       counters.dead += 1;
       logger.error("outbox: event moved to dead_letter", { id: row.id, topic: row.topic, attempts: nextAttempts });
     } else {
       const nextDelaySec = backoffSeconds(nextAttempts);
-      await admin
-        .from("outbox_events")
-        .update({
-          status: "pending",
-          attempts: nextAttempts,
-          last_error: result.error.slice(0, 1000),
-          next_attempt_at: new Date(Date.now() + nextDelaySec * 1000).toISOString(),
-        })
-        .eq("id", row.id);
+      await bestEffortWrite(
+        admin
+          .from("outbox_events")
+          .update({
+            status: "pending",
+            attempts: nextAttempts,
+            last_error: result.error.slice(0, 1000),
+            next_attempt_at: new Date(Date.now() + nextDelaySec * 1000).toISOString(),
+          })
+          .eq("id", row.id),
+        "outbox_events update (processOutboxBatch)",
+      );
       counters.errored += 1;
     }
   };

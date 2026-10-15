@@ -1,5 +1,3 @@
-
-
 import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { faqCreateSchema, faqDeleteSchema } from "@/lib/validations/faq";
 
@@ -43,7 +41,6 @@ export const GET = withCaller(
 export const POST = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const parsed = faqCreateSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -67,13 +64,13 @@ export const POST = withCaller(
 export const DELETE = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const parsed = faqDeleteSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
       }
 
-      await supabase.from("support_faq").delete().eq("id", parsed.data.id);
+      const { error: delErr } = await supabase.from("support_faq").delete().eq("id", parsed.data.id);
+      if (delErr) return apiInternalError(delErr, "faq DELETE");
       return apiJson({ ok: true });
     } catch (e) {
       return apiInternalError(e, "faq DELETE");

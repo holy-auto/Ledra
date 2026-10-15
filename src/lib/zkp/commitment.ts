@@ -128,7 +128,7 @@ export async function createZkpCommitment(input: CommitmentInput): Promise<ZkpCo
   }));
 
   if (anchorResult.anchored && anchorResult.txHash) {
-    await admin
+    const { error: txErr } = await admin
       .from("zkp_commitments")
       .update({
         polygon_tx_hash: anchorResult.txHash,
@@ -136,6 +136,7 @@ export async function createZkpCommitment(input: CommitmentInput): Promise<ZkpCo
         polygon_anchored_at: new Date().toISOString(),
       })
       .eq("id", commitmentId);
+    if (txErr) throw new Error(`zkp コミットメントの tx の記録に失敗: ${txErr.message}`);
   }
 
   return {

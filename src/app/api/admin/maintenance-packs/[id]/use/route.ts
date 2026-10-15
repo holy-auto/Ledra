@@ -1,14 +1,9 @@
 import { NextRequest } from "next/server";
 import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import {
-  apiJson,
-  apiNotFound,
-  apiValidationError,
-  apiError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiNotFound, apiValidationError, apiError, apiInternalError } from "@/lib/api/response";
 import { maintenancePackUseSchema } from "@/lib/validations/maintenance-pack";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -112,16 +107,19 @@ export const POST = withCaller<{ id: string }>(
       .select("id, pack_id, reservation_id, notes, used_at")
       .single();
     if (usageErr) {
-      await admin
-        .from("maintenance_packs")
-        .update({
-          used_tickets: pack.used_tickets,
-          status: pack.status,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id)
-        .eq("tenant_id", caller.tenantId)
-        .eq("used_tickets", nextUsed);
+      await bestEffortWrite(
+        admin
+          .from("maintenance_packs")
+          .update({
+            used_tickets: pack.used_tickets,
+            status: pack.status,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", id)
+          .eq("tenant_id", caller.tenantId)
+          .eq("used_tickets", nextUsed),
+        "maintenance_packs update (POST)",
+      );
       return apiInternalError(usageErr, "maintenance-pack-usages insert");
     }
 

@@ -34,6 +34,7 @@ import { logger } from "@/lib/logger";
 import { requireAal2OrResponse } from "@/lib/auth/stepUpGuard";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
@@ -157,13 +158,16 @@ export const GET = withCaller(
             );
             controller.close();
 
-            await admin.from("vehicle_histories").insert({
-              tenant_id: tenantId,
-              type: "admin_data_export",
-              title: "管理者によるテナントデータエクスポート",
-              description: `Exported by user ${caller.userId} from IP ${getClientIp(req)}`,
-              performed_at: generatedAt,
-            });
+            await bestEffortWrite(
+              admin.from("vehicle_histories").insert({
+                tenant_id: tenantId,
+                type: "admin_data_export",
+                title: "管理者によるテナントデータエクスポート",
+                description: `Exported by user ${caller.userId} from IP ${getClientIp(req)}`,
+                performed_at: generatedAt,
+              }),
+              "vehicle_histories insert (GET)",
+            );
             logger.info("admin data export streamed", { tenantId, userId: caller.userId, counts });
           } catch (error) {
             logger.error("admin data export stream failed", { tenantId, error });
