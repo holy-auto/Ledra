@@ -97,7 +97,11 @@
 
 1本目の push で作られたプレビュー分岐が、全マイグレーションを流している途中だった。そこへ2本目の push の適用が
 走り、途中の台帳を見て頭から入れ直して衝突した（`docs/operations/migrations.md` に書いてある形そのもの）。
-`list_branches` で `MIGRATIONS_FAILED` を確かめ、`reset_branch(migration_version = "20261015122000")` で流し直した。
+`list_branches` で `MIGRATIONS_FAILED` を見て、手順書どおり `reset_branch(migration_version = "20261015122000")` を打った。
+**これが2つ目の誤り。** 衝突したのは2本目の push の適用だけで、1本目の適用はその後 12:27 に最後まで終わっていた
+（プレビュー分岐の `supabase_migrations.schema_migrations` は 528 件・最新 `20261015122000`、トリガーも作られていた）。
+リセットは要らなかったうえ、この DB の大きさでは既知の `out of shared memory (SQLSTATE 53200)` で落ち、全部ロールバックされた
+（台帳は元のまま、害は無し）。状態欄の `MIGRATIONS_FAILED` は「最後に走った処理が落ちた」で、台帳が欠けているとは限らない。
 
 **なぜ気づけなかったか**: 同じ型の `M-20260922-renamed-a-migration-the-preview-db-had-applied` の再発防止を
 「**改名したら**リセットまでが1セット」「**リセット中は** push しない」と、きっかけの操作に結びつけて覚えていた。
@@ -109,6 +113,8 @@
 - **マイグレーションを含む PR では、push の前に `list_branches` でその PR の分岐の `status` を見る。**
   `CREATING_PROJECT` / `RUNNING_MIGRATIONS` なら待ち、`MIGRATIONS_PASSED` / `FUNCTIONS_DEPLOYED` になってから push する。
 - `/code-review` の指摘を直すときも同じ。PR を作った直後の修正 push が、いちばんこの状態に当たりやすい。
+- **衝突で赤くなったら、リセットの前にプレビュー分岐の台帳を引く**（`execute_sql(project_id = <分岐の project_ref>)` で
+  `schema_migrations` の件数と最新版）。リポジトリのファイル数・最後の版と揃っていれば、リセットせず次の push で緑に戻す。
 
 ---
 
