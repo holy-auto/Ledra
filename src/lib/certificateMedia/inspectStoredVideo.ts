@@ -41,8 +41,10 @@ export async function inspectStoredVideo(
   if (!mime || !(ALLOWED_VIDEO_MIME as readonly string[]).includes(mime)) {
     return { ok: false, error: "動画の形式は MP4 / MOV のみ対応しています。", definitive: true };
   }
-  // 保存パスの拡張子は upload-url が申告の形式から決めたもの。実物と食い違えば、保存時の Content-Type も違っている
-  if (!path.endsWith(`.${extensionForMime(mime)}`)) {
+  // 保存パスの拡張子（upload-url が申告から決めた）と、保存時の Content-Type（アップロードした側が決めた）が、実物と合っているか。
+  // 合わないと、閲覧者には違う形式として配られる。
+  const storedType = res.headers.get("content-type")?.split(";")[0].trim();
+  if (!path.endsWith(`.${extensionForMime(mime)}`) || (storedType && storedType !== mime)) {
     return { ok: false, error: "動画の形式が申告と一致しません。もう一度アップロードしてください。", definitive: true };
   }
   if (total <= 0 || total > MAX_VIDEO_BYTES) {

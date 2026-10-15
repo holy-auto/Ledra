@@ -27,8 +27,18 @@ const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MB
 // 動画と一緒に multipart で送るポスター画像は、Vercel の関数の本文上限（約 4.5MB）に収める
 const MAX_MULTIPART_POSTER_BYTES = 4 * 1024 * 1024;
 
-/** ブラウザが MIME を出さない・別名で出す動画（.m4v など）は拡張子で決める。中身はサーバーが実物で確かめる */
-function videoContentType(file: File): "video/mp4" | "video/quicktime" {
+/**
+ * 動画の形式を先頭バイト（ftyp のブランド）で決める。ブラウザの MIME は出ないことも別名のこともある（.m4v など）。
+ * サーバーも同じ先頭バイトで確かめるので、ここで合わせておかないと形式の食い違いで登録できない。読めなければ MIME・拡張子で決める。
+ */
+async function videoContentType(file: File): Promise<"video/mp4" | "video/quicktime"> {
+  try {
+    const head = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+    const ascii = String.fromCharCode(...head.slice(4, 12));
+    if (ascii.startsWith("ftyp")) return ascii.slice(4) === "qt  " ? "video/quicktime" : "video/mp4";
+  } catch {
+    // 読めなければ下の推定に落とす
+  }
   if (file.type === "video/mp4" || file.type === "video/quicktime") return file.type;
   return /\.mov$/i.test(file.name) ? "video/quicktime" : "video/mp4";
 }
@@ -117,7 +127,7 @@ export default function MediaUploadSection({ publicId, existing }: Props) {
         // 動画は Vercel の関数の本文上限（約 4.5MB）を超えるので、Storage へ直接送ってから保存パスだけを登録する
         if (type === "video") {
           if (directUpload.current?.file !== primary) {
-            const contentType = videoContentType(primary);
+            const contentType = await videoContentType(primary);
             const urlRes = await fetch(`/api/certificates/${encodeURIComponent(publicId)}/media/upload-url`, {
               method: "POST",
               headers: { "content-type": "application/json" },
@@ -151,7 +161,10 @@ export default function MediaUploadSection({ publicId, existing }: Props) {
         } catch {
           // ignore body parse errors — handled below by status code
         }
-        if (!res.ok) {
+        // 409: 前回の送信で登録まで済んでいた（応答だけ届かなかった）。成功として扱う
+        if (!res.ok && res.status !== 409) {
+          // サーバーが中身不正として動画を消したので、次は送り直す。それ以外の失敗では残っているので登録だけやり直す
+          if (json.discarded) directUpload.current = null;
           setMessage(null);
           setError(
             (json?.message as string) ?? (json?.error as string) ?? `アップロードに失敗しました (HTTP ${res.status})。`,

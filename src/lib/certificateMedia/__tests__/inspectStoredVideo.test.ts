@@ -9,12 +9,15 @@ const admin = {
   storage: { from: () => ({ createSignedUrl: async () => ({ data: { signedUrl: "https://s/v?token=x" } }) }) },
 } as any;
 
-function stubFetch(head: Buffer, total: number, status = 206) {
+function stubFetch(head: Buffer, total: number, status = 206, contentType?: string) {
   const fetchMock = vi.fn(
     async () =>
       new Response(new Uint8Array(head), {
         status,
-        headers: status === 206 ? { "content-range": `bytes 0-${head.length - 1}/${total}` } : {},
+        headers: {
+          ...(status === 206 ? { "content-range": `bytes 0-${head.length - 1}/${total}` } : {}),
+          ...(contentType ? { "content-type": contentType } : {}),
+        },
       }),
   );
   vi.stubGlobal("fetch", fetchMock);
@@ -44,6 +47,13 @@ describe("inspectStoredVideo [直接アップロードされた動画の実物�
   it("中身が mp4 なのに保存パスが .mov（申告と実物の食い違い）は通さない", async () => {
     stubFetch(MP4_HEAD, 1000);
     expect(await inspectStoredVideo(admin, "media/t1/c1/1_main.mov")).toMatchObject({ ok: false, definitive: true });
+  });
+
+  it("保存時の形式（content-type）が中身と食い違うものは通さない（配信時にその形式で返されるため）", async () => {
+    stubFetch(MP4_HEAD, 1000, 206, "text/html; charset=utf-8");
+    expect(await inspectStoredVideo(admin, "media/t1/c1/1_main.mp4")).toMatchObject({ ok: false, definitive: true });
+    stubFetch(MP4_HEAD, 1000, 206, "video/mp4");
+    expect(await inspectStoredVideo(admin, "media/t1/c1/1_main.mp4")).toMatchObject({ ok: true });
   });
 
   it("Range が効かず 206 以外が返ったら、本文を読まずに「一時的に確かめられない」とする（消させない）", async () => {

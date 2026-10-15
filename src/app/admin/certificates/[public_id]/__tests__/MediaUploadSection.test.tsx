@@ -97,6 +97,40 @@ describe("MediaUploadSection", () => {
     expect(body.get("file")).toBeNull();
   });
 
+  it("登録が一時的に失敗したら、同じファイルの再試行では動画を送り直さず登録だけやり直す。中身不正で消されたら送り直す", async () => {
+    const path = "media/t1/c1/1700000000000_main.mp4";
+    const urlOk = { ok: true, status: 200, json: async () => ({ ok: true, path, token: "tok" }) };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(urlOk)
+      .mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({ message: "一時的" }) })
+      .mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ message: "不正", discarded: true }) })
+      .mockResolvedValueOnce(urlOk)
+      .mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({ message: "登録済み" }) });
+    global.fetch = fetchMock;
+    uploadToSignedUrl.mockClear();
+
+    render(<MediaUploadSection {...PROPS} />);
+    const fileInputs = document.querySelectorAll("input[type='file']") as NodeListOf<HTMLInputElement>;
+    fireEvent.change(fileInputs[0], { target: { files: [tinyFile("clip.mp4", "video/mp4")] } });
+    const send = async (calls: number) => {
+      await act(async () => {
+        fireEvent.click(screen.getByText("メディアを追加"));
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(calls));
+    };
+
+    await send(2); // upload-url + 登録（503）
+    await waitFor(() => expect(screen.getByText("一時的")).toBeDefined());
+    await send(3); // 登録だけ（400 discarded）
+    expect(uploadToSignedUrl).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByText("不正")).toBeDefined());
+    await send(5); // 送り直し: upload-url + 登録（409 = 登録済みは成功扱い）
+    expect(uploadToSignedUrl).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.getByText("動画 を追加しました。")).toBeDefined());
+  });
+
   it("renders a delete button per existing media row", () => {
     const existing = [
       {
