@@ -76,6 +76,31 @@ describe("createVehicleFromShakensho", () => {
     expect(inserted!.payload).toMatchObject({ maker: "トヨタ", model: "不明", size_class: "L" });
   });
 
+  it("既に同じナンバーの車両があれば作らず、その id を返す（写真の2回送信で行が増えない）", async () => {
+    store.tables.vehicles = [
+      {
+        id: "existing-vehicle",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        maker: "トヨタ",
+        model: "アルファード",
+        plate_display: "品川300あ12-34",
+        vin_code_normalized: "MXPH150012345",
+        created_at: "2026-01-01",
+      },
+    ];
+    const admin = makeFakeAdmin(store);
+    const id = await createVehicleFromShakensho(admin, {
+      tenantId: TENANT,
+      customerId: CUSTOMER,
+      data: { maker: "トヨタ", model: "アルファード", plate_display: "品川300あ12-34", vin: "MXPH15-0012345" },
+    });
+
+    expect(id).toBe("existing-vehicle");
+    expect(store.inserts).toHaveLength(0);
+    expect(mocks.emitEntityWebhook).not.toHaveBeenCalled();
+  });
+
   it("returns null without inserting when the maker could not be read", async () => {
     const admin = makeFakeAdmin(store);
     const id = await createVehicleFromShakensho(admin, {

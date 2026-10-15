@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { resolveExistingVehicleId } from "@/lib/vehicles/resolveExistingVehicle";
+import { describe, it, expect, beforeEach } from "vitest";
+import { vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -11,6 +11,19 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * SQL 側の双子（`public.link_hearing_customer`）は
  * `scripts/replay/checks/link_hearing_customer.sql` が同じ観点で確かめる。
  */
+const logged: { msg: string; err: unknown }[] = [];
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    error: (msg: string, err: unknown) => logged.push({ msg, err }),
+    warn: () => {},
+    info: () => {},
+    debug: () => {},
+    child: () => ({}),
+  },
+}));
+
+const { resolveExistingVehicleId } = await import("@/lib/vehicles/resolveExistingVehicle");
+
 type Row = {
   id: string;
   tenant_id: string;
@@ -33,25 +46,34 @@ const base = {
 };
 
 /** eq / is を集めて、最後に行を絞る小さな偽クライアント。 */
-function fakeClient(rows: Row[]) {
+function fakeClient(rows: Row[], opts: { error?: unknown } = {}) {
   return {
     from() {
       const preds: ((r: Row) => boolean)[] = [];
       let newestFirst = false;
+      let max = Infinity;
+      const run = () => {
+        if (opts.error) return { data: null, error: opts.error };
+        const hit = rows
+          .filter((r) => preds.every((p) => p(r)))
+          .sort((a, b) =>
+            newestFirst ? b.created_at.localeCompare(a.created_at) : a.created_at.localeCompare(b.created_at),
+          )
+          .slice(0, max);
+        return { data: hit, error: null };
+      };
       const q = {
         select: () => q,
         eq: (col: keyof Row, val: unknown) => (preds.push((r) => r[col] === val), q),
         is: (col: keyof Row, val: null) => (preds.push((r) => r[col] === val), q),
-        order: (_col: string, opts: { ascending: boolean }) => ((newestFirst = !opts.ascending), q),
-        limit: () => q,
+        order: (_col: string, o: { ascending: boolean }) => ((newestFirst = !o.ascending), q),
+        limit: (n: number) => ((max = n), q),
         maybeSingle: async () => {
-          const hit = rows
-            .filter((r) => preds.every((p) => p(r)))
-            .sort((a, b) =>
-              newestFirst ? b.created_at.localeCompare(a.created_at) : a.created_at.localeCompare(b.created_at),
-            );
-          return { data: hit[0] ?? null, error: null };
+          const { data, error } = run();
+          return { data: (data as Row[] | null)?.[0] ?? null, error };
         },
+        // 配列で受けるクエリ（ナンバー照合）は builder をそのまま await する。
+        then: (resolve: (v: unknown) => unknown) => Promise.resolve(run()).then(resolve),
       };
       return q;
     },
@@ -60,6 +82,10 @@ function fakeClient(rows: Row[]) {
 }
 
 describe("resolveExistingVehicleId", () => {
+  beforeEach(() => {
+    logged.length = 0;
+  });
+
   it("ナンバーが一致する車両を引く", async () => {
     const rows: Row[] = [
       { ...base, id: "v1", plate_display: "品川300あ1234", created_at: "2026-01-01" },
@@ -73,6 +99,41 @@ describe("resolveExistingVehicleId", () => {
     // 従来は VIN を保存しているのに照合に使っておらず、VIN 入りでも重複していた。
     expect(await resolveExistingVehicleId(fakeClient(rows), T, { vinCode: "zvw30-abc 1234" })).toBe("v9");
     expect(await resolveExistingVehicleId(fakeClient(rows), T, { vinCode: "ＺＶＷ３０ＡＢＣ１２３４" })).toBe("v9");
+  });
+
+  it("**ナンバーが一致しても VIN が食い違う行には寄せない**", async () => {
+    // ナンバーは希望番号の再割当・再交付で別の車に回る。VIN の方が車に近い。
+    const rows: Row[] = [
+      {
+        ...base,
+        id: "oldCar",
+        plate_display: "品川300あ1234",
+        vin_code_normalized: "AAA111",
+        created_at: "2026-01-01",
+      },
+    ];
+    expect(
+      await resolveExistingVehicleId(fakeClient(rows), T, { plate: "品川300あ1234", vinCode: "BBB222" }),
+    ).toBeNull();
+    // 同じナンバーで VIN が一致する行があれば、そちらに寄る。
+    const both: Row[] = [
+      ...rows,
+      {
+        ...base,
+        id: "thisCar",
+        plate_display: "品川300あ1234",
+        vin_code_normalized: "BBB222",
+        created_at: "2026-02-01",
+      },
+    ];
+    expect(await resolveExistingVehicleId(fakeClient(both), T, { plate: "品川300あ1234", vinCode: "BBB222" })).toBe(
+      "thisCar",
+    );
+    // 既存行に VIN が入っていなければ、食い違いではないので寄せる。
+    const noVin: Row[] = [{ ...base, id: "noVin", plate_display: "品川300あ1234", created_at: "2026-01-01" }];
+    expect(await resolveExistingVehicleId(fakeClient(noVin), T, { plate: "品川300あ1234", vinCode: "BBB222" })).toBe(
+      "noVin",
+    );
   });
 
   it("ナンバーも VIN も無いときは、顧客 + メーカー + 車種で引く（新しい方）", async () => {
@@ -136,5 +197,13 @@ describe("resolveExistingVehicleId", () => {
   it("メーカーも車種も空なら照合しない", async () => {
     const rows: Row[] = [{ ...base, id: "v1", customer_id: "c1", created_at: "2026-01-01" }];
     expect(await resolveExistingVehicleId(fakeClient(rows), T, { customerId: "c1" })).toBeNull();
+  });
+
+  it("照合そのものが失敗したらログに出す（無音で重複を作らない）", async () => {
+    // `{ error }` を捨てると「見つからなかった」と区別できず、呼び出し元が新規行を作る。
+    const client = fakeClient([], { error: { code: "42501", message: "permission denied" } });
+    expect(await resolveExistingVehicleId(client, T, { plate: "品川300あ1234", vinCode: "ZVW30ABC1234" })).toBeNull();
+    expect(logged.map((l) => l.msg).join("\n")).toContain("ナンバー");
+    expect(logged.map((l) => l.msg).join("\n")).toContain("VIN");
   });
 });

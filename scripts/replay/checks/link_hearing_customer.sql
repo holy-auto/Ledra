@@ -92,6 +92,7 @@ DECLARE
   n_veh integer;
   v_state text;
   v_reuse_id uuid;
+  v_reuse_cust uuid;
 BEGIN
   -- ── 1. 正常系 ──────────────────────────────────────────────
   EXECUTE 'SET LOCAL ROLE authenticated';
@@ -242,6 +243,15 @@ BEGIN
   IF (v_res->>'vehicle_id')::uuid <> '00000000-0000-4000-8000-0000000000d1' THEN
     RAISE EXCEPTION 'ナンバー一致で既存車両に紐付かなかった: %', v_res;
   END IF;
+  -- 引き当てた車両（d1 は顧客なしで入れてある）に顧客が付くこと。
+  -- 付かないと、同じ顧客の次の「ナンバーも VIN も無い」連携で ③ が当たらず行が増える。
+  SELECT customer_id INTO v_reuse_cust
+   FROM public.vehicles WHERE id = '00000000-0000-4000-8000-0000000000d1';
+  IF v_reuse_cust IS DISTINCT FROM (v_res->>'customer_id')::uuid THEN
+    RAISE EXCEPTION
+      '引き当てた車両に顧客が付かなかった（車両の顧客=% / 連携の顧客=%）。次回の ③ が当たらない',
+      v_reuse_cust, v_res->>'customer_id';
+  END IF;
 
   -- ② VIN 一致（全角・小文字・ハイフン入りでも正規化して当たる）
   EXECUTE 'SET LOCAL ROLE authenticated';
@@ -321,6 +331,36 @@ BEGIN
   IF (v_res->>'vehicle_id')::uuid = v_reuse_id THEN
     RAISE EXCEPTION
       '別の顧客の車両に寄った（%）。customer_id の条件が効いていない', v_res;
+  END IF;
+
+  -- ⑦ ナンバーが一致しても **VIN が食い違う行には寄らない**。
+  --    ナンバーは希望番号の再割当・再交付で別の車に回る。VIN の方が車に近い。
+  INSERT INTO public.hearings (id, tenant_id, customer_name, vehicle_maker, vehicle_model, vehicle_plate, vehicle_vin)
+  VALUES ('00000000-0000-4000-8000-0000000000fd', '00000000-0000-4000-8000-0000000000f1',
+          '中村', 'トヨタ', 'プリウス', '品川300あ1234', 'OTHERVIN9999');
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  SELECT public.link_hearing_customer(
+    '00000000-0000-4000-8000-0000000000fd', '00000000-0000-4000-8000-0000000000f1'
+  ) INTO v_res;
+  EXECUTE 'RESET ROLE';
+  IF (v_res->>'vehicle_id')::uuid = '00000000-0000-4000-8000-0000000000d1' THEN
+    RAISE EXCEPTION
+      'ナンバーは同じだが VIN が違う車に紐付いた: %。違う車に紐付く', v_res;
+  END IF;
+
+  -- ⑧ 前後の空白は JS の `.trim()` と同じ範囲で落とす（全角スペース・タブ・改行）。
+  --    `btrim(x)` は半角スペースだけなので、落とす文字を明示しないとここで寄らなくなる。
+  INSERT INTO public.hearings (id, tenant_id, customer_name, vehicle_maker, vehicle_model, vehicle_plate)
+  VALUES ('00000000-0000-4000-8000-0000000000fe', '00000000-0000-4000-8000-0000000000f1',
+          '小林', 'トヨタ', 'プリウス', E'\u3000\t品川300あ1234\n');
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  SELECT public.link_hearing_customer(
+    '00000000-0000-4000-8000-0000000000fe', '00000000-0000-4000-8000-0000000000f1'
+  ) INTO v_res;
+  EXECUTE 'RESET ROLE';
+  IF (v_res->>'vehicle_id')::uuid <> '00000000-0000-4000-8000-0000000000d1' THEN
+    RAISE EXCEPTION
+      '全角スペース・タブ・改行つきのナンバーで既存車両に寄らなかった: %。btrim の文字集合がアプリ側の trim() と違う', v_res;
   END IF;
 
   RAISE NOTICE 'link_hearing_customer: 正常系・二度押し・原子性・車両だけの失敗・閲覧者の遮断・既存車両の引き当て、6つとも期待どおり';
