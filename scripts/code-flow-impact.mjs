@@ -40,6 +40,7 @@ function resolveImport(from, spec) {
   return null;
 }
 const reverse = new Map();
+const edges = new Map();
 for (const file of files) {
   const src = readFileSync(file, "utf8");
   // Conservative lexical import scan; may include comments and miss dynamic computed imports.
@@ -49,6 +50,8 @@ for (const file of files) {
     if (!dep) continue;
     if (!reverse.has(dep)) reverse.set(dep, new Set());
     reverse.get(dep).add(file);
+    if (!edges.has(dep)) edges.set(dep, new Set());
+    edges.get(dep).add(file);
   }
 }
 let changed = [];
@@ -73,6 +76,24 @@ for (const target of changed.filter((f) => known.has(f))) {
     }
   }
 }
+const githubUrl = "https://github.com/holy-auto/Ledra/blob/HEAD/";
+const fileLink = (f) => "[`" + f.replaceAll("|", "\\|") + "`](" + githubUrl + f.split("/").map(encodeURIComponent).join("/") + ")";
+const relevant = new Set(changed.filter((f) => known.has(f)));
+for (const file of affected.keys()) relevant.add(file);
+const graphEdges = [];
+for (const [dependency, callers] of edges) {
+  if (!relevant.has(dependency)) continue;
+  for (const caller of callers) if (relevant.has(caller)) graphEdges.push([dependency, caller]);
+}
+const graphNodes = [...relevant].sort().slice(0, 60);
+const nodeSet = new Set(graphNodes);
+const nodeId = new Map(graphNodes.map((f, i) => [f, "N" + i]));
+const graph = [
+  "flowchart LR",
+  ...graphNodes.map((f) => '  ' + nodeId.get(f) + '["' + f.replaceAll('"', "'") + '"]'),
+  ...graphEdges.filter(([a,b]) => nodeSet.has(a) && nodeSet.has(b)).slice(0, 150).map(([a,b]) => '  ' + nodeId.get(a) + ' --> ' + nodeId.get(b)),
+  ...graphNodes.map((f) => '  click ' + nodeId.get(f) + ' "' + githubUrl + f.split("/").map(encodeURIComponent).join("/") + '"'),
+];
 const escape = (s) => s.replaceAll("|", "\\|").replaceAll("\n", " ");
 const lines = [
   "# Ledra PR code-flow impact (static estimate)",
@@ -82,13 +103,19 @@ const lines = [
   "> **静的推定のみ。** import依存元を探索した結果であり、実際に実行された経路ではありません。Next.jsの自動ルーティング、SQL/RLS、cron、webhook、外部クライアント、動的参照は別途レビューが必要。参照がないことを削除の根拠にしない。",
   "",
   "## Changed files (" + changed.length + ")",
-  ...changed.map((f) => "- `" + f + "`"),
+  ...changed.map((f) => "- " + fileLink(f)),
   "",
   "## Reverse import dependents (" + affected.size + ")",
   "| Depth | Importing file |",
   "| ---: | --- |",
-  ...[...affected].sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0])).slice(0, 200).map(([f, d]) => "| " + d + " | `" + escape(f) + "` |"),
+  ...[...affected].sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0])).slice(0, 200).map(([f, d]) => "| " + d + " | " + fileLink(f) + " |"),
   ...(affected.size > 200 ? ["", "Only first 200 shown."] : []),
+  "",
+  "## Dependency map (dependency → importer; first 60 nodes / 150 edges)",
+  "",
+  "```mermaid",
+  ...graph,
+  "```",
   "",
   "## Manual impact checklist",
   "- [ ] API/route entry points and permissions",
