@@ -7,6 +7,7 @@ import { sendCaseStatusNotification } from "@/lib/insurer/notifications";
 import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 import { insurerCaseUpdateSchema } from "@/lib/validations/insurer-case";
 import { recordInsurerAccessLog } from "@/lib/insurer/auditActions";
+import { signAssetPaths } from "@/lib/signedUrl";
 
 export const runtime = "nodejs";
 
@@ -55,10 +56,17 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       .eq("case_id", id)
       .order("created_at", { ascending: true });
 
+    // 添付は非公開の case-attachments に入っているので、ダウンロード用の短命な署名 URL を付けて返す
+    const attachmentUrls = await signAssetPaths(
+      admin,
+      (attachments ?? []).map((a) => a.storage_path),
+      "case-attachments",
+    );
+
     return apiJson({
       case: caseData,
       messages: messages ?? [],
-      attachments: attachments ?? [],
+      attachments: (attachments ?? []).map((a) => ({ ...a, url: attachmentUrls.get(a.storage_path) ?? null })),
     });
   } catch (err) {
     return apiInternalError(err, "GET /api/insurer/cases/[id]");

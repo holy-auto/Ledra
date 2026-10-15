@@ -305,8 +305,9 @@ export const DELETE = withCaller(
       if (images && images.length > 0) {
         const paths = images.map((img) => img.storage_path).filter(Boolean);
         if (paths.length > 0) {
-          // 保存先は market（images/route.ts の upload と同じ）。以前は存在しないバケット名で、画像が残っていた
-          await supabase.storage.from("market").remove(paths);
+          // 保存先は market（images/route.ts の upload と同じ）。以前は存在しないバケット名で、画像が残っていた。
+          // market の objects には読み取りポリシーが無く、ユーザーの権限では消せないので service-role で消す（車両の所有は上で確認済み）
+          await createTenantScopedAdmin(caller.tenantId).admin.storage.from("market").remove(paths);
         }
         await bestEffortWrite(
           supabase.from("market_vehicle_images").delete().eq("vehicle_id", id).eq("tenant_id", caller.tenantId),

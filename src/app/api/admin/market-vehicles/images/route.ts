@@ -1,9 +1,9 @@
-
 import { z } from "zod";
 
 import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 const imageDeleteSchema = z.object({
   id: z.string().uuid("missing id or vehicle_id"),
   vehicle_id: z.string().uuid("missing id or vehicle_id"),
@@ -19,7 +19,6 @@ const MAX_IMAGES_PER_VEHICLE = 20;
 export const GET = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const url = new URL(req.url);
       const vehicleId = url.searchParams.get("vehicle_id");
       if (!vehicleId) return apiValidationError("missing vehicle_id");
@@ -57,7 +56,6 @@ export const GET = withCaller(
 export const POST = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const form = await req.formData();
       const vehicleId = String(form.get("vehicle_id") ?? "").trim();
       const file = form.get("file") as File | null;
@@ -132,8 +130,8 @@ export const POST = withCaller(
         .single();
 
       if (insertError) {
-        // Attempt to clean up uploaded file
-        await supabase.storage.from("market").remove([storagePath]);
+        // Attempt to clean up uploaded file（market の objects には読み取りポリシーが無く、ユーザーの権限では消せないので service-role で）
+        await createTenantScopedAdmin(caller.tenantId).admin.storage.from("market").remove([storagePath]);
         return apiInternalError(insertError, "market-vehicle-images insert");
       }
 
@@ -149,7 +147,6 @@ export const POST = withCaller(
 export const DELETE = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const parsed = imageDeleteSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -167,8 +164,11 @@ export const DELETE = withCaller(
 
       if (!image) return apiNotFound("image_not_found");
 
-      // Delete from storage
-      const { error: storageError } = await supabase.storage.from("market").remove([image.storage_path]);
+      // Delete from storage。Storage の削除には読み取り（SELECT）の権限も要るが、market の objects には読み取りポリシーが無い
+      // （20260616000003 で外した）ので、ユーザーの権限では黙って何も消えない。所有は上で確かめたので service-role で消す。
+      const { error: storageError } = await createTenantScopedAdmin(caller.tenantId)
+        .admin.storage.from("market")
+        .remove([image.storage_path]);
 
       if (storageError) {
         console.error("market image storage delete error", storageError);
