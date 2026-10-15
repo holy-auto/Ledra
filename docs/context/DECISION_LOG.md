@@ -4,6 +4,21 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-10-15 Remotion（動画書き出し）をアプリの依存から外し、動画のワークフローでだけ入れる
+
+1. 日付: 2026-10-15（`date -u` で確認）
+2. 起きたこと: Vercel のビルドキャッシュ（node_modules と .next/cache）が上限を超えて捨てられ、8 GB 機で OOM になる件の続き
+   （OPEN_QUESTIONS「Vercel のビルド機（Elastic）…」）。代表が「remotion 外して」と指示。
+3. 以前の考え: `remotion` と `@remotion/cli` を devDependencies に置き、`npm run video:render` 等でそのまま使っていた。
+4. 違和感・問題: 使うのは動画を書き出す `render-video.yml` と手元の `video:*` だけ（アプリの `src/` は import していない、tsconfig も `remotion/` を含まない）。
+   それでも Vercel では毎回入り、`@remotion/cli` が引く rspack・compositor 等の 168 パッケージがビルドキャッシュに載っていた。
+5. 決めたこと: `remotion` と `@remotion/cli` を package.json から外す。`video:deps`（`npm install --no-save remotion@4.0.532 @remotion/cli@4.0.532`）を追加し、
+   `video:*` と `render-video.yml` はその後で動かす。版は外す直前にロックされていた 4.0.532 に固定。
+6. 捨てた選択肢: 動画を別パッケージ（ワークスペース）に分ける —— 今回の目的（キャッシュを減らす）に対して変更が大きい。
+7. 判断理由: node_modules が gzip 換算で約 564 MB → 472 MB。キャッシュ上限（Standard 1.5 GB とされる、原文未確認）までの余裕が増える。
+8. まだ答えが出ていないこと: Remotion の版は Dependabot の対象から外れる（package.json に無いため）。上げるときは `video:deps` の版を手で直す。
+9. 公開区分: 公開可
+
 ## 2026-10-13 メーカーは施工店の設備・資格を閲覧だけにする（編集は施工店本人）
 
 1. 日付: 2026-10-13（`date -u` で確認）
