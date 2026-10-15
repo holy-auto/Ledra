@@ -40,7 +40,8 @@ async function handler(req: NextRequest) {
       .single();
 
     const alreadyProcessed = currentJob?.processed_count ?? 0;
-    type BatchPdfResult = { public_id: string; pdf_url: string } | { public_id: string; error: string };
+    // pdf_url は GET（/api/admin/certificates/batch-pdf）が storage_path から都度署名して付ける（保存すると 1 時間で切れる）
+    type BatchPdfResult = { public_id: string; storage_path: string } | { public_id: string; error: string };
     const resultUrls: BatchPdfResult[] = (currentJob?.result_urls as BatchPdfResult[] | null) ?? [];
 
     // 未処理分のみ対象
@@ -115,7 +116,8 @@ async function handler(req: NextRequest) {
             const pdfBuffer = await renderCertificatePdf(cert as unknown as CertRow, publicUrl, anchors);
             const pdfBytes = new Uint8Array(pdfBuffer);
 
-            const storagePath = `batch-pdf/${tenant_id}/${pid}-${Date.now()}.pdf`;
+            // 証明書ごとに固定のパス（upsert で上書き）。毎回新しいパスにすると、作り直すたびに古い PDF が残り続ける
+            const storagePath = `batch-pdf/${tenant_id}/${pid}.pdf`;
             const { error: uploadErr } = await admin.storage.from("certificates").upload(storagePath, pdfBytes, {
               contentType: "application/pdf",
               upsert: true,
@@ -125,15 +127,7 @@ async function handler(req: NextRequest) {
               return { public_id: pid, error: "PDF アップロードに失敗しました。" };
             }
 
-            const { data: signedData, error: signErr } = await admin.storage
-              .from("certificates")
-              .createSignedUrl(storagePath, 3600);
-
-            if (signErr || !signedData?.signedUrl) {
-              return { public_id: pid, error: "署名付きURL の生成に失敗しました。" };
-            }
-
-            return { public_id: pid, pdf_url: signedData.signedUrl };
+            return { public_id: pid, storage_path: storagePath };
           } catch (e) {
             const msg = e instanceof Error ? e.message : "不明なエラー";
             return { public_id: pid, error: `PDF 生成に失敗: ${msg}` };

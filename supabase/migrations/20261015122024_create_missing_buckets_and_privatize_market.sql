@@ -8,16 +8,17 @@
 --
 -- 2. `market`（マーケットの車両画像）を非公開にする。マーケットの画面はログイン必須なのに、画像は公開 URL で誰でも開けた。
 --    表示は service-role の署名 URL に切り替え済み（#1322）で、公開 URL を作るコードは無い（noPublicAssetUrls.test.ts）。
---    アップロード・削除はログイン中の利用者の権限で行い、そのポリシー（market_storage_insert / market_storage_delete）は
---    公開・非公開に関係しない。2026-10-15 時点で本番の market の画像は 0 件。
+--    アップロードはログイン中の利用者の権限（market_storage_insert）で行い、公開・非公開に関係しない。削除は Storage が読み取り
+--    （SELECT）の権限も求め、market には読み取りポリシーが無いので、同じ PR で service-role に替えた。2026-10-15 時点で本番の market の画像は 0 件。
 --
 -- 戻すとき: update storage.buckets set public = true where id = 'market';
---   （作ったバケットは中身が入る前なら delete from storage.buckets where id in ('certificates', 'case-attachments');）
+--   （作ったバケットを消すときは SQL ではなく、Storage の API かダッシュボードで空にしてから削除する。storage のテーブルは直接消せない）
 
 insert into storage.buckets (id, name, public)
 values
   ('certificates', 'certificates', false),
   ('case-attachments', 'case-attachments', false)
-on conflict (id) do nothing;
+-- 手作業やプレビューで先に公開で作られていても、非公開にそろえる
+on conflict (id) do update set public = false;
 
 update storage.buckets set public = false where id = 'market';

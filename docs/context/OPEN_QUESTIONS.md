@@ -136,7 +136,7 @@
 ## 本番に無いバケットへ保存しているコードがある（2026-10-12）
 
 - **→ 2026-10-15 対応**: 2 本とも非公開で作る（`20261015122024_create_missing_buckets_and_privatize_market.sql`、RELEASE_LOG）。
-  残り: 保険会社の案件の添付は、保存・一覧はあるが**ダウンロードする経路が無い**（`storage_path` を返すだけ）。添付を開けるようにするかは別判断。
+  保険会社の案件の添付は、保存・一覧はあったがダウンロードする経路が無かった（`storage_path` を返すだけ）ので、同じ PR で署名 URL を付けた。
 
 - 状況: 本番の Storage バケットは agent-applications・agent-materials・agent-shared-files・assets・certificate-images・
   ft-evidence・kyc-documents・line-media・market の 9 本（2026-10-10 に storage.buckets で確認）。コードには、このどれでもない
