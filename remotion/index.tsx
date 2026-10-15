@@ -389,7 +389,7 @@ const AgentFullGuideVideo: React.FC = () => (
 
 export const RemotionRoot: React.FC = () => (
   <>
-    {/* モバイルアプリの起動オープニング — 縦 1080x1920 / 2.0s。npm run video:render:mobile-intro */}
+    {/* モバイルアプリの起動オープニング — 縦 1080x1920 / 2.0s。書き出しは ./scripts/build-mobile-intro.sh */}
     <Composition
       id="MobileIntro"
       component={MobileIntro}
