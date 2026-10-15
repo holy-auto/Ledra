@@ -36,6 +36,23 @@ jobs:
             if (d.files.length === 0) throw new Error("No source files found");
             console.log("Verified", d.files.length, "files,", d.links.length, "imports,", d.calls.length, "calls");
           '
+      - name: Verify network graph and browser JavaScript
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import vm from "node:vm";
+          const html = fs.readFileSync("artifacts/code-flow-explorer.html", "utf8");
+          if (!html.includes('id="network"') || !html.includes('id="graphFocus"')) throw Error("Network UI missing");
+          const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)];
+          let checked = 0;
+          for (const match of scripts) {
+            if (match[0].includes('type="application/json"')) continue;
+            new vm.Script(match[1], {filename: "explorer-browser.js"});
+            checked++;
+          }
+          if (checked < 2) throw Error("Browser scripts missing");
+          console.log("Browser scripts syntax verified:", checked);
+          NODE
       - uses: actions/upload-artifact@v4
         with:
           name: ledra-code-flow-explorer
