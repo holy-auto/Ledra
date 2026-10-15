@@ -6,6 +6,7 @@ import { sendCronFailureAlert } from "@/lib/cronAlert";
 import { recordCronSuccess, recordCronFailure } from "@/lib/cron/failureTracker";
 import { buildSecretWrite, readSecret } from "@/lib/crypto/tenantSecrets";
 import type { SquareApiOrder, SquareSearchOrdersResponse } from "@/types/square";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -43,14 +44,17 @@ async function refreshSquareToken(
     );
     const accessTokenPayload = await buildSecretWrite(data.access_token);
     const refreshTokenPayload = await buildSecretWrite(data.refresh_token);
-    await admin
-      .from("square_connections")
-      .update({
-        square_access_token_ciphertext: accessTokenPayload.ciphertext,
-        square_refresh_token_ciphertext: refreshTokenPayload.ciphertext,
-        square_token_expires_at: data.expires_at,
-      })
-      .eq("id", connectionId);
+    await bestEffortWrite(
+      admin
+        .from("square_connections")
+        .update({
+          square_access_token_ciphertext: accessTokenPayload.ciphertext,
+          square_refresh_token_ciphertext: refreshTokenPayload.ciphertext,
+          square_token_expires_at: data.expires_at,
+        })
+        .eq("id", connectionId),
+      "square_connections update — 更新したトークンの保存。失敗すると次回の同期が通らなくなる",
+    );
 
     return {
       access_token: data.access_token,
@@ -244,24 +248,30 @@ export async function GET(req: NextRequest) {
         const { orders, error: fetchError } = await fetchAllOrders(accessToken, locationIds, from, to);
 
         if (fetchError === "unauthorized") {
-          await admin
-            .from("square_sync_runs")
-            .update({
-              status: "failed",
-              errors_json: [{ message: "Token expired" }],
-              finished_at: new Date().toISOString(),
-            })
-            .eq("id", syncRun.id);
+          await bestEffortWrite(
+            admin
+              .from("square_sync_runs")
+              .update({
+                status: "failed",
+                errors_json: [{ message: "Token expired" }],
+                finished_at: new Date().toISOString(),
+              })
+              .eq("id", syncRun.id),
+            "square_sync_runs update (GET)",
+          );
 
           // G6: 401 検出 → connection を error 状態にして管理画面で再認可を促す
-          await admin
-            .from("square_connections")
-            .update({
-              status: "error",
-              last_error_reason: "token_expired",
-              last_error_at: new Date().toISOString(),
-            })
-            .eq("tenant_id", tenantId);
+          await bestEffortWrite(
+            admin
+              .from("square_connections")
+              .update({
+                status: "error",
+                last_error_reason: "token_expired",
+                last_error_at: new Date().toISOString(),
+              })
+              .eq("tenant_id", tenantId),
+            "square_connections update (GET)",
+          );
 
           results.push({ tenantId, status: "error", error: "unauthorized" });
           errors++;
@@ -338,23 +348,29 @@ export async function GET(req: NextRequest) {
 
         // Update sync run
         const errorsJson = fetchError ? [{ message: fetchError }] : [];
-        await admin
-          .from("square_sync_runs")
-          .update({
-            status: fetchError ? "partial" : "completed",
-            orders_fetched: orders.length,
-            orders_imported: imported,
-            orders_skipped: skipped,
-            errors_json: errorsJson,
-            finished_at: new Date().toISOString(),
-          })
-          .eq("id", syncRun.id);
+        await bestEffortWrite(
+          admin
+            .from("square_sync_runs")
+            .update({
+              status: fetchError ? "partial" : "completed",
+              orders_fetched: orders.length,
+              orders_imported: imported,
+              orders_skipped: skipped,
+              errors_json: errorsJson,
+              finished_at: new Date().toISOString(),
+            })
+            .eq("id", syncRun.id),
+          "square_sync_runs update (GET)",
+        );
 
         // Update last_synced_at on connection
-        await admin
-          .from("square_connections")
-          .update({ last_synced_at: new Date().toISOString() })
-          .eq("tenant_id", tenantId);
+        await bestEffortWrite(
+          admin
+            .from("square_connections")
+            .update({ last_synced_at: new Date().toISOString() })
+            .eq("tenant_id", tenantId),
+          "square_connections update (GET)",
+        );
 
         console.info(
           `[square cron] tenant=${tenantId} done: fetched=${orders.length} imported=${imported} skipped=${skipped}`,

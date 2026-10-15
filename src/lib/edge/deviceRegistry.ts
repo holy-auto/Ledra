@@ -11,6 +11,7 @@ import { randomUUID } from "crypto";
 import crypto from "crypto";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import type { EdgeDevice, EdgeDeviceKind, RegisterDeviceInput } from "./types";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 const DEVICE_SECRET_PREFIX = "ledra-edge-v1";
 
@@ -99,11 +100,14 @@ export async function registerDevice(
 /** デバイスの最終確認時刻を更新 */
 export async function touchDeviceLastSeen(tenantId: string, deviceId: string): Promise<void> {
   const { admin } = createTenantScopedAdmin(tenantId);
-  await admin
-    .from("edge_devices")
-    .update({ last_seen_at: new Date().toISOString() })
-    .eq("id", deviceId)
-    .eq("tenant_id", tenantId);
+  await bestEffortWrite(
+    admin
+      .from("edge_devices")
+      .update({ last_seen_at: new Date().toISOString() })
+      .eq("id", deviceId)
+      .eq("tenant_id", tenantId),
+    "edge_devices update (touchDeviceLastSeen)",
+  );
 }
 
 /** テナントのデバイス一覧を取得 */

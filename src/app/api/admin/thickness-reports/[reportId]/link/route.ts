@@ -16,6 +16,7 @@ import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { apiOk, apiNotFound, apiError, apiInternalError } from "@/lib/api/response";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -82,14 +83,17 @@ export const POST = withCaller<{ reportId: string }>(
     if (updateErr) return apiInternalError(updateErr, "thickness link POST: update");
 
     // 車両履歴に監査エントリを記録 (NexPTG 自動紐付けと同じ type で timeline に載せる)。
-    await admin.from("vehicle_histories").insert({
-      tenant_id: tenantId,
-      vehicle_id: vehicleId,
-      type: "thickness_measurement",
-      title: `膜厚レポートを手動紐付け: ${report.name ?? report.external_report_id}`,
-      description: report.vin ? `NexPTG VIN: ${report.vin}（手動紐付け）` : "手動紐付け",
-      performed_at: new Date().toISOString(),
-    });
+    await bestEffortWrite(
+      admin.from("vehicle_histories").insert({
+        tenant_id: tenantId,
+        vehicle_id: vehicleId,
+        type: "thickness_measurement",
+        title: `膜厚レポートを手動紐付け: ${report.name ?? report.external_report_id}`,
+        description: report.vin ? `NexPTG VIN: ${report.vin}（手動紐付け）` : "手動紐付け",
+        performed_at: new Date().toISOString(),
+      }),
+      "vehicle_histories insert (POST)",
+    );
 
     return apiOk({
       report_id: updated.id,
@@ -135,14 +139,17 @@ export const DELETE = withCaller<{ reportId: string }>(
     if (updateErr) return apiInternalError(updateErr, "thickness link DELETE: update");
 
     // 解除前の車両に対して監査エントリを残す。
-    await admin.from("vehicle_histories").insert({
-      tenant_id: tenantId,
-      vehicle_id: previousVehicleId,
-      type: "thickness_measurement",
-      title: `膜厚レポートの紐付けを解除: ${report.name ?? report.external_report_id}`,
-      description: "手動で紐付けを解除しました。",
-      performed_at: new Date().toISOString(),
-    });
+    await bestEffortWrite(
+      admin.from("vehicle_histories").insert({
+        tenant_id: tenantId,
+        vehicle_id: previousVehicleId,
+        type: "thickness_measurement",
+        title: `膜厚レポートの紐付けを解除: ${report.name ?? report.external_report_id}`,
+        description: "手動で紐付けを解除しました。",
+        performed_at: new Date().toISOString(),
+      }),
+      "vehicle_histories insert (DELETE)",
+    );
 
     return apiOk({ report_id: report.id, vehicle_id: null });
   },

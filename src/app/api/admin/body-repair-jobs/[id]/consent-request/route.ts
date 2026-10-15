@@ -28,6 +28,7 @@ import {
 } from "@/lib/signature/bodyRepairConsent";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -57,7 +58,6 @@ function extractLast4(phone: string | null | undefined): string | null {
 export const POST = withCaller<{ id: string }>(
   async (req, { caller, params }) => {
     try {
-
       const { id: jobId } = params;
       if (!/^[0-9a-f-]{36}$/i.test(jobId)) return apiValidationError("job_id が不正です");
 
@@ -164,12 +164,17 @@ export const POST = withCaller<{ id: string }>(
         // explanation_json は不変設計のため、内容変更時は必ず新リンクに差し替える。
         const cancelledAt = new Date().toISOString();
         if (existing!.signature_session_id) {
-          await admin
+          const { error: cancelSessErr } = await admin
             .from("signature_sessions")
             .update({ status: "cancelled", cancelled_at: cancelledAt, cancel_reason: "superseded_by_content_change" })
             .eq("id", existing!.signature_session_id);
+          if (cancelSessErr) return apiInternalError(cancelSessErr, "consent-request: cancel superseded session");
         }
-        await admin.from("body_repair_consents").update({ status: "cancelled" }).eq("id", existing!.id);
+        const { error: cancelConsentErr } = await admin
+          .from("body_repair_consents")
+          .update({ status: "cancelled" })
+          .eq("id", existing!.id);
+        if (cancelConsentErr) return apiInternalError(cancelConsentErr, "consent-request: cancel superseded consent");
       }
 
       // signature_sessions を作成
@@ -203,11 +208,14 @@ export const POST = withCaller<{ id: string }>(
       if (sessErr || !session)
         return apiError({ code: "db_error", message: "同意依頼の作成に失敗しました", status: 500 });
 
-      await admin.from("signature_audit_logs").insert({
-        session_id: session.id,
-        event: "session_created",
-        metadata: { purpose, body_repair_job_id: jobId, kind, consent_version: BODY_REPAIR_CONSENT_VERSION },
-      });
+      await bestEffortWrite(
+        admin.from("signature_audit_logs").insert({
+          session_id: session.id,
+          event: "session_created",
+          metadata: { purpose, body_repair_job_id: jobId, kind, consent_version: BODY_REPAIR_CONSENT_VERSION },
+        }),
+        "signature_audit_logs insert (POST)",
+      );
 
       const { data: consent, error: consentErr } = await admin
         .from("body_repair_consents")

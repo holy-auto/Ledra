@@ -17,6 +17,7 @@ import { buildReservationReminder, type CancelTargetReservation } from "@/lib/li
 import { shouldAutoSelfCancel, shouldAutoSelfReschedule } from "@/lib/ai/automation/orchestrator";
 import type { AiAutomationSettings } from "@/lib/ai/automation/policy";
 import { logger } from "@/lib/logger";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 type Admin = ReturnType<typeof createServiceRoleAdmin>;
 
@@ -123,15 +124,18 @@ export async function processDayBeforeReminders(
             });
 
       // 結果に関わらずログを残して再送ループ/二重送信を防ぐ (失敗は logs で可視化)。
-      await admin.from("notification_logs").insert({
-        tenant_id: tenantId,
-        type: "reservation_reminder",
-        target_type: "reservation",
-        target_id: r.id,
-        recipient_line_user_id: customer.line_user_id,
-        channel: "line",
-        status: ok ? "sent" : "failed",
-      });
+      await bestEffortWrite(
+        admin.from("notification_logs").insert({
+          tenant_id: tenantId,
+          type: "reservation_reminder",
+          target_type: "reservation",
+          target_id: r.id,
+          recipient_line_user_id: customer.line_user_id,
+          channel: "line",
+          status: ok ? "sent" : "failed",
+        }),
+        "notification_logs insert (processDayBeforeReminders)",
+      );
 
       if (ok) sent++;
     }

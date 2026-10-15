@@ -15,6 +15,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendInspectionReminder } from "@/lib/follow-up/email";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 type VehicleRow = {
   id: string;
@@ -127,16 +128,22 @@ export async function processInspectionReminders(
     // 結果に関わらず sent_at を更新する (失敗の場合、次の日次 cron で再送
     // しても多くの場合同じ理由で失敗するため、ループ防止)。
     // 失敗は notification_logs から確認可能。
-    await supabase.from("vehicles").update({ inspection_reminder_sent_at: new Date().toISOString() }).eq("id", v.id);
+    await bestEffortWrite(
+      supabase.from("vehicles").update({ inspection_reminder_sent_at: new Date().toISOString() }).eq("id", v.id),
+      "vehicles update (processInspectionReminders)",
+    );
 
-    await supabase.from("notification_logs").insert({
-      tenant_id: setting.tenant_id,
-      type: "inspection_reminder",
-      target_type: "vehicle",
-      target_id: v.id,
-      recipient_email: email,
-      status: ok ? "sent" : "failed",
-    });
+    await bestEffortWrite(
+      supabase.from("notification_logs").insert({
+        tenant_id: setting.tenant_id,
+        type: "inspection_reminder",
+        target_type: "vehicle",
+        target_id: v.id,
+        recipient_email: email,
+        status: ok ? "sent" : "failed",
+      }),
+      "notification_logs insert (processInspectionReminders)",
+    );
 
     if (ok) sent++;
   }

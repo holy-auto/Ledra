@@ -4,6 +4,28 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-13 モバイルの起動オープニングを作り直して再開
+
+- 内容: `remotion/MobileIntro.tsx` を新設。L マークを SVG で描き直し、紺の土台 → 真鍮の L → 留め具・リベット → 光の走り → LEDRA の順に組み上がる
+  2.0 秒の動画を 1080x1920 / 60fps で書き出す（`apps/mobile/assets/ledra-intro.mp4`、212KB（旧 267KB）、BT.709・TV レンジ、音声なし）。
+  0 フレーム目は背景 #d6d0cb の単色でスプラッシュと継ぎ目なし。動きは 1.17 秒（70 フレーム）で止まり、以降は最終フレームと差分なし（連番 PNG で確認）。
+- `scripts/build-mobile-intro.sh` はマスター動画の切り出しをやめ、Remotion から書き出すように変えた（引数不要）。アイコン・スプラッシュの生成は同じで、
+  再生成しても差分なし。LEDRA の文字は Cinzel 800（`public/fonts/Cinzel-800.woff2`、OFL のライセンス文を同梱）。
+- アプリ: 前日に入れた `INTRO_ENABLED = false` を外し、オープニング停止前の `_layout.tsx` に戻した。`introTiming.ts` のコメントを新しい素材に合わせた。
+- 確認: `apps/mobile` の `tsc --noEmit` と `npm test` が通ることを確認。実機での確認は未実施（ストアへの反映は次のビルドから）。
+
+## 2026-10-13 デモテナントの撮影用の書き込み窓を閉じた（本番）
+
+- 内容: 本番の `demo_tenant_readonly_insert`（certificates）を元の定義 `tenant_id <> デモテナント` に戻した（`scripts/demo-filming-write-window.sql` の CLOSE）。
+  **これで止まるのは RLS を通る書き込み（利用者のセッションでの直接の INSERT）だけ。** サービスロールは RLS を素通りする
+  （本番の `pg_roles.rolbypassrls = true`）ので、サービスロールで書く API（証明書作成 `/api/certificates/create`・複製など）からは、
+  公開のデモアカウントで今もデモテナントに書ける。読み取り専用ポリシーも certificates / vehicles / customers の3表にしか無い。
+  実際に、公開デモアカウントが 2026-05-18・05-23 に作った証明書 2 件が本番に残っている（読み取り専用ポリシーのファイル名は 20260514 だが、本番の migration 履歴に同じ版が無く、本番に入った日は分からない【要確認】。2件がポリシーより後かどうかは未確定）。
+  Codex のレビュー（#1332）で判明。OPEN_QUESTIONS「デモテナントの読み取り専用が、サービスロールで書く API には効いていない」。
+- 確認: 適用後に `pg_policies` で INSERT・UPDATE とも元の条件になっていることを確認。デモテナントの証明書は 29 件（シード 27 件＋2026-05 作成の 2 件）で、
+  10/8〜10/13 に作られてシード以外で残っているものは無い。
+- 残したもの: 撮影用のアンカー表示（ダミー tx・11 件）とパスポート・購入済みレポート（`--filming-cleanup` は未実行。OPEN_QUESTIONS「撮影用の特例を戻す」(1)）。
+
 ## 2026-10-15 Remotion をアプリの依存から外す（Vercel のビルドキャッシュを小さくする）
 
 - 内容: 動画書き出しにしか使わない `remotion` と `@remotion/cli`（rspack 等を含め 168 パッケージ）を package.json から外した。
@@ -21,6 +43,9 @@
 - テスト: メーカー向けの一覧ルートが GET だけを出し、POST/PUT/PATCH/DELETE を出さないこと（同じ検査を旧個別ルートに当てて赤になるのを確認済み）。
 
 ## 2026-10-12 ビルドの最後に「C2PA のバイナリが関数バンドルに入ったか」を確かめる（`--traced`）
+
+- **2026-10-13 に `main` へマージ（squash `0a3c02e9`・PR #1326）。** GitHub Actions は11本すべて緑か skip、Codex のレビューは指摘なし。
+  Vercel のプレビューは OOM で赤のままだが、ログで**この PR の差分は関与していない**ことを確定済み（DECISION_LOG 2026-10-12）。
 
 - 内容: `scripts/check-c2pa-binary.mjs` に `--traced` を追加し、`npm run build` の最後に置いた
   （`node scripts/check-c2pa-binary.mjs && next build && node scripts/prune-build-cache.mjs && node scripts/check-c2pa-binary.mjs --traced`）。
@@ -176,6 +201,37 @@
 - 見るには メーカーポータルのアカウントが要る（デモ用は `npm run demo:setup-manufacturer` で作る `demo@manufacturer.ledra.test`）。
   ポータルのサイドバーはデスクトップ幅のみ（スマホではナビが出ない、既存と同じ）。
 
+## 2026-10-12 無音で失敗していた DB 書き込み 276 件を全部直し、CI で 0 件を維持する
+
+- 内容: Supabase の書き込みは失敗を例外ではなく `{ error }` で返すので、戻り値を受け取らない書き込みは
+  「画面には成功、DB には何も無い」になる。`src/` 全体の **276 件**（検出器で実測）を1件ずつ読んで分けた。
+  - **207 件**: 落ちても利用者の操作は完了している書き込み（監査ログ・通知・キャッシュ・同期の進捗・補償処理）
+    → 共有関数 `bestEffortWrite(op, "理由")`（`src/lib/db/bestEffortWrite.ts`）で包み、**失敗を構造化ログに出す**。
+  - **69 件**: 失敗が利用者の操作の成否を変える書き込み（送金の記録・署名の確定・OTP の消費・請求書番号の stamp・
+    設定の保存・DELETE の成否）→ エラーを受け取って API のエラーを返す／throw する。
+- 件数の出典: 全体は検出器（`npm run check:db-writes`）が修正前の `src` で数えた **276 件**。
+  内訳の 207 は `grep -rho "await bestEffortWrite(" src | wc -l` の実数、69 はその差。
+  **コミットメッセージには途中の数（204 / 72）が残っている** —— 最後の3件を包んだ後に数え直した。
+- 再発防止: `npm run check:db-writes`（`scripts/check-unchecked-db-writes.mjs`）を CI の並列検査に追加。
+  **除外リストは置かない**（0 件まで直し切ってある）。検出器自身の自己検査を 10 件同梱（`--selftest`）。
+- 検証: tsc / vitest 全体 / eslint / 検出器の自己検査。検出器は修正前の `hearings/route.ts` を検出し、修正後は 0 件。
+  最初の版は正規表現が広すぎて「関数に渡している書き込み」を誤検出し、自動修正で3文を壊した（戻して条件を狭め、
+  その誤検出を自己検査に追加した。MISTAKE_LEDGER `M-20261012-loose-write-detector-broke-three-statements`）。
+
+## 2026-10-12 ヒアリング連携を1トランザクションにし、完了ボタンが通るようにした
+
+- 内容（DECISION_LOG 2026-10-12・代表判断「全部修正しろ」）:
+  - 顧客・車両・ヒアリング更新の3つを DB 関数 `public.link_hearing_customer` にまとめた
+    （`supabase/migrations/20261015122028_link_hearing_customer_transaction.sql`）。SECURITY INVOKER なので
+    テナント分離は今までどおり RLS が見る。`for update` で二度押しを直列化し、車両だけは副トランザクションで
+    best-effort（失敗コードを返して画面に出す）。ルートは 60 行減って関数を1回呼ぶだけになった。
+  - `hearings.status` の zod の値を本番 DB の CHECK（`draft` / `completed` / `linked`）に揃えた。
+    **導入ヒアリングの「完了」ボタンは `completed` が zod に無く、常に 400 で失敗していた。**
+- 検証: `scripts/replay/checks/link_hearing_customer.sql` が、authenticated に降りた上で
+  正常系・二度押し・**原子性**（ヒアリング更新を落としたら顧客も残らない）・車両だけの失敗・
+  **閲覧者の遮断**の5つを行を入れて確かめる。**4通りの壊し方**（車両の例外節を外す／`security definer` にする／
+  冪等の分岐を外す／ヒアリング更新の失敗を飲み込む）で、検査がそれぞれ落ちることを確認した。
+  ルート側のテストは9件→6件（原子性と二度押しは SQL 側の検査に移した）。
 
 ## 2026-10-10 施工写真の保存先（`assets` バケット）を非公開にする（写真の非公開化 ③）
 
@@ -208,6 +264,22 @@
 - 検証: 新テスト `src/app/api/cron/__tests__/tenantDiscoveryUuid.test.ts`（修正前 3 件失敗 → 修正後 3 件成功）、polygon-signer のテストに cause 表示の 1 件追加。tsc・eslint・prettier 緑。
 - 対象: LINE 連携で AI 自動化を opt-in しているテナント（全業種）。
 
+## 2026-10-10 ヒアリング→顧客連携のエラー握り潰しを直した（3件）
+
+- 内容: `src/app/api/admin/hearings/route.ts` の `action: "link_customer"` で捨てていたエラーを3件とも扱う。
+  ヒアリング取得の DB エラーは 500（0行の `PGRST116` だけ 404）、車両 insert の失敗は `vehicle_error` を返して
+  `HearingClient` が画面に出す（顧客連携自体は完遂させる）、ヒアリング更新の失敗は 500。
+  `logger.error` にヒアリング ID と顧客 ID を残すので、どの行が車両なしで残ったか後から引ける。
+- あわせて直した: PUT の部分更新で**送っていない18列が `null` で消える**原因（`src/lib/validations/hearing.ts` の
+  `.optional().transform((v) => v || null)`）を外した。現状これを踏む呼び出し元は無い（実測 2026-10-10）が、`status` を1つ直せば発火する。
+- 検証: 新規テスト `src/app/api/admin/hearings/__tests__/link-customer.test.ts`（5件）。
+  修正前のコードに対して**5件のうち4件が落ちる**ことを確認（残り1件は正常系）。ほかに tsc / eslint / prettier。
+- `/code-review` の指摘（#1306・5件）のうち4件を取り込んだ: 連携を**冪等**にした（ヒアリングに `customer_id` /
+  `vehicle_id` が付いていれば作り直さない。500 のあと押し直すと顧客が二重に増えていた
+  —— MISTAKE_LEDGER `M-20261010-comment-claimed-the-500-prevents-double-registration`）、
+  ヒアリング更新の 500 でも ID をログに残す、明示的な `null` は 500 ではなく 400 で返す（`.nullable()` を外した）、
+  メーカーも車種も無いヒアリングで「車両は作っていない」を画面に出す。残り1件は `hearings.status` の語彙（下記）。
+- 直っていないこと: 同じ形（戻り値を受け取らない DB 書き込み）が `src/` に 276 件ある（OPEN_QUESTIONS 2026-10-10）。
 
 ## 2026-10-10 入金済の納品書・請求書を合算請求書に入れられないようにした
 

@@ -1,5 +1,3 @@
-
-
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { dealCreateSchema } from "@/lib/validations/market";
@@ -11,7 +9,6 @@ export const dynamic = "force-dynamic";
 export const POST = withCaller(
   async (req, { caller }) => {
     try {
-
       const { admin } = createTenantScopedAdmin(caller.tenantId);
       const parsed = dealCreateSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
@@ -64,16 +61,18 @@ export const POST = withCaller(
       }
 
       // Update the inquiry status to "in_negotiation"
-      await admin
+      const { error: inquiryErr } = await admin
         .from("market_inquiries")
         .update({ status: "in_negotiation", updated_at: new Date().toISOString() })
         .eq("id", inquiryId);
+      if (inquiryErr) return apiInternalError(inquiryErr, "market/deals POST: inquiry in_negotiation");
 
       // Update the vehicle status to "reserved"
-      await admin
+      const { error: reserveErr } = await admin
         .from("market_vehicles")
         .update({ status: "reserved", updated_at: new Date().toISOString() })
         .eq("id", vehicleId);
+      if (reserveErr) return apiInternalError(reserveErr, "market/deals POST: vehicle reserved");
 
       return apiJson({ ok: true, deal });
     } catch (e: unknown) {
@@ -87,7 +86,6 @@ export const POST = withCaller(
 export const GET = withCaller(
   async (req, { caller }) => {
     try {
-
       const { admin } = createTenantScopedAdmin(caller.tenantId);
       const url = new URL(req.url);
       const status = url.searchParams.get("status") ?? "";
@@ -153,7 +151,8 @@ export const GET = withCaller(
       const withEstimates = rows.map((d) => ({
         ...d,
         estimate: typeof d.estimate_document_id === "string" ? (estimatesById[d.estimate_document_id] ?? null) : null,
-        trade_in_vehicle: typeof d.trade_in_vehicle_id === "string" ? (tradeInById[d.trade_in_vehicle_id] ?? null) : null,
+        trade_in_vehicle:
+          typeof d.trade_in_vehicle_id === "string" ? (tradeInById[d.trade_in_vehicle_id] ?? null) : null,
       }));
 
       return apiJson({ deals: withEstimates });

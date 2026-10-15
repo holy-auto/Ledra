@@ -8,6 +8,7 @@ import { stripeConnectCreateSchema } from "@/lib/validations/stripe";
 import { createAccountWithCapabilities } from "@/lib/stripe/paymentMethods";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 
@@ -77,10 +78,13 @@ export const POST = withCaller(
         } catch (retrieveErr) {
           const msg = retrieveErr instanceof Error ? retrieveErr.message : String(retrieveErr);
           console.warn(`[stripe connect] stale account_id ${accountId}, recreating: ${msg}`);
-          await admin
-            .from("tenants")
-            .update({ stripe_connect_account_id: null, stripe_connect_onboarded: false })
-            .eq("id", caller.tenantId);
+          await bestEffortWrite(
+            admin
+              .from("tenants")
+              .update({ stripe_connect_account_id: null, stripe_connect_onboarded: false })
+              .eq("id", caller.tenantId),
+            "tenants update — 消えた Connect アカウント ID の掃除",
+          );
           accountId = null;
         }
       }
@@ -106,7 +110,11 @@ export const POST = withCaller(
         accountId = created.account.id;
         requestedCapabilities = created.requested;
 
-        await admin.from("tenants").update({ stripe_connect_account_id: accountId }).eq("id", caller.tenantId);
+        const { error: acctErr } = await admin
+          .from("tenants")
+          .update({ stripe_connect_account_id: accountId })
+          .eq("id", caller.tenantId);
+        if (acctErr) return apiInternalError(acctErr, "stripe connect POST: store account id");
       }
 
       // Generate onboarding link
@@ -165,7 +173,6 @@ export const DELETE = withCaller(
 export const GET = withCaller(
   async (_req, { caller }) => {
     try {
-
       const { admin } = createTenantScopedAdmin(caller.tenantId);
       const { data: tenant } = await admin
         .from("tenants")
@@ -205,10 +212,13 @@ export const GET = withCaller(
           return apiInternalError(retrieveErr, "stripe/connect GET");
         }
         console.warn(`[stripe connect] account gone, detaching ${accountId}: ${msg}`);
-        await admin
-          .from("tenants")
-          .update({ stripe_connect_account_id: null, stripe_connect_onboarded: false })
-          .eq("id", caller.tenantId);
+        await bestEffortWrite(
+          admin
+            .from("tenants")
+            .update({ stripe_connect_account_id: null, stripe_connect_onboarded: false })
+            .eq("id", caller.tenantId),
+          "tenants update — 消えた Connect アカウント ID の掃除",
+        );
         return apiJson({
           connected: false,
           onboarded: false,
@@ -221,7 +231,10 @@ export const GET = withCaller(
 
       // Update local state if changed
       if (onboarded !== tenant.stripe_connect_onboarded) {
-        await admin.from("tenants").update({ stripe_connect_onboarded: onboarded }).eq("id", caller.tenantId);
+        await bestEffortWrite(
+          admin.from("tenants").update({ stripe_connect_onboarded: onboarded }).eq("id", caller.tenantId),
+          "tenants update — Connect の onboarded 同期",
+        );
       }
 
       return apiJson({

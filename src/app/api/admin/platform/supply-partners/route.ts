@@ -20,6 +20,7 @@ import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -99,13 +100,16 @@ export const POST = withCaller(
       // 監査ログ (失敗してもアクションは止めない)。
       try {
         // actor_tenant_id 列は admin_audit_logs に存在しないため meta に格納する
-        await admin.from("admin_audit_logs").insert({
-          actor_id: caller.userId,
-          action: is_trusted ? "platform.supply_partner.trust" : "platform.supply_partner.untrust",
-          target_type: "supply_partner",
-          target_id: supply_partner_id,
-          meta: { actor_tenant_id: caller.tenantId, partner_name: partner.name, is_trusted },
-        });
+        await bestEffortWrite(
+          admin.from("admin_audit_logs").insert({
+            actor_id: caller.userId,
+            action: is_trusted ? "platform.supply_partner.trust" : "platform.supply_partner.untrust",
+            target_type: "supply_partner",
+            target_id: supply_partner_id,
+            meta: { actor_tenant_id: caller.tenantId, partner_name: partner.name, is_trusted },
+          }),
+          "admin_audit_logs insert (POST)",
+        );
       } catch (auditErr) {
         console.error("[platform/supply-partners] audit log failed:", auditErr);
       }

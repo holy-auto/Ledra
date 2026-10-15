@@ -16,6 +16,7 @@ import { customerFacingDeliveryBlock } from "@/lib/delivery/deliveryConsent";
 import { apiOk, apiError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { computeConsentTextHash, getConsentTextByVersion } from "@/lib/signature/deliveryReceipt";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 
@@ -69,15 +70,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
 
     // 期限切れ判定
     if (session.status === "pending" && new Date(session.expires_at) < new Date()) {
-      await supabase.from("signature_sessions").update({ status: "expired" }).eq("id", session.id);
-      await supabase.from("delivery_receipts").update({ status: "expired" }).eq("signature_session_id", session.id);
-      await supabase.from("signature_audit_logs").insert({
-        session_id: session.id,
-        event: "expired",
-        ip,
-        user_agent: ua,
-        metadata: { expired_at: new Date().toISOString() },
-      });
+      await bestEffortWrite(
+        supabase.from("signature_sessions").update({ status: "expired" }).eq("id", session.id),
+        "signature_sessions update (GET)",
+      );
+      await bestEffortWrite(
+        supabase.from("delivery_receipts").update({ status: "expired" }).eq("signature_session_id", session.id),
+        "delivery_receipts update (GET)",
+      );
+      await bestEffortWrite(
+        supabase.from("signature_audit_logs").insert({
+          session_id: session.id,
+          event: "expired",
+          ip,
+          user_agent: ua,
+          metadata: { expired_at: new Date().toISOString() },
+        }),
+        "signature_audit_logs insert (GET)",
+      );
 
       return apiOk({
         status: "expired",
@@ -101,13 +111,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     if (deliveryBlock) return apiError(deliveryBlock);
 
     // page_opened 監査ログ
-    await supabase.from("signature_audit_logs").insert({
-      session_id: session.id,
-      event: "page_opened",
-      ip,
-      user_agent: ua,
-      metadata: { opened_at: new Date().toISOString(), purpose: "delivery_receipt" },
-    });
+    await bestEffortWrite(
+      supabase.from("signature_audit_logs").insert({
+        session_id: session.id,
+        event: "page_opened",
+        ip,
+        user_agent: ua,
+        metadata: { opened_at: new Date().toISOString(), purpose: "delivery_receipt" },
+      }),
+      "signature_audit_logs insert (GET)",
+    );
 
     const cert = session.certificates as unknown as {
       id: string;

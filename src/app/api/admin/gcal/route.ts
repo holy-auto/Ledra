@@ -15,6 +15,7 @@ import {
 } from "@/lib/gcal/client";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 export const dynamic = "force-dynamic";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "from / to (YYYY-MM-DD) が必要です");
@@ -106,8 +107,14 @@ export const POST = withCaller(
 
       if (data.action === "disconnect") {
         const { admin } = createTenantScopedAdmin(caller.tenantId);
+        // **フラグを先に下ろす。** 順番を逆にすると、トークンを消した後にこの更新が落ちて
+        // 「同期は有効・トークン無し」が残り、以後の同期が失敗し続ける（/code-review #1306）。
+        const { error: disconnectErr } = await admin
+          .from("tenants")
+          .update({ gcal_sync_enabled: false })
+          .eq("id", caller.tenantId);
+        if (disconnectErr) return apiInternalError(disconnectErr, "gcal POST: disconnect");
         await writeGcalRefreshToken(admin, caller.tenantId, null);
-        await admin.from("tenants").update({ gcal_sync_enabled: false }).eq("id", caller.tenantId);
         return apiOk({ connected: false });
       }
 
@@ -118,18 +125,29 @@ export const POST = withCaller(
 
       if (data.action === "set-calendar") {
         const { admin } = createTenantScopedAdmin(caller.tenantId);
-        const { data: prev } = await admin.from("tenants").select("gcal_calendar_id").eq("id", caller.tenantId).single();
+        const { data: prev } = await admin
+          .from("tenants")
+          .select("gcal_calendar_id")
+          .eq("id", caller.tenantId)
+          .single();
         const oldId = (prev?.gcal_calendar_id as string) || null;
-        await admin.from("tenants").update({ gcal_calendar_id: data.calendar_id }).eq("id", caller.tenantId);
+        const { error: calErr } = await admin
+          .from("tenants")
+          .update({ gcal_calendar_id: data.calendar_id })
+          .eq("id", caller.tenantId);
+        if (calErr) return apiInternalError(calErr, "gcal POST: set-calendar");
         // メイン（書き込み先）を切替えたら、旧メイン由来の未来の取り込み予約を掃除（新メインは次回 pull で入る）。
         if (oldId && oldId !== data.calendar_id) {
-          await admin
-            .from("reservations")
-            .delete()
-            .eq("tenant_id", caller.tenantId)
-            .eq("source", "gcal")
-            .eq("gcal_calendar_id", oldId)
-            .gte("scheduled_date", new Date().toISOString().slice(0, 10));
+          await bestEffortWrite(
+            admin
+              .from("reservations")
+              .delete()
+              .eq("tenant_id", caller.tenantId)
+              .eq("source", "gcal")
+              .eq("gcal_calendar_id", oldId)
+              .gte("scheduled_date", new Date().toISOString().slice(0, 10)),
+            "reservations delete (POST)",
+          );
         }
         return apiOk({ calendar_id: data.calendar_id });
       }
@@ -148,17 +166,24 @@ export const POST = withCaller(
         const nextIds = new Set(normalized.map((c) => c.id));
         const removed = prevIds.filter((id) => !nextIds.has(id));
 
-        await admin.from("tenants").update({ gcal_read_calendars: normalized }).eq("id", caller.tenantId);
+        const { error: readCalErr } = await admin
+          .from("tenants")
+          .update({ gcal_read_calendars: normalized })
+          .eq("id", caller.tenantId);
+        if (readCalErr) return apiInternalError(readCalErr, "gcal POST: set-read-calendars");
 
         // 外したカレンダー由来の「未来の」取り込み予約だけ掃除（他カレンダー・手動予約・過去は残す）。
         if (removed.length > 0) {
-          await admin
-            .from("reservations")
-            .delete()
-            .eq("tenant_id", caller.tenantId)
-            .eq("source", "gcal")
-            .in("gcal_calendar_id", removed)
-            .gte("scheduled_date", new Date().toISOString().slice(0, 10));
+          await bestEffortWrite(
+            admin
+              .from("reservations")
+              .delete()
+              .eq("tenant_id", caller.tenantId)
+              .eq("source", "gcal")
+              .in("gcal_calendar_id", removed)
+              .gte("scheduled_date", new Date().toISOString().slice(0, 10)),
+            "reservations delete (POST)",
+          );
         }
         return apiOk({ read_calendars: normalized });
       }
@@ -170,7 +195,10 @@ export const POST = withCaller(
 
         // 最終同期日時を更新
         const { admin } = createTenantScopedAdmin(caller.tenantId);
-        await admin.from("tenants").update({ gcal_last_synced_at: new Date().toISOString() }).eq("id", caller.tenantId);
+        await bestEffortWrite(
+          admin.from("tenants").update({ gcal_last_synced_at: new Date().toISOString() }).eq("id", caller.tenantId),
+          "tenants update (POST)",
+        );
 
         return apiOk({
           pushed,

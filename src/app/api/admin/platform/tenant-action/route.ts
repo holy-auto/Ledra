@@ -1,4 +1,3 @@
-
 import { z } from "zod";
 
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
@@ -15,6 +14,7 @@ import {
 } from "@/lib/api/response";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 export const dynamic = "force-dynamic";
 
 const ADDON_KEY_VALUES = Object.values(ADDON_KEYS) as [AddonKey, ...AddonKey[]];
@@ -167,18 +167,21 @@ export const POST = withCaller(
       // Log the action to admin_audit_logs
       try {
         // actor_tenant_id 列は admin_audit_logs に存在しないため meta に格納する
-        await admin.from("admin_audit_logs").insert({
-          actor_id: caller.userId,
-          action: `platform.${action}`,
-          target_type: "tenant",
-          target_id: tenantId,
-          meta: {
-            actor_tenant_id: caller.tenantId,
-            tenant_name: tenant.name,
-            params: params ?? {},
-            result_message: result.message ?? "",
-          },
-        });
+        await bestEffortWrite(
+          admin.from("admin_audit_logs").insert({
+            actor_id: caller.userId,
+            action: `platform.${action}`,
+            target_type: "tenant",
+            target_id: tenantId,
+            meta: {
+              actor_tenant_id: caller.tenantId,
+              tenant_name: tenant.name,
+              params: params ?? {},
+              result_message: result.message ?? "",
+            },
+          }),
+          "admin_audit_logs insert (POST)",
+        );
       } catch (auditErr) {
         // audit log failure should not block the action, but log for monitoring
         console.error("[platform/tenant-action] audit log failed:", auditErr);

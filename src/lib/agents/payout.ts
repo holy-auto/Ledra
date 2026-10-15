@@ -59,10 +59,12 @@ export async function payAgentCommission(admin: Db, commissionId: string): Promi
     { idempotencyKey: `commission-payout:${commissionId}` },
   );
 
-  await admin
+  const { error: transferErr } = await admin
     .from("agent_commissions")
     .update({ stripe_transfer_id: transfer.id, updated_at: new Date().toISOString() })
     .eq("id", commissionId);
+  if (transferErr)
+    throw new Error(`commission の送金 ID の記録に失敗（送金は実行済み・二重送金の恐れ）: ${transferErr.message}`);
 
   return { ok: true, transferId: transfer.id };
 }

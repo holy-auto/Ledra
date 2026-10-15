@@ -12,6 +12,7 @@ import { convertHoldToReservation, releaseOrderHolds } from "@/lib/booking/holdC
 
 import { withCaller } from "@/lib/api/withCaller";
 import { dispatchNotification } from "@/lib/notifications/dispatch";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 // IMP-029: 受発注の通知はすべて「取引相手テナント全員」宛の in_app（カタログの targetRole 未指定 = 文脈で決定）。
 const STATUS_NOTIFY: Record<string, { type: "order_accepted" | "order_completed" | "order_cancelled"; title: string }> =
@@ -284,7 +285,7 @@ export const POST = withCaller(
         const canView = await partnerCanViewAvailability(tenantId, to_tenant_id);
         if (!canView) {
           // 取引先でない相手の枠は押さえられない。オーダー自体は作成済みなので撤回する。
-          await admin.from("job_orders").delete().eq("id", data.id);
+          await bestEffortWrite(admin.from("job_orders").delete().eq("id", data.id), "job_orders delete (POST)");
           return apiForbidden("この取引先の枠は押さえられません（先方の取引先登録・空き公開が必要です）");
         }
         // TTL: 既定48h。納期があればその日の終わりで頭打ち。
@@ -306,7 +307,7 @@ export const POST = withCaller(
           });
           if (claim.result !== "ok") {
             // 枠が埋まった/枠が無い → オーダーを撤回し 409（UI で再選択）。
-            await admin.from("job_orders").delete().eq("id", data.id);
+            await bestEffortWrite(admin.from("job_orders").delete().eq("id", data.id), "job_orders delete (POST)");
             return apiError({
               code: "conflict",
               status: 409,
@@ -327,7 +328,7 @@ export const POST = withCaller(
           });
           return apiJson({ order: data, hold_id: claim.holdId }, { status: 201 });
         } catch (holdErr) {
-          await admin.from("job_orders").delete().eq("id", data.id);
+          await bestEffortWrite(admin.from("job_orders").delete().eq("id", data.id), "job_orders delete (POST)");
           return apiInternalError(holdErr, "orders hold claim");
         }
       }

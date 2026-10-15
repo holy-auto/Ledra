@@ -26,6 +26,7 @@ import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings } from "./policy";
 import { shouldAutoSendDocumentOnConfirm } from "./orchestrator";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export interface MaybeAutoSendDocumentParams {
   tenantId: string;
@@ -218,41 +219,53 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
     try {
       if (reservationId) {
         if (delivered) {
-          await admin
-            .from("document_share_log")
-            .update({
-              channel: usedChannel,
-              recipient: usedRecipient,
-              status: "sent",
-              error_message: null,
-              sent_at: new Date().toISOString(),
-            })
-            .eq("id", reservationId);
+          await bestEffortWrite(
+            admin
+              .from("document_share_log")
+              .update({
+                channel: usedChannel,
+                recipient: usedRecipient,
+                status: "sent",
+                error_message: null,
+                sent_at: new Date().toISOString(),
+              })
+              .eq("id", reservationId),
+            "document_share_log update (maybeAutoSendDocumentOnConfirm)",
+          );
         } else {
           // claim を解放 (UNIQUE を空ける) し、失敗は idempotency_key なしの別行に残す。
-          await admin.from("document_share_log").delete().eq("id", reservationId);
-          await admin.from("document_share_log").insert({
+          await bestEffortWrite(
+            admin.from("document_share_log").delete().eq("id", reservationId),
+            "document_share_log delete (maybeAutoSendDocumentOnConfirm)",
+          );
+          await bestEffortWrite(
+            admin.from("document_share_log").insert({
+              document_id: documentId,
+              tenant_id: tenantId,
+              channel: usedChannel,
+              recipient: usedRecipient,
+              status: "failed",
+              error_message: errorMessage,
+              sent_by: params.actorUserId ?? null,
+            }),
+            "document_share_log insert (maybeAutoSendDocumentOnConfirm)",
+          );
+        }
+      } else {
+        // degraded mode (予約できなかった): 成功時のみ idempotency_key を付けて記録。
+        await bestEffortWrite(
+          admin.from("document_share_log").insert({
             document_id: documentId,
             tenant_id: tenantId,
             channel: usedChannel,
             recipient: usedRecipient,
-            status: "failed",
+            status: delivered ? "sent" : "failed",
             error_message: errorMessage,
             sent_by: params.actorUserId ?? null,
-          });
-        }
-      } else {
-        // degraded mode (予約できなかった): 成功時のみ idempotency_key を付けて記録。
-        await admin.from("document_share_log").insert({
-          document_id: documentId,
-          tenant_id: tenantId,
-          channel: usedChannel,
-          recipient: usedRecipient,
-          status: delivered ? "sent" : "failed",
-          error_message: errorMessage,
-          sent_by: params.actorUserId ?? null,
-          idempotency_key: delivered ? idempotencyKey : null,
-        });
+            idempotency_key: delivered ? idempotencyKey : null,
+          }),
+          "document_share_log insert (maybeAutoSendDocumentOnConfirm)",
+        );
       }
     } catch (logErr) {
       logger.warn("auto_send_document_log_failed", {

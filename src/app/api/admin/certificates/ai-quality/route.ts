@@ -18,6 +18,7 @@ import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 const aiQualitySchema = z.object({
   certificate_id: z.string().uuid().optional(),
   category: z.string().trim().min(1, "category が必要です").max(100),
@@ -120,35 +121,41 @@ export const POST = withCaller(
 
       // 結果をDBにキャッシュ (precheck では DB を汚さない)
       if (!precheck && certificate_id) {
-        await admin.from("certificate_quality_scores").upsert(
-          {
-            certificate_id,
-            tenant_id: caller.tenantId,
-            overall_status: audit.overallStatus,
-            standard_level: audit.standardLevel,
-            score: audit.score,
-            photo_results: audit.photoResults,
-            missing_photos: audit.missingPhotos,
-            missing_fields: audit.missingFields,
-            warning_messages: audit.warningMessages,
-            ai_checked_at: useVision ? new Date().toISOString() : null,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "certificate_id" },
+        await bestEffortWrite(
+          admin.from("certificate_quality_scores").upsert(
+            {
+              certificate_id,
+              tenant_id: caller.tenantId,
+              overall_status: audit.overallStatus,
+              standard_level: audit.standardLevel,
+              score: audit.score,
+              photo_results: audit.photoResults,
+              missing_photos: audit.missingPhotos,
+              missing_fields: audit.missingFields,
+              warning_messages: audit.warningMessages,
+              ai_checked_at: useVision ? new Date().toISOString() : null,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "certificate_id" },
+          ),
+          "certificate_quality_scores upsert (POST)",
         );
 
         // 品質スコア80以上・写真4枚以上なら Academy候補フラグ
         if (audit.score >= 80 && (photo_urls?.length ?? 0) >= 4) {
-          await admin.from("academy_cases").upsert(
-            {
-              certificate_id,
-              tenant_id: caller.tenantId,
-              category,
-              quality_score: audit.score,
-              is_candidate: true,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "certificate_id" },
+          await bestEffortWrite(
+            admin.from("academy_cases").upsert(
+              {
+                certificate_id,
+                tenant_id: caller.tenantId,
+                category,
+                quality_score: audit.score,
+                is_candidate: true,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "certificate_id" },
+            ),
+            "academy_cases upsert (POST)",
           );
         }
       }

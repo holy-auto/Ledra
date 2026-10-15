@@ -1,5 +1,6 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import type { CommissionType, ReferralStatus } from "@/types/agent";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 type Db = ReturnType<typeof createServiceRoleAdmin>;
 
@@ -74,15 +75,18 @@ export async function advanceReferralToContracted(admin: Db, tenantId: string): 
   if (!ref) return;
   if (!PRECONTRACT_STATUSES.includes(ref.status as ReferralStatus)) return;
 
-  await admin
-    .from("agent_referrals")
-    .update({
-      status: "contracted",
-      contracted_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", ref.id)
-    .in("status", PRECONTRACT_STATUSES);
+  await bestEffortWrite(
+    admin
+      .from("agent_referrals")
+      .update({
+        status: "contracted",
+        contracted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", ref.id)
+      .in("status", PRECONTRACT_STATUSES),
+    "agent_referrals update (advanceReferralToContracted)",
+  );
 }
 
 export type CommissionResult = {

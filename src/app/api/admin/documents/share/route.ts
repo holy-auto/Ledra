@@ -13,6 +13,7 @@ import { renderAndStoreDocumentPdf } from "@/lib/documents/pdfShare";
 import { afterOrInline } from "@/lib/http/afterOrInline";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 export const dynamic = "force-dynamic";
 
 const documentShareSchema = z.object({
@@ -215,20 +216,23 @@ export const POST = withCaller(
       // Log the share attempt for every included document (non-fatal: table may not exist in all environments)
       try {
         const { admin } = createTenantScopedAdmin(caller.tenantId);
-        await admin.from("document_share_log").insert(
-          (docs ?? []).map((d) => ({
-            document_id: d.id,
-            tenant_id: caller.tenantId,
-            channel,
-            recipient,
-            status: success ? "sent" : "failed",
-            error_message: success ? null : (errorMessage ?? "送信に失敗しました"),
-            sent_by: caller.userId,
-            // ponytail: 冪等キーは主帳票のみに付与（追加帳票行でのユニーク制約衝突を避ける）。
-            // 上限: 同一キーでのリトライは追加帳票側のログ重複を防げない。追加帳票ごとに
-            // 一意なキーを持たせるか document_id を含めた複合キーにするのが本来の直し方。
-            ...(d.id === documentId && idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
-          })),
+        await bestEffortWrite(
+          admin.from("document_share_log").insert(
+            (docs ?? []).map((d) => ({
+              document_id: d.id,
+              tenant_id: caller.tenantId,
+              channel,
+              recipient,
+              status: success ? "sent" : "failed",
+              error_message: success ? null : (errorMessage ?? "送信に失敗しました"),
+              sent_by: caller.userId,
+              // ponytail: 冪等キーは主帳票のみに付与（追加帳票行でのユニーク制約衝突を避ける）。
+              // 上限: 同一キーでのリトライは追加帳票側のログ重複を防げない。追加帳票ごとに
+              // 一意なキーを持たせるか document_id を含めた複合キーにするのが本来の直し方。
+              ...(d.id === documentId && idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+            })),
+          ),
+          "document_share_log insert (POST)",
         );
       } catch (logErr) {
         console.error("[document_share] Failed to write share log:", logErr);

@@ -7,6 +7,7 @@ import { pushReservationsToCalendar, pullEventsFromCalendar } from "@/lib/gcal/c
 import { logger } from "@/lib/logger";
 import { computeSyncWindow } from "./window";
 import { enqueueGcalTenantSync } from "@/lib/qstash/publish";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -108,7 +109,10 @@ export async function GET(req: NextRequest) {
             // QStash未設定の開発環境だけは従来の同期処理へフォールバックする。
             const pushed = await pushReservationsToCalendar(tenantId, from, to);
             const pull = await pullEventsFromCalendar(tenantId, from, to);
-            await admin.from("tenants").update({ gcal_last_synced_at: new Date().toISOString() }).eq("id", tenantId);
+            await bestEffortWrite(
+              admin.from("tenants").update({ gcal_last_synced_at: new Date().toISOString() }).eq("id", tenantId),
+              "tenants update (GET)",
+            );
             results.push({
               tenantId,
               status: "ok",

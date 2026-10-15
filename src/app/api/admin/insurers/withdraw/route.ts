@@ -1,4 +1,3 @@
-
 import { z } from "zod";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
@@ -7,6 +6,7 @@ import { getClientIp } from "@/lib/rateLimit";
 import { apiJson, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 export const runtime = "nodejs";
 
 /**
@@ -47,7 +47,9 @@ export const POST = withCaller(
 
     // Warn if there's an active Stripe subscription
     if (insurer.stripe_subscription_id) {
-      return apiValidationError("Stripeサブスクリプションが存在します。先にサブスクリプションをキャンセルしてください。");
+      return apiValidationError(
+        "Stripeサブスクリプションが存在します。先にサブスクリプションをキャンセルしてください。",
+      );
     }
 
     // Execute withdrawal via RPC (transactional)
@@ -61,16 +63,19 @@ export const POST = withCaller(
 
     // Audit log
     const ip = getClientIp(req);
-    await admin.from("admin_audit_logs").insert({
-      actor_id: caller.userId,
-      action: "insurer_withdrawn",
-      target_type: "insurer",
-      target_id: insurer_id,
-      before_data: { name: insurer.name },
-      after_data: result,
-      ip,
-      user_agent: req.headers.get("user-agent") ?? null,
-    });
+    await bestEffortWrite(
+      admin.from("admin_audit_logs").insert({
+        actor_id: caller.userId,
+        action: "insurer_withdrawn",
+        target_type: "insurer",
+        target_id: insurer_id,
+        before_data: { name: insurer.name },
+        after_data: result,
+        ip,
+        user_agent: req.headers.get("user-agent") ?? null,
+      }),
+      "admin_audit_logs insert (POST)",
+    );
 
     return apiJson({ ok: true, ...result });
   },

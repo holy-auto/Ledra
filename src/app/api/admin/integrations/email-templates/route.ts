@@ -39,7 +39,6 @@ const upsertSchema = z.object({
 export const GET = withCaller(
   async (_req, { caller }) => {
     try {
-
       const { admin } = createTenantScopedAdmin(caller.tenantId);
       const { data, error } = await admin
         .from("tenant_email_templates")
@@ -69,7 +68,6 @@ export const GET = withCaller(
 export const POST = withCaller(
   async (req, { caller }) => {
     try {
-
       const parsed = upsertSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -80,12 +78,13 @@ export const POST = withCaller(
       // Deactivate any existing active row for this topic (the partial unique
       // index enforces only one active per topic — soft-deactivating preserves
       // history for audit).
-      await admin
+      const { error: deactivateErr } = await admin
         .from("tenant_email_templates")
         .update({ is_active: false })
         .eq("tenant_id", caller.tenantId)
         .eq("topic", parsed.data.topic)
         .eq("is_active", true);
+      if (deactivateErr) return apiInternalError(deactivateErr, "email-templates POST: deactivate previous");
 
       const { data, error } = await admin
         .from("tenant_email_templates")

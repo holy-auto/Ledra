@@ -14,6 +14,7 @@
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { randomHex, sha256Hex } from "@/lib/customerPortalServer";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 /**
  * トークンの有効期限 (分)。既定 7 日。
@@ -103,5 +104,8 @@ export async function releasePortalLoginToken(token: string): Promise<void> {
   const normalized = (token ?? "").trim();
   if (!/^[0-9a-f]{64}$/.test(normalized)) return;
 
-  await admin().from("customer_portal_login_tokens").update({ used_at: null }).eq("token_hash", tokenHash(normalized));
+  await bestEffortWrite(
+    admin().from("customer_portal_login_tokens").update({ used_at: null }).eq("token_hash", tokenHash(normalized)),
+    "customer_portal_login_tokens update (releasePortalLoginToken)",
+  );
 }
