@@ -8,9 +8,11 @@
  * ユーザーで、HP の「デモを見る」導線（/demo ページ）からログイン情報が案内される。
  *
  * リードオンリー化:
- *   - DB 側: supabase/migrations/20260513000001_demo_tenant_readonly.sql の
+ *   - 入口: `src/lib/demoWriteGuard.ts`（proxy）が、デモテナントの利用者の書き込みメソッドを 403 にする。
+ *           サービスロールで書く API は RLS を素通りするので、こちらが本体。
+ *   - DB 側: supabase/migrations/20260514000001_demo_tenant_readonly.sql の
  *            RESTRICTIVE RLS ポリシーが certificates / vehicles / customers
- *            への書き込みを拒否する。
+ *            への利用者権限での書き込みを拒否する（サービスロールには効かない）。
  *   - UI 側: `DemoTenantBanner` がダッシュボード上部に「読み取り専用」表示を出す。
  */
 

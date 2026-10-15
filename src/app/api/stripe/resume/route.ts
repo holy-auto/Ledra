@@ -14,6 +14,8 @@ import {
 } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { resolveActiveMembership } from "@/lib/auth/checkRole";
+import { isDemoTenant } from "@/lib/demo";
+import { demoReadOnlyResponse } from "@/lib/demoWriteGuard";
 import { hasMinRole } from "@/lib/auth/roles";
 
 export const runtime = "nodejs";
@@ -59,6 +61,8 @@ export async function POST(req: NextRequest) {
     if (!m) return apiNotFound("テナントメンバーシップが見つかりません。");
     if (!hasMinRole(m.role, "owner"))
       return apiForbidden("課金の操作（プラン購入・変更・再開・請求ポータル）はオーナーのみ行えます。");
+    // access_token を本文で受けるので proxy の demoWriteGuard からは利用者が見えない。ここで断る
+    if (isDemoTenant(m.tenantId)) return demoReadOnlyResponse();
 
     // tenants
     const t = await admin
