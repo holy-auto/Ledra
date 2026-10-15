@@ -107,7 +107,11 @@ export async function ensureConnectAndNotify(toTenantId: string, orderId: string
       },
     });
     accountId = account.id;
-    await supabase.from("tenants").update({ stripe_connect_account_id: accountId }).eq("id", toTenantId);
+    const { error: acctErr } = await supabase
+      .from("tenants")
+      .update({ stripe_connect_account_id: accountId })
+      .eq("id", toTenantId);
+    if (acctErr) throw new Error(`Connect アカウント ID の保存に失敗: ${acctErr.message}`);
     logger.info("[connectAutoOnboard] express account created", { toTenantId, accountId });
   }
 
@@ -146,7 +150,11 @@ export async function ensureConnectAndNotify(toTenantId: string, orderId: string
   }
 
   // 送金待ちフラグをセット
-  await supabase.from("job_orders").update({ payout_stripe_transfer_id: "pending_onboarding" }).eq("id", orderId);
+  const { error: pendingErr } = await supabase
+    .from("job_orders")
+    .update({ payout_stripe_transfer_id: "pending_onboarding" })
+    .eq("id", orderId);
+  if (pendingErr) throw new Error(`送金待ちフラグの保存に失敗: ${pendingErr.message}`);
 
   logger.info("[connectAutoOnboard] onboarding email sent", {
     toTenantId,

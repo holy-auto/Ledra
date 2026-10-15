@@ -19,6 +19,7 @@ import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -96,15 +97,18 @@ export const PUT = withCaller(
       // 監査ログ（失敗してもアクションは止めない）。actor_tenant_id 列は
       // admin_audit_logs に存在しないため meta に格納する。
       try {
-        await admin.from("admin_audit_logs").insert({
-          actor_id: caller.userId,
-          action: "platform.shop_order.status_change",
-          target_type: "shop_order",
-          target_id: order_id,
-          before_data: { status: current.status },
-          after_data: { status },
-          meta: { order_number: current.order_number, actor_tenant_id: caller.tenantId },
-        });
+        await bestEffortWrite(
+          admin.from("admin_audit_logs").insert({
+            actor_id: caller.userId,
+            action: "platform.shop_order.status_change",
+            target_type: "shop_order",
+            target_id: order_id,
+            before_data: { status: current.status },
+            after_data: { status },
+            meta: { order_number: current.order_number, actor_tenant_id: caller.tenantId },
+          }),
+          "admin_audit_logs insert (PUT)",
+        );
       } catch (auditErr) {
         console.error("[platform/shop-orders] audit log failed:", auditErr);
       }

@@ -14,6 +14,7 @@ import { maybeAutoNextActionForReservation } from "@/lib/ai/automation/nextActio
 import { notifyCustomerArrived } from "@/lib/watch/arrivalPush";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 /** advance() 後に GCal イベントを作成/更新する (advance は cancelled への遷移が無いため削除分岐は不要)。 */
 function syncGcalAfterAdvance(
   tenantId: string,
@@ -91,7 +92,6 @@ function calcEstimatedCompletion(steps: WorkflowStep[], currentOrder: number): s
 export const POST = withCaller<{ id: string }>(
   async (req, { caller, supabase, params }) => {
     try {
-
       const { id } = params;
       const parsed = advanceSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
@@ -234,15 +234,18 @@ export const POST = withCaller<{ id: string }>(
         if (existingLog?.started_at) {
           const startedAt = new Date(existingLog.started_at);
           const durationSec = Math.round((now.getTime() - startedAt.getTime()) / 1000);
-          await supabase
-            .from("reservation_step_logs")
-            .update({
-              completed_at: now.toISOString(),
-              duration_sec: durationSec,
-              completed_by: caller.userId,
-              note: note,
-            })
-            .eq("id", existingLog.id);
+          await bestEffortWrite(
+            supabase
+              .from("reservation_step_logs")
+              .update({
+                completed_at: now.toISOString(),
+                duration_sec: durationSec,
+                completed_by: caller.userId,
+                note: note,
+              })
+              .eq("id", existingLog.id),
+            "reservation_step_logs update (POST)",
+          );
         }
       }
 
@@ -256,18 +259,21 @@ export const POST = withCaller<{ id: string }>(
         if (!nextStep) return apiValidationError("step_not_found");
 
         // 次ステップのlog挿入
-        await supabase.from("reservation_step_logs").upsert(
-          {
-            reservation_id: id,
-            tenant_id: caller.tenantId,
-            step_key: nextStep.key,
-            step_order: nextStep.order,
-            step_label: nextStep.label,
-            started_at: now.toISOString(),
-            completed_at: null,
-            completed_by: null,
-          },
-          { onConflict: "reservation_id,step_key" },
+        await bestEffortWrite(
+          supabase.from("reservation_step_logs").upsert(
+            {
+              reservation_id: id,
+              tenant_id: caller.tenantId,
+              step_key: nextStep.key,
+              step_order: nextStep.order,
+              step_label: nextStep.label,
+              started_at: now.toISOString(),
+              completed_at: null,
+              completed_by: null,
+            },
+            { onConflict: "reservation_id,step_key" },
+          ),
+          "reservation_step_logs upsert (POST)",
         );
 
         progressPct = Math.round(((nextOrder - 1) / totalSteps) * 100);
@@ -393,14 +399,17 @@ export const POST = withCaller<{ id: string }>(
 
         // vehicle_histories は車両キーが必須なので vehicle_id があるときだけ記録する。
         if (reservation.vehicle_id) {
-          await supabase.from("vehicle_histories").insert({
-            tenant_id: caller.tenantId,
-            vehicle_id: reservation.vehicle_id,
-            type: "progress_update",
-            title: historyLabel,
-            description: note ?? null,
-            performed_at: new Date().toISOString(),
-          });
+          await bestEffortWrite(
+            supabase.from("vehicle_histories").insert({
+              tenant_id: caller.tenantId,
+              vehicle_id: reservation.vehicle_id,
+              type: "progress_update",
+              title: historyLabel,
+              description: note ?? null,
+              performed_at: new Date().toISOString(),
+            }),
+            "vehicle_histories insert (POST)",
+          );
         }
 
         // LINE通知は customer_id + line_user_id だけで送れる（vehicle_id 非依存）。

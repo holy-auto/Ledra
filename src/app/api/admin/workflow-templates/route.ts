@@ -1,5 +1,3 @@
-
-
 import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { workflowTemplateCreateSchema } from "@/lib/validations/workflow-template";
 
@@ -18,7 +16,6 @@ export type WorkflowStep = {
 export const GET = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const url = new URL(req.url);
       const serviceType = url.searchParams.get("service_type");
 
@@ -49,7 +46,6 @@ export const GET = withCaller(
 export const POST = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const parsed = workflowTemplateCreateSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -58,11 +54,12 @@ export const POST = withCaller(
 
       // is_default を設定する場合、既存のデフォルトを解除
       if (is_default) {
-        await supabase
+        const { error: demoteErr } = await supabase
           .from("workflow_templates")
           .update({ is_default: false })
           .eq("tenant_id", caller.tenantId)
           .eq("service_type", serviceType);
+        if (demoteErr) return apiInternalError(demoteErr, "workflow-templates POST: demote previous default");
       }
 
       const { data, error } = await supabase

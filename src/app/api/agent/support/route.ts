@@ -59,12 +59,13 @@ export async function POST(request: NextRequest) {
     if (ticketErr) return apiInternalError(ticketErr, "agent/support ticket insert");
 
     // Add initial message
-    await supabase.from("agent_ticket_messages").insert({
+    const { error: firstMsgErr } = await supabase.from("agent_ticket_messages").insert({
       ticket_id: ticket.id,
       sender_id: auth.user.id,
       is_admin: false,
       body: message,
     });
+    if (firstMsgErr) return apiInternalError(firstMsgErr, "agent/support POST: initial message insert");
 
     try {
       await notifySlack(process.env.SLACK_AGENT_SUPPORT_WEBHOOK_URL, {

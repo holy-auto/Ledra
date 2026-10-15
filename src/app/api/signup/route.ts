@@ -8,6 +8,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { resolveBaseUrl } from "@/lib/url";
 import { notifySlack } from "@/lib/slack";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 
@@ -256,16 +257,19 @@ export async function POST(req: NextRequest) {
           .maybeSingle();
 
         if (link?.agent_id) {
-          await admin.from("agent_referrals").insert({
-            agent_id: link.agent_id,
-            tenant_id: tenant.id,
-            shop_name,
-            contact_name: display_name || null,
-            contact_email: email,
-            contact_phone: contact_phone ?? null,
-            status: "trial",
-            notes: `紹介リンク ${refCode} 経由で新規登録`,
-          });
+          await bestEffortWrite(
+            admin.from("agent_referrals").insert({
+              agent_id: link.agent_id,
+              tenant_id: tenant.id,
+              shop_name,
+              contact_name: display_name || null,
+              contact_email: email,
+              contact_phone: contact_phone ?? null,
+              status: "trial",
+              notes: `紹介リンク ${refCode} 経由で新規登録`,
+            }),
+            "agent_referrals insert — 紹介の記録（登録自体は完了している）",
+          );
         }
         cookieStore.delete("ledra_ref");
       }

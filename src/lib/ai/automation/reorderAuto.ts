@@ -20,6 +20,7 @@ import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings } from "./policy";
 import { shouldAutoDraftReorder } from "./orchestrator";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export interface MaybeAutoDraftReordersResult {
   created: number;
@@ -131,7 +132,10 @@ export async function maybeAutoDraftReordersForTenant(tenantId: string): Promise
       if (itemErr) {
         logger.warn("[reorderAuto] PO items insert failed", { tenantId, poId: po.id, err: itemErr.message });
         // 明細が入らなかった空の発注は消しておく (中途半端な draft を残さない)。
-        await admin.from("purchase_orders").delete().eq("id", po.id).eq("tenant_id", tenantId);
+        await bestEffortWrite(
+          admin.from("purchase_orders").delete().eq("id", po.id).eq("tenant_id", tenantId),
+          "purchase_orders delete (maybeAutoDraftReordersForTenant)",
+        );
         continue;
       }
       result.created += 1;

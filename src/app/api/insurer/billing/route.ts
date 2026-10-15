@@ -7,6 +7,7 @@ import { insurerPlanTierToPriceId } from "@/lib/stripe/insurerPlan";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { insurerBillingCreateSchema } from "@/lib/validations/insurer";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const runtime = "nodejs";
 
@@ -90,7 +91,10 @@ export async function POST(req: NextRequest) {
       });
       customerId = customer.id;
 
-      await admin.from("insurers").update({ stripe_customer_id: customerId }).eq("id", caller.insurerId);
+      await bestEffortWrite(
+        admin.from("insurers").update({ stripe_customer_id: customerId }).eq("id", caller.insurerId),
+        "insurers update — stripe_customer_id の保存（失敗すると次回 Stripe 顧客が二重に作られる）",
+      );
     }
 
     // Create Checkout session

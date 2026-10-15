@@ -1,4 +1,3 @@
-
 import { z } from "zod";
 import { createServiceRoleAdmin, createTenantScopedAdmin } from "@/lib/supabase/admin";
 
@@ -7,6 +6,7 @@ import { hearingSchema } from "@/lib/template-options/configSchema";
 import { sendTemplateOrderConfirmationEmail } from "@/lib/email/templateOrderEmail";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 const createOrderSchema = z.object({
   order_type: z.enum(["preset_setup", "custom_production", "modification", "additional"]),
   hearing: hearingSchema.optional(),
@@ -17,7 +17,6 @@ const createOrderSchema = z.object({
 export const GET = withCaller(
   async (_req, { caller, supabase }) => {
     try {
-
       const { data: orders, error } = await supabase
         .from("template_orders")
         // Explicit columns only — omits internal Stripe identifiers
@@ -84,13 +83,16 @@ export const POST = withCaller(
       if (error) throw error;
 
       // ログ記録
-      await admin.from("template_order_logs").insert({
-        order_id: order.id,
-        action: "status_change",
-        to_status: order.status,
-        actor: caller.userId,
-        message: `オーダーを作成しました（${order_type}）`,
-      });
+      await bestEffortWrite(
+        admin.from("template_order_logs").insert({
+          order_id: order.id,
+          action: "status_change",
+          to_status: order.status,
+          actor: caller.userId,
+          message: `オーダーを作成しました（${order_type}）`,
+        }),
+        "template_order_logs insert (POST)",
+      );
 
       // 注文確認メール（fire-and-forget）。Resend 側では order.id ベースで重複排除される。
       const emailKind = order.status === "paid" ? "paid" : "pending_payment";

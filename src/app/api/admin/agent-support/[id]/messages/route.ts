@@ -1,13 +1,8 @@
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import {
-  apiJson,
-  apiForbidden,
-  apiInternalError,
-  apiValidationError,
-  apiNotFound,
-} from "@/lib/api/response";
+import { apiJson, apiForbidden, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const POST = withCaller<{ id: string }>(
   async (req, { caller, params }) => {
@@ -53,10 +48,13 @@ export const POST = withCaller<{ id: string }>(
     }
 
     // Auto-update ticket status to in_progress
-    await admin
-      .from("agent_support_tickets")
-      .update({ status: "in_progress", updated_at: new Date().toISOString() })
-      .eq("id", id);
+    await bestEffortWrite(
+      admin
+        .from("agent_support_tickets")
+        .update({ status: "in_progress", updated_at: new Date().toISOString() })
+        .eq("id", id),
+      "agent_support_tickets update (POST)",
+    );
 
     return apiJson({ message: msg }, { status: 201 });
   },

@@ -1,15 +1,13 @@
-
-
 import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { hearingCreateSchema, hearingUpdateSchema } from "@/lib/validations/hearing";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { logger } from "@/lib/logger";
 export const dynamic = "force-dynamic";
 
 export const GET = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const { searchParams } = new URL(req.url);
       const status = searchParams.get("status");
 
@@ -40,14 +38,13 @@ export const GET = withCaller(
 export const POST = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const parsed = hearingCreateSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
       }
 
       // ヒアリングレコード作成 (null を空文字に詰め直して DB の既存慣例に合わせる)
-      const toEmpty = (v: string | null) => v ?? "";
+      const toEmpty = (v: string | null | undefined) => v ?? "";
       const { data, error } = await supabase
         .from("hearings")
         .insert({
@@ -91,7 +88,6 @@ export const POST = withCaller(
 export const PUT = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const parsed = hearingUpdateSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -100,67 +96,60 @@ export const PUT = withCaller(
 
       // アクション: 顧客登録連携
       if (action === "link_customer") {
-        // 顧客レコード作成
-        const { data: hearing } = await supabase
-          .from("hearings")
-          .select(
-            "id, customer_name, customer_phone, customer_email, vehicle_maker, vehicle_model, vehicle_year, vehicle_plate, vehicle_vin, vehicle_size",
-          )
-          .eq("id", id)
-          .eq("tenant_id", caller.tenantId)
-          .single();
+        // 顧客 insert・車両 insert・ヒアリング更新の3つは **DB 側で1トランザクション**に
+        // まとめてある（`public.link_hearing_customer`、
+        // `supabase/migrations/20261015122028_link_hearing_customer_transaction.sql`）。
+        //
+        // アプリから3回に分けて投げていた頃は、途中で落ちると宙に浮いた行が残り、
+        // 操作者が押し直すと顧客が二重に増えた（一覧のボタンは `status !== "linked"` の
+        // 間ずっと出るので押し直しは普通に起こる）。アプリ側では閉じられない
+        // —— 名前も電話も空のヒアリングがあり、既存顧客を引き当てる鍵が無い。
+        //
+        // 関数は SECURITY INVOKER なので、テナント分離は今までどおり RLS が見る。
+        const { data: result, error: rpcErr } = await supabase.rpc("link_hearing_customer", {
+          p_hearing_id: id,
+          p_tenant_id: caller.tenantId,
+        });
 
-        if (!hearing) return apiNotFound("ヒアリングが見つかりません。");
+        if (rpcErr) return apiInternalError(rpcErr, "hearings link_customer");
 
-        // 顧客作成
-        const { data: customer, error: custErr } = await supabase
-          .from("customers")
-          .insert({
-            tenant_id: caller.tenantId,
-            name: hearing.customer_name || "未入力",
-            email: hearing.customer_email || null,
-            phone: hearing.customer_phone || null,
-          })
-          .select("id")
-          .single();
+        const linked = result as {
+          ok?: boolean;
+          error?: string;
+          customer_id?: string | null;
+          vehicle_id?: string | null;
+          vehicle_error_code?: string | null;
+        } | null;
 
-        if (custErr) return apiInternalError(custErr, "hearings link_customer");
-
-        // 車両作成
-        let vehicleId: string | null = null;
-        if (hearing.vehicle_maker || hearing.vehicle_model) {
-          const { data: vehicle, error: vehErr } = await supabase
-            .from("vehicles")
-            .insert({
-              tenant_id: caller.tenantId,
-              maker: hearing.vehicle_maker || null,
-              model: hearing.vehicle_model || null,
-              year: hearing.vehicle_year || null,
-              plate_display: hearing.vehicle_plate || null,
-              vin_code: hearing.vehicle_vin || null,
-              customer_id: customer.id,
-              size_class: hearing.vehicle_size || null,
-            })
-            .select("id")
-            .single();
-          if (!vehErr && vehicle) vehicleId = vehicle.id;
+        if (!linked?.ok) {
+          // 「存在しない・他テナント・RLS で見えない」は関数が not_found で返す。
+          if (linked?.error === "not_found") return apiNotFound("ヒアリングが見つかりません。");
+          // それ以外で ok が立たないのは、返り値の形が想定と違うということ。黙って成功にしない。
+          return apiInternalError(
+            linked?.error ?? "link_hearing_customer returned an unexpected result",
+            "hearings link_customer",
+          );
         }
 
-        // ヒアリングレコード更新
-        await supabase
-          .from("hearings")
-          .update({
-            customer_id: customer.id,
-            vehicle_id: vehicleId,
-            status: "linked",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", id);
+        // 車両だけが落ちた場合（顧客とヒアリングは確定している）。関数が副トランザクションで
+        // 車両の失敗だけを巻き戻し、SQLSTATE を返す。黙って `vehicle_id: null` を返すと
+        // 車両が無いことに誰も気づかないまま証明書発行へ進む。
+        let vehicleError: string | null = null;
+        if (linked.vehicle_error_code) {
+          logger.error("hearings link_customer: vehicle insert failed", undefined, {
+            route: "admin/hearings PUT",
+            hearing_id: id,
+            customer_id: linked.customer_id,
+            sqlstate: linked.vehicle_error_code,
+          });
+          vehicleError = "車両の登録に失敗しました。顧客は登録済みです。車両は車両一覧から登録してください。";
+        }
 
         return apiJson({
           ok: true,
-          customer_id: customer.id,
-          vehicle_id: vehicleId,
+          customer_id: linked.customer_id ?? null,
+          vehicle_id: linked.vehicle_id ?? null,
+          ...(vehicleError ? { vehicle_error: vehicleError } : {}),
         });
       }
 

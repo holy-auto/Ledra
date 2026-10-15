@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 
@@ -48,10 +49,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
     // 閲覧済みに更新（まだ sent の場合）
     if (contract.status === "sent") {
-      await admin
-        .from("agent_signing_requests")
-        .update({ status: "viewed", updated_at: new Date().toISOString() })
-        .eq("id", id);
+      await bestEffortWrite(
+        admin
+          .from("agent_signing_requests")
+          .update({ status: "viewed", updated_at: new Date().toISOString() })
+          .eq("id", id),
+        "agent_signing_requests update (GET)",
+      );
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";

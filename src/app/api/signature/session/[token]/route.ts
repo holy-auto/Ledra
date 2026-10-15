@@ -16,6 +16,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { customerFacingDeliveryBlock } from "@/lib/delivery/deliveryConsent";
 import { apiOk, apiError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 
@@ -69,15 +70,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     // 期限切れチェック
     if (session.status === "pending" && new Date(session.expires_at) < new Date()) {
       // DB を期限切れに更新
-      await supabase.from("signature_sessions").update({ status: "expired" }).eq("id", session.id);
+      await bestEffortWrite(
+        supabase.from("signature_sessions").update({ status: "expired" }).eq("id", session.id),
+        "signature_sessions update (GET)",
+      );
 
-      await supabase.from("signature_audit_logs").insert({
-        session_id: session.id,
-        event: "expired",
-        ip,
-        user_agent: ua,
-        metadata: { expired_at: new Date().toISOString() },
-      });
+      await bestEffortWrite(
+        supabase.from("signature_audit_logs").insert({
+          session_id: session.id,
+          event: "expired",
+          ip,
+          user_agent: ua,
+          metadata: { expired_at: new Date().toISOString() },
+        }),
+        "signature_audit_logs insert (GET)",
+      );
 
       return apiOk({
         status: "expired",
@@ -101,13 +108,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     if (deliveryBlock) return apiError(deliveryBlock);
 
     // page_opened 監査ログを記録
-    await supabase.from("signature_audit_logs").insert({
-      session_id: session.id,
-      event: "page_opened",
-      ip,
-      user_agent: ua,
-      metadata: { opened_at: new Date().toISOString() },
-    });
+    await bestEffortWrite(
+      supabase.from("signature_audit_logs").insert({
+        session_id: session.id,
+        event: "page_opened",
+        ip,
+        user_agent: ua,
+        metadata: { opened_at: new Date().toISOString() },
+      }),
+      "signature_audit_logs insert (GET)",
+    );
 
     const cert = session.certificates as unknown as {
       id: string;

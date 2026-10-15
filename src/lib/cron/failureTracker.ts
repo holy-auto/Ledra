@@ -24,6 +24,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/sendEmail";
 import { logger } from "@/lib/logger";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 type SupabaseAdmin = ReturnType<typeof createServiceRoleAdmin>;
 
@@ -52,15 +53,18 @@ interface StreakRow {
 export async function recordCronSuccess(supabase: SupabaseAdmin, task: string): Promise<void> {
   try {
     const now = new Date().toISOString();
-    await supabase.from("cron_failure_streaks").upsert(
-      {
-        task,
-        consecutive_failures: 0,
-        last_success_at: now,
-        updated_at: now,
-        // last_failure_at / last_alert_at は保持 (履歴用)
-      },
-      { onConflict: "task" },
+    await bestEffortWrite(
+      supabase.from("cron_failure_streaks").upsert(
+        {
+          task,
+          consecutive_failures: 0,
+          last_success_at: now,
+          updated_at: now,
+          // last_failure_at / last_alert_at は保持 (履歴用)
+        },
+        { onConflict: "task" },
+      ),
+      "cron_failure_streaks upsert (recordCronSuccess)",
     );
   } catch (e) {
     logger.warn("[failureTracker] recordCronSuccess failed", {
@@ -95,15 +99,18 @@ export async function recordCronFailure(
     const prevCount = existing?.consecutive_failures ?? 0;
     const newCount = prevCount + 1;
 
-    await supabase.from("cron_failure_streaks").upsert(
-      {
-        task,
-        consecutive_failures: newCount,
-        last_failure_at: now.toISOString(),
-        last_error: errorMessage.slice(0, 500),
-        updated_at: now.toISOString(),
-      },
-      { onConflict: "task" },
+    await bestEffortWrite(
+      supabase.from("cron_failure_streaks").upsert(
+        {
+          task,
+          consecutive_failures: newCount,
+          last_failure_at: now.toISOString(),
+          last_error: errorMessage.slice(0, 500),
+          updated_at: now.toISOString(),
+        },
+        { onConflict: "task" },
+      ),
+      "cron_failure_streaks upsert (recordCronFailure)",
     );
 
     if (newCount < threshold) {
@@ -127,10 +134,13 @@ export async function recordCronFailure(
     // 通知送信
     await sendAlertEmail(task, newCount, errorMessage);
 
-    await supabase
-      .from("cron_failure_streaks")
-      .update({ last_alert_at: now.toISOString(), updated_at: now.toISOString() })
-      .eq("task", task);
+    await bestEffortWrite(
+      supabase
+        .from("cron_failure_streaks")
+        .update({ last_alert_at: now.toISOString(), updated_at: now.toISOString() })
+        .eq("task", task),
+      "cron_failure_streaks update (recordCronFailure)",
+    );
 
     logger.warn("[failureTracker] alert sent", { task, streak: newCount });
   } catch (e) {

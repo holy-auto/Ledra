@@ -4,6 +4,7 @@ import { apiJson, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError }
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { agentSupportMessageCreateSchema } from "@/lib/validations/agent-portal";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -89,7 +90,10 @@ export async function POST(request: NextRequest, ctx: RouteContext) {
     if (error) return apiInternalError(error, "agent/support/[id]/messages insert");
 
     // Update ticket status
-    await supabase.from("agent_support_tickets").update({ status: "awaiting_reply" }).eq("id", id);
+    await bestEffortWrite(
+      supabase.from("agent_support_tickets").update({ status: "awaiting_reply" }).eq("id", id),
+      "agent_support_tickets update — 返信後のステータス",
+    );
 
     return apiJson({ message: msg }, { status: 201 });
   } catch (e) {

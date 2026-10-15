@@ -6,6 +6,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { withCronLock } from "@/lib/cron/lock";
 import { escapeHtml } from "@/lib/sanitize";
 import { sendEmail } from "@/lib/email/sendEmail";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 
@@ -162,14 +163,17 @@ async function runBillingCron(supabase: ReturnType<typeof createServiceRoleAdmin
         const sent = await sendReminderEmail(customer.email, `[${subjectShop}] お支払いのお願い: ${subjectDoc}`, html);
 
         // Log notification
-        await supabase.from("notification_logs").insert({
-          tenant_id: inv.tenant_id,
-          type: "overdue_reminder",
-          target_type: "invoice",
-          target_id: inv.id,
-          recipient_email: customer.email,
-          status: sent ? "sent" : "failed",
-        });
+        await bestEffortWrite(
+          supabase.from("notification_logs").insert({
+            tenant_id: inv.tenant_id,
+            type: "overdue_reminder",
+            target_type: "invoice",
+            target_id: inv.id,
+            recipient_email: customer.email,
+            status: sent ? "sent" : "failed",
+          }),
+          "notification_logs insert (runBillingCron)",
+        );
 
         if (sent) remindersSent++;
       }
@@ -242,14 +246,17 @@ async function runBillingCron(supabase: ReturnType<typeof createServiceRoleAdmin
           html,
         );
 
-        await supabase.from("notification_logs").insert({
-          tenant_id: inv.tenant_id,
-          type: "due_soon",
-          target_type: "invoice",
-          target_id: inv.id,
-          recipient_email: customer.email,
-          status: sent ? "sent" : "failed",
-        });
+        await bestEffortWrite(
+          supabase.from("notification_logs").insert({
+            tenant_id: inv.tenant_id,
+            type: "due_soon",
+            target_type: "invoice",
+            target_id: inv.id,
+            recipient_email: customer.email,
+            status: sent ? "sent" : "failed",
+          }),
+          "notification_logs insert (runBillingCron)",
+        );
 
         if (sent) remindersSent++;
       }

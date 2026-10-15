@@ -3,6 +3,7 @@ import { getStripeClient } from "@/lib/stripe/client";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/email/sendEmail";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 const REWARD_PER_LESSON = 500; // JPY per qualifying lesson
 const QUALIFY_AVG = 4.0;
@@ -158,10 +159,13 @@ export async function applyStripeCredit(rewardId: string): Promise<ApplyResult> 
 
   if (!reward.tenant_id) {
     // platform コンテンツ (tenant_id=null) はスキップ
-    await supabase
-      .from("academy_creator_rewards")
-      .update({ status: "skipped", notes: "platform content: no tenant" })
-      .eq("id", rewardId);
+    await bestEffortWrite(
+      supabase
+        .from("academy_creator_rewards")
+        .update({ status: "skipped", notes: "platform content: no tenant" })
+        .eq("id", rewardId),
+      "academy_creator_rewards update — skipped の記録",
+    );
     return { ok: false, reason: "no_stripe_customer", detail: "platform content has no tenant" };
   }
 
@@ -172,10 +176,13 @@ export async function applyStripeCredit(rewardId: string): Promise<ApplyResult> 
     .maybeSingle();
 
   if (!tenant?.stripe_customer_id) {
-    await supabase
-      .from("academy_creator_rewards")
-      .update({ status: "skipped", notes: "no stripe_customer_id" })
-      .eq("id", rewardId);
+    await bestEffortWrite(
+      supabase
+        .from("academy_creator_rewards")
+        .update({ status: "skipped", notes: "no stripe_customer_id" })
+        .eq("id", rewardId),
+      "academy_creator_rewards update — skipped の記録",
+    );
     return { ok: false, reason: "no_stripe_customer" };
   }
 
@@ -197,14 +204,23 @@ export async function applyStripeCredit(rewardId: string): Promise<ApplyResult> 
       { idempotencyKey: `academy-reward:${rewardId}` },
     );
 
-    await supabase
-      .from("academy_creator_rewards")
-      .update({
-        status: "applied",
-        stripe_credit_id: txn.id,
-        applied_at: new Date().toISOString(),
-      })
-      .eq("id", rewardId);
+    // **ここで throw してはいけない。** クレジットは Stripe で既に付与済みで、
+    // 同じ try の catch が status を `failed` にしてしまう（＝付与済みなのに失敗の記録が残り、
+    // 手で付与し直すと二重付与になる）。/code-review #1306 の指摘。
+    // 記録の失敗は失敗として**ログに出す**に留め、付与済みであることを壊さない。
+    // 再実行時は idempotencyKey `academy-reward:<id>` が Stripe 側の二重付与を止める。
+    await bestEffortWrite(
+      supabase
+        .from("academy_creator_rewards")
+        .update({
+          status: "applied",
+          stripe_credit_id: txn.id,
+          applied_at: new Date().toISOString(),
+        })
+        .eq("id", rewardId),
+      "academy_creator_rewards update — applied の記録。失敗すると Stripe には付与済みなのに台帳が pending のまま残る",
+      { rewardId, stripeCreditId: txn.id },
+    );
 
     logger.info("[rewards] stripe credit applied", { rewardId, txnId: txn.id });
     return { ok: true, stripe_credit_id: txn.id };
@@ -212,7 +228,10 @@ export async function applyStripeCredit(rewardId: string): Promise<ApplyResult> 
     const detail = e instanceof Error ? e.message : String(e);
     logger.error("[rewards] stripe createBalanceTransaction failed", { rewardId, detail });
 
-    await supabase.from("academy_creator_rewards").update({ status: "failed", notes: detail }).eq("id", rewardId);
+    await bestEffortWrite(
+      supabase.from("academy_creator_rewards").update({ status: "failed", notes: detail }).eq("id", rewardId),
+      "academy_creator_rewards update — failed の記録",
+    );
 
     return { ok: false, reason: "error", detail };
   }

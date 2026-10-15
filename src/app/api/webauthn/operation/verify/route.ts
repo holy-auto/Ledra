@@ -13,6 +13,7 @@ import { getWebAuthnConfig } from "@/lib/webauthn/config";
 import { toWebAuthnCredential } from "@/lib/webauthn/credential";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 export const runtime = "nodejs";
 
 const schema = z.object({
@@ -28,7 +29,6 @@ const schema = z.object({
 export const POST = withCaller(
   async (req, { caller }) => {
     try {
-
       const parsed = schema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
       const response = parsed.data.response as unknown as AuthenticationResponseJSON;
@@ -98,11 +98,14 @@ export const POST = withCaller(
       if (insErr) return apiInternalError(insErr, "webauthn/operation/verify assertion");
 
       // カウンタ前進(同期パスキーは 0 のまま。best-effort)。
-      await admin
-        .from("operator_credentials")
-        .update({ counter: info.newCounter, last_used_at: new Date().toISOString() })
-        .eq("credential_id", cred.credential_id)
-        .eq("user_id", caller.userId);
+      await bestEffortWrite(
+        admin
+          .from("operator_credentials")
+          .update({ counter: info.newCounter, last_used_at: new Date().toISOString() })
+          .eq("credential_id", cred.credential_id)
+          .eq("user_id", caller.userId),
+        "operator_credentials update (POST)",
+      );
 
       return apiOk({
         verified: true,

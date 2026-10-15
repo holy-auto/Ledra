@@ -3,7 +3,7 @@ import { timingSafeEqual } from "crypto";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { sha256Hex } from "@/lib/customerPortalServer";
-import { apiJson, apiValidationError } from "@/lib/api/response";
+import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 const joinVerifyCodeSchema = z.object({
   email: z.string().trim().toLowerCase().email("メールアドレスと確認コードを入力してください").max(254),
@@ -63,10 +63,11 @@ export async function POST(req: Request) {
   }
 
   // Increment attempts
-  await supabase
+  const { error: attemptsErr } = await supabase
     .from("insurer_email_verifications")
     .update({ attempts: record.attempts + 1 })
     .eq("id", record.id);
+  if (attemptsErr) return apiInternalError(attemptsErr, "join/verify-code: increment attempts");
 
   // Verify code (compare hashed, constant-time — B-L4)
   const codeHash = sha256Hex(`insurer-otp|v1|${email}|${code}`);
@@ -77,7 +78,11 @@ export async function POST(req: Request) {
   }
 
   // Mark as verified
-  await supabase.from("insurer_email_verifications").update({ verified: true }).eq("id", record.id);
+  const { error: verifiedErr } = await supabase
+    .from("insurer_email_verifications")
+    .update({ verified: true })
+    .eq("id", record.id);
+  if (verifiedErr) return apiInternalError(verifiedErr, "join/verify-code: mark verified");
 
   return apiJson({ ok: true, verified: true });
 }

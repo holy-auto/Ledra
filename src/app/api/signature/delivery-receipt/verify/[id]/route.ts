@@ -15,6 +15,7 @@ import { apiOk, apiError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { verifySignature } from "@/lib/signature/crypto";
 import { buildExplorerUrl } from "@/lib/anchoring/providers/polygon";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 
@@ -118,13 +119,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const isValid = verifySignature(sess.signing_payload ?? "", sess.signature ?? "", keyRecord.public_key);
 
-    await supabase.from("signature_audit_logs").insert({
-      session_id: sess.id,
-      event: "verified",
-      ip,
-      user_agent: ua,
-      metadata: { is_valid: isValid, purpose: "delivery_receipt", verified_at: new Date().toISOString() },
-    });
+    await bestEffortWrite(
+      supabase.from("signature_audit_logs").insert({
+        session_id: sess.id,
+        event: "verified",
+        ip,
+        user_agent: ua,
+        metadata: { is_valid: isValid, purpose: "delivery_receipt", verified_at: new Date().toISOString() },
+      }),
+      "signature_audit_logs insert (GET)",
+    );
 
     const cert = receipt.certificates as { public_id?: string | null } | Array<{ public_id?: string | null }> | null;
     const certPublicId: string | null = Array.isArray(cert) ? (cert[0]?.public_id ?? null) : (cert?.public_id ?? null);

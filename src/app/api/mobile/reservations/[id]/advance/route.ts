@@ -12,6 +12,7 @@ import {
 import { sendProgressUpdate } from "@/lib/line/client";
 import { logger } from "@/lib/logger";
 import { notifyCustomerArrived } from "@/lib/watch/arrivalPush";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 
@@ -119,15 +120,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       if (existingLog?.started_at) {
         const durationSec = Math.round((now.getTime() - new Date(existingLog.started_at).getTime()) / 1000);
-        await caller.supabase
-          .from("reservation_step_logs")
-          .update({
-            completed_at: now.toISOString(),
-            duration_sec: durationSec,
-            completed_by: caller.userId,
-            note,
-          })
-          .eq("id", existingLog.id);
+        await bestEffortWrite(
+          caller.supabase
+            .from("reservation_step_logs")
+            .update({
+              completed_at: now.toISOString(),
+              duration_sec: durationSec,
+              completed_by: caller.userId,
+              note,
+            })
+            .eq("id", existingLog.id),
+          "reservation_step_logs update (POST)",
+        );
       }
     }
 
@@ -140,18 +144,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       nextStep = steps.find((s) => s.order === nextOrder) ?? null;
       if (!nextStep) return apiValidationError("次のステップが見つかりません");
 
-      await caller.supabase.from("reservation_step_logs").upsert(
-        {
-          reservation_id: id,
-          tenant_id: caller.tenantId,
-          step_key: nextStep.key,
-          step_order: nextStep.order,
-          step_label: nextStep.label,
-          started_at: now.toISOString(),
-          completed_at: null,
-          completed_by: null,
-        },
-        { onConflict: "reservation_id,step_key" },
+      await bestEffortWrite(
+        caller.supabase.from("reservation_step_logs").upsert(
+          {
+            reservation_id: id,
+            tenant_id: caller.tenantId,
+            step_key: nextStep.key,
+            step_order: nextStep.order,
+            step_label: nextStep.label,
+            started_at: now.toISOString(),
+            completed_at: null,
+            completed_by: null,
+          },
+          { onConflict: "reservation_id,step_key" },
+        ),
+        "reservation_step_logs upsert (POST)",
       );
 
       progressPct = Math.round(((nextOrder - 1) / totalSteps) * 100);
@@ -196,14 +203,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         ? `施工が完了しました（${visibleStep.label}）`
         : `${visibleStep.label}を開始しました`;
 
-      await caller.supabase.from("vehicle_histories").insert({
-        tenant_id: caller.tenantId,
-        vehicle_id: reservation.vehicle_id,
-        type: "progress_update",
-        title: historyLabel,
-        description: note ?? null,
-        performed_at: new Date().toISOString(),
-      });
+      await bestEffortWrite(
+        caller.supabase.from("vehicle_histories").insert({
+          tenant_id: caller.tenantId,
+          vehicle_id: reservation.vehicle_id,
+          type: "progress_update",
+          title: historyLabel,
+          description: note ?? null,
+          performed_at: new Date().toISOString(),
+        }),
+        "vehicle_histories insert (POST)",
+      );
 
       if (reservation.customer_id) {
         const { data: customer } = await caller.supabase

@@ -24,6 +24,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendServiceReminderEmail } from "@/lib/follow-up/email";
 import { sendMaintenanceLineMessage } from "@/lib/line/client";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 /** next_due_date が「今日から何日後まで」に入っていたら案内するか。 */
 const PRE_DAYS = 14;
@@ -251,22 +252,28 @@ export async function processServiceReminders(
     }
 
     // 結果に関わらず notified_at を立てて再送ループを防ぐ (失敗は logs で可視化)。
-    await supabase
-      .from("service_reminders")
-      .update({ notified_at: new Date().toISOString() })
-      .eq("id", r.id)
-      .eq("tenant_id", setting.tenant_id);
+    await bestEffortWrite(
+      supabase
+        .from("service_reminders")
+        .update({ notified_at: new Date().toISOString() })
+        .eq("id", r.id)
+        .eq("tenant_id", setting.tenant_id),
+      "service_reminders update (processServiceReminders)",
+    );
 
-    await supabase.from("notification_logs").insert({
-      tenant_id: setting.tenant_id,
-      type: "service_reminder",
-      target_type: "service_reminder",
-      target_id: r.id,
-      recipient_email: recipientEmail,
-      recipient_line_user_id: recipientLineUserId,
-      channel,
-      status: ok ? "sent" : "failed",
-    });
+    await bestEffortWrite(
+      supabase.from("notification_logs").insert({
+        tenant_id: setting.tenant_id,
+        type: "service_reminder",
+        target_type: "service_reminder",
+        target_id: r.id,
+        recipient_email: recipientEmail,
+        recipient_line_user_id: recipientLineUserId,
+        channel,
+        status: ok ? "sent" : "failed",
+      }),
+      "notification_logs insert (processServiceReminders)",
+    );
 
     if (ok) sent++;
   }

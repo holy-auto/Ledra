@@ -15,6 +15,7 @@
 import crypto from "crypto";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveStoreId } from "@/lib/stores/resolveStoreId";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 const DEFAULT_EXPIRY_DAYS = 7;
 const MAX_EXPIRY_DAYS = 30;
@@ -168,11 +169,10 @@ export async function validateIntakeToken(shortId: string, rawToken: string): Pr
 
   if (expired && status === "pending") {
     // lazy expire
-    await sb
-      .from("customer_intake_invitations")
-      .update({ status: "expired" })
-      .eq("id", data.id)
-      .eq("status", "pending");
+    await bestEffortWrite(
+      sb.from("customer_intake_invitations").update({ status: "expired" }).eq("id", data.id).eq("status", "pending"),
+      "customer_intake_invitations update (validateIntakeToken)",
+    );
     return {
       id: data.id,
       tenantId: data.tenant_id,
@@ -490,19 +490,22 @@ export async function submitAndProcessIntake(input: SubmitAndProcessInput): Prom
 
   if (!validation.ok) {
     // 手動レビュー行きで validation_issues を保存
-    await admin
-      .from("customer_intake_invitations")
-      .update({
-        validation_issues: {
-          issues: validation.issues,
-          ai_confidence: validation.ai.confidence,
-          ai_assessment: validation.ai.assessment,
-          ai_available: validation.ai.available,
-          checked_at: new Date().toISOString(),
-        },
-      })
-      .eq("id", input.intakeId)
-      .eq("tenant_id", input.tenantId);
+    await bestEffortWrite(
+      admin
+        .from("customer_intake_invitations")
+        .update({
+          validation_issues: {
+            issues: validation.issues,
+            ai_confidence: validation.ai.confidence,
+            ai_assessment: validation.ai.assessment,
+            ai_available: validation.ai.available,
+            checked_at: new Date().toISOString(),
+          },
+        })
+        .eq("id", input.intakeId)
+        .eq("tenant_id", input.tenantId),
+      "customer_intake_invitations update (submitAndProcessIntake)",
+    );
     return { status: "needs_review", issues: validation.issues };
   }
 
@@ -525,26 +528,29 @@ export async function submitAndProcessIntake(input: SubmitAndProcessInput): Prom
 
   // 部分一致 (email だけ / phone だけ) → 別人かもしれないので手動レビューへ
   if (!strongMatch && candidates.length > 0) {
-    await admin
-      .from("customer_intake_invitations")
-      .update({
-        validation_issues: {
-          issues: [
-            {
-              field: candidates[0].email ? "email" : "phone",
-              severity: "warning" as const,
-              message: "同じ連絡先の既存顧客が見つかったため、確認が必要です",
-              source: "rule" as const,
-            },
-          ],
-          ai_confidence: validation.ai.confidence,
-          ai_assessment: validation.ai.assessment,
-          ai_available: validation.ai.available,
-          checked_at: new Date().toISOString(),
-        },
-      })
-      .eq("id", input.intakeId)
-      .eq("tenant_id", input.tenantId);
+    await bestEffortWrite(
+      admin
+        .from("customer_intake_invitations")
+        .update({
+          validation_issues: {
+            issues: [
+              {
+                field: candidates[0].email ? "email" : "phone",
+                severity: "warning" as const,
+                message: "同じ連絡先の既存顧客が見つかったため、確認が必要です",
+                source: "rule" as const,
+              },
+            ],
+            ai_confidence: validation.ai.confidence,
+            ai_assessment: validation.ai.assessment,
+            ai_available: validation.ai.available,
+            checked_at: new Date().toISOString(),
+          },
+        })
+        .eq("id", input.intakeId)
+        .eq("tenant_id", input.tenantId),
+      "customer_intake_invitations update (submitAndProcessIntake)",
+    );
     return {
       status: "needs_review",
       issues: [
@@ -584,7 +590,7 @@ export async function submitAndProcessIntake(input: SubmitAndProcessInput): Prom
       .eq("tenant_id", input.tenantId);
     if (upErr) throw upErr;
 
-    await admin
+    const { error: completeErr } = await admin
       .from("customer_intake_invitations")
       .update({
         status: "completed",
@@ -596,6 +602,7 @@ export async function submitAndProcessIntake(input: SubmitAndProcessInput): Prom
       .eq("id", input.intakeId)
       .eq("tenant_id", input.tenantId)
       .eq("status", "submitted");
+    if (completeErr) throw new Error(`intake 招待の完了記録に失敗: ${completeErr.message}`);
 
     // 注意: 公開フォームの自動マージ (既存顧客への strong-match) では LINE を自動連携しない。
     // email + phone を知る第三者が公開 intake URL から既存顧客に自分の LINE を紐づけ、
@@ -622,7 +629,7 @@ export async function submitAndProcessIntake(input: SubmitAndProcessInput): Prom
     .single();
   if (cErr || !created) throw cErr ?? new Error("failed to create customer");
 
-  await admin
+  const { error: completeErr2 } = await admin
     .from("customer_intake_invitations")
     .update({
       status: "completed",
@@ -634,6 +641,7 @@ export async function submitAndProcessIntake(input: SubmitAndProcessInput): Prom
     .eq("id", input.intakeId)
     .eq("tenant_id", input.tenantId)
     .eq("status", "submitted");
+  if (completeErr2) throw new Error(`intake 招待の完了記録に失敗: ${completeErr2.message}`);
 
   await maybeLinkLineUserForIntake(input.tenantId, input.intakeId, created.id);
   return { status: "auto_completed", customerId: created.id, merged: false };

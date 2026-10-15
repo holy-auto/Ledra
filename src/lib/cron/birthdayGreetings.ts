@@ -16,6 +16,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendBirthdayEmail } from "@/lib/follow-up/email";
 import { sendBirthdayLineMessage } from "@/lib/line/client";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export type BirthdaySetting = {
   tenant_id: string;
@@ -164,16 +165,19 @@ export async function processBirthdayGreetings(
       recipientEmail = customer.email;
     }
 
-    await supabase.from("notification_logs").insert({
-      tenant_id: setting.tenant_id,
-      type: notifType,
-      target_type: "customer",
-      target_id: customer.id,
-      recipient_email: recipientEmail,
-      recipient_line_user_id: recipientLineUserId,
-      channel,
-      status: ok ? "sent" : "failed",
-    });
+    await bestEffortWrite(
+      supabase.from("notification_logs").insert({
+        tenant_id: setting.tenant_id,
+        type: notifType,
+        target_type: "customer",
+        target_id: customer.id,
+        recipient_email: recipientEmail,
+        recipient_line_user_id: recipientLineUserId,
+        channel,
+        status: ok ? "sent" : "failed",
+      }),
+      "notification_logs insert (processBirthdayGreetings)",
+    );
 
     if (ok) sent++;
   }

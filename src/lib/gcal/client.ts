@@ -3,6 +3,7 @@ import { OAuth2Client } from "google-auth-library";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
 import { readGcalRefreshToken, writeGcalRefreshToken } from "@/lib/security/tenantPrivateSecrets";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 /**
  * Google Calendar 連携クライアント
@@ -84,14 +85,17 @@ async function logSync(
   errorMessage?: string,
 ) {
   const { admin } = createTenantScopedAdmin(tenantId);
-  await admin.from("gcal_sync_log").insert({
-    tenant_id: tenantId,
-    reservation_id: reservationId,
-    action,
-    gcal_event_id: gcalEventId,
-    status,
-    error_message: errorMessage,
-  });
+  await bestEffortWrite(
+    admin.from("gcal_sync_log").insert({
+      tenant_id: tenantId,
+      reservation_id: reservationId,
+      action,
+      gcal_event_id: gcalEventId,
+      status,
+      error_message: errorMessage,
+    }),
+    "gcal_sync_log insert (logSync)",
+  );
 }
 
 type ReservationData = {
@@ -158,7 +162,10 @@ export async function syncCreateEvent(tenantId: string, reservation: Reservation
 
     if (eventId) {
       const { admin } = createTenantScopedAdmin(tenantId);
-      await admin.from("reservations").update({ gcal_event_id: eventId }).eq("id", reservation.id);
+      await bestEffortWrite(
+        admin.from("reservations").update({ gcal_event_id: eventId }).eq("id", reservation.id),
+        "reservations update (syncCreateEvent)",
+      );
     }
 
     await logSync(tenantId, reservation.id, "create", eventId, "success");
@@ -191,7 +198,10 @@ export async function syncUpdateEvent(
     if (status === 404 || status === 410) {
       console.info(`[gcal] update: event ${reservation.gcal_event_id} not found (${status}), clearing gcal_event_id`);
       const { admin } = createTenantScopedAdmin(tenantId);
-      await admin.from("reservations").update({ gcal_event_id: null }).eq("id", reservation.id);
+      await bestEffortWrite(
+        admin.from("reservations").update({ gcal_event_id: null }).eq("id", reservation.id),
+        "reservations update (syncUpdateEvent)",
+      );
       await logSync(
         tenantId,
         reservation.id,
@@ -567,7 +577,10 @@ export async function pushReservationsToCalendar(tenantId: string, dateFrom: str
 
         const eventId = res.data.id ?? null;
         if (eventId) {
-          await admin.from("reservations").update({ gcal_event_id: eventId }).eq("id", r.id);
+          await bestEffortWrite(
+            admin.from("reservations").update({ gcal_event_id: eventId }).eq("id", r.id),
+            "reservations update (pushReservationsToCalendar)",
+          );
         }
 
         await logSync(tenantId, r.id, "create", eventId, "success");
