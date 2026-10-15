@@ -4,6 +4,14 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-15 施工店の設備・資格の「検証済み」を、施工店からは変えられないようにした
+
+- 内容: マイグレーション `20261015122000_workshop_profiles_lock_verified_at.sql`。`workshop_capability_profiles` の書き込み前トリガーで、利用者のクライアント（authenticated / anon）からの書き込みでは
+  `verified_at` を据え置く（新規は NULL）。付けられるのはサーバー側（service role）と運営の SQL だけ。施工店は他の列（設備・資格の中身）はこれまでどおり更新できる。
+- 以前は、施工店向けの書き込みポリシーが列を絞っておらず、施工店が PostgREST から自分の行に `verified_at` を付けられた（メーカー画面に「検証済み」と出る）。
+- テスト: `scripts/replay/checks/workshop_profiles_verified_at_lock.sql`（`npm run check:migrations` の最後に走る）。施工店の更新・新規作成で `verified_at` が変わらないこと、他の列は更新できること、service role は付けられること。
+  マイグレーションを外すと落ちるのを確認済み。
+
 ## 2026-10-13 メーカーは施工店の設備・資格を閲覧だけに（編集をなくした）
 
 - 内容: メーカーポータルの実証テスト「設備・資格」タブから、編集ボタンと編集フォームを消した。メーカー向けの個別ルート `/api/manufacturer/field-test/workshop-profiles/[tenantId]` は
