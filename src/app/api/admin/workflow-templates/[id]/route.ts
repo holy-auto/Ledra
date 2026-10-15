@@ -1,5 +1,3 @@
-
-
 import { apiJson, apiForbidden, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { workflowTemplateUpdateSchema } from "@/lib/validations/workflow-template";
 
@@ -10,7 +8,6 @@ export const dynamic = "force-dynamic";
 export const PUT = withCaller<{ id: string }>(
   async (req, { caller, supabase, params }) => {
     try {
-
       const { id } = params;
       const parsed = workflowTemplateUpdateSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
@@ -39,12 +36,13 @@ export const PUT = withCaller<{ id: string }>(
       }
       if (fields.is_default === true) {
         // is_default = true にする場合、同一service_typeの他テンプレートを解除
-        await supabase
+        const { error: demoteErr } = await supabase
           .from("workflow_templates")
           .update({ is_default: false })
           .eq("tenant_id", caller.tenantId)
           .eq("service_type", existing.service_type)
           .neq("id", id);
+        if (demoteErr) return apiInternalError(demoteErr, "workflow-templates PUT: demote previous default");
       }
 
       const { data, error } = await supabase
@@ -71,7 +69,6 @@ export const PUT = withCaller<{ id: string }>(
 export const DELETE = withCaller<{ id: string }>(
   async (_req, { caller, supabase, params }) => {
     try {
-
       const { id } = params;
 
       // プラットフォームテンプレートは削除不可
@@ -89,7 +86,11 @@ export const DELETE = withCaller<{ id: string }>(
         return apiForbidden();
       }
 
-      const { error } = await supabase.from("workflow_templates").delete().eq("id", id).eq("tenant_id", caller.tenantId);
+      const { error } = await supabase
+        .from("workflow_templates")
+        .delete()
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId);
 
       if (error) {
         return apiInternalError(error, "workflow-templates DELETE");

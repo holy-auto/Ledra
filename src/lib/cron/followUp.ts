@@ -25,6 +25,7 @@ import {
   daysUntilJstDate,
   type FollowUpTriggerType,
 } from "@/lib/ai/followUpContent";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 /** follow_up_settings テーブルの行型 */
 export type FollowUpSetting = {
@@ -156,16 +157,19 @@ async function sendNotification(
     console.error(`[follow-up] notification error (${params.notifType}):`, err);
   }
 
-  await supabase.from("notification_logs").insert({
-    tenant_id: params.tenantId,
-    type: params.notifType,
-    target_type: "certificate",
-    target_id: params.certId,
-    recipient_email: channel === "email" ? (params.customerEmail ?? null) : null,
-    recipient_line_user_id: recipientLineUserId,
-    channel,
-    status: sent ? "sent" : "failed",
-  });
+  await bestEffortWrite(
+    supabase.from("notification_logs").insert({
+      tenant_id: params.tenantId,
+      type: params.notifType,
+      target_type: "certificate",
+      target_id: params.certId,
+      recipient_email: channel === "email" ? (params.customerEmail ?? null) : null,
+      recipient_line_user_id: recipientLineUserId,
+      channel,
+      status: sent ? "sent" : "failed",
+    }),
+    "notification_logs insert (sendNotification)",
+  );
 
   return sent;
 }
@@ -229,14 +233,17 @@ export async function processExpiryReminders(
         expiryDate: cert.expiry_date,
         daysUntil: days,
       });
-      await supabase.from("notification_logs").insert({
-        tenant_id: setting.tenant_id,
-        type: notifType,
-        target_type: "certificate",
-        target_id: cert.id,
-        recipient_email: customer.email,
-        status: ok ? "sent" : "failed",
-      });
+      await bestEffortWrite(
+        supabase.from("notification_logs").insert({
+          tenant_id: setting.tenant_id,
+          type: notifType,
+          target_type: "certificate",
+          target_id: cert.id,
+          recipient_email: customer.email,
+          status: ok ? "sent" : "failed",
+        }),
+        "notification_logs insert (processExpiryReminders)",
+      );
       if (ok) sent++;
     }
   }
@@ -629,14 +636,17 @@ export async function processSeasonalProposals(
         subject: content.emailSubject,
         bodyHtml: content.emailBody,
       });
-      await supabase.from("notification_logs").insert({
-        tenant_id: setting.tenant_id,
-        type: notifType,
-        target_type: "customer",
-        target_id: customer.id,
-        recipient_email: customer.email,
-        status: ok ? "sent" : "failed",
-      });
+      await bestEffortWrite(
+        supabase.from("notification_logs").insert({
+          tenant_id: setting.tenant_id,
+          type: notifType,
+          target_type: "customer",
+          target_id: customer.id,
+          recipient_email: customer.email,
+          status: ok ? "sent" : "failed",
+        }),
+        "notification_logs insert (processSeasonalProposals)",
+      );
       if (ok) sent++;
     }
 
@@ -857,16 +867,19 @@ export async function processMaintenanceReminders(
         recipientEmail = customer.email;
       }
 
-      await supabase.from("notification_logs").insert({
-        tenant_id: setting.tenant_id,
-        type: notifType,
-        target_type: "certificate",
-        target_id: cert.id,
-        recipient_email: recipientEmail,
-        recipient_line_user_id: recipientLineUserId,
-        channel,
-        status: ok ? "sent" : "failed",
-      });
+      await bestEffortWrite(
+        supabase.from("notification_logs").insert({
+          tenant_id: setting.tenant_id,
+          type: notifType,
+          target_type: "certificate",
+          target_id: cert.id,
+          recipient_email: recipientEmail,
+          recipient_line_user_id: recipientLineUserId,
+          channel,
+          status: ok ? "sent" : "failed",
+        }),
+        "notification_logs insert (processMaintenanceReminders)",
+      );
       if (ok) sent++;
     }
   }

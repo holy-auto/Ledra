@@ -18,6 +18,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import { reportCookieName, REPORT_ACCESS_VALIDITY_DAYS } from "@/lib/vehicleReport/access";
 import { recordVehicleReportRevenueShares } from "@/lib/vehicleReport/revenueShare";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,7 +88,7 @@ export async function GET(req: NextRequest) {
       // Only a pending order becomes paid — never re-pay one already flipped to
       // `refunded` (webhook ordering safety; guarded atomically on status).
       expiresAtIso = new Date(Date.now() + REPORT_ACCESS_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
-      await admin
+      const { error: paidErr } = await admin
         .from("vehicle_report_orders")
         .update({
           status: "paid",
@@ -98,13 +99,14 @@ export async function GET(req: NextRequest) {
         })
         .eq("id", order.id)
         .eq("status", "pending");
+      if (paidErr) { console.error("[vehicle-report/unlock] mark paid failed:", paidErr); return NextResponse.redirect(`${vehicleUrl}?pending=1`, { status: 303 }); }
     } else if (order.status === "paid" && !expiresAtIso) {
       // Already paid but missing the access window (rare) → backfill only.
       expiresAtIso = new Date(Date.now() + REPORT_ACCESS_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
-      await admin
+      await bestEffortWrite(admin
         .from("vehicle_report_orders")
         .update({ expires_at: expiresAtIso, updated_at: new Date().toISOString() })
-        .eq("id", order.id);
+        .eq("id", order.id), "vehicle_report_orders update — 支払い済み注文の閲覧期限の後埋め");
     }
 
     // Book the merchant revenue-share accrual (fallback for webhook lag).

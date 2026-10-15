@@ -4,6 +4,7 @@ import { getStripeClient } from "@/lib/stripe/client";
 import { createClient } from "@/lib/supabase/server";
 import { apiJson, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 
@@ -172,13 +173,16 @@ export async function GET() {
 
     // Update local state if changed
     if (onboarded !== agentProfile.stripe_onboarding_done) {
-      await supabase
-        .from("agents")
-        .update({
-          stripe_onboarding_done: onboarded,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", agentId);
+      await bestEffortWrite(
+        supabase
+          .from("agents")
+          .update({
+            stripe_onboarding_done: onboarded,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", agentId),
+        "agents update — Connect の onboarded 同期",
+      );
     }
 
     return apiJson({

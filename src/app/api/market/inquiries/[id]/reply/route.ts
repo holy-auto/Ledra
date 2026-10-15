@@ -1,5 +1,3 @@
-
-
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { notifyInquiryReply } from "@/lib/market/email";
 import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
@@ -12,7 +10,6 @@ export const dynamic = "force-dynamic";
 export const POST = withCaller<{ id: string }>(
   async (req, { caller, params }) => {
     try {
-
       const { id: inquiryId } = params;
       const { admin } = createTenantScopedAdmin(caller.tenantId);
       const parsed = inquiryReplySchema.safeParse(await req.json().catch(() => ({})));
@@ -55,11 +52,12 @@ export const POST = withCaller<{ id: string }>(
       // UPDATE by seller_tenant_id to prevent any TOCTOU / future refactor
       // from writing into another tenant's row.
       if (inquiry.status === "new") {
-        await admin
+        const { error: respondedErr } = await admin
           .from("market_inquiries")
           .update({ status: "responded", updated_at: new Date().toISOString() })
           .eq("id", inquiryId)
           .eq("seller_tenant_id", caller.tenantId);
+        if (respondedErr) return apiInternalError(respondedErr, "market/inquiries reply: status responded");
       }
 
       // Notify buyer via email when seller replies (non-blocking)
@@ -106,7 +104,6 @@ export const POST = withCaller<{ id: string }>(
 export const GET = withCaller<{ id: string }>(
   async (_req, { caller, params }) => {
     try {
-
       const { id: inquiryId } = params;
       const { admin } = createTenantScopedAdmin(caller.tenantId);
 

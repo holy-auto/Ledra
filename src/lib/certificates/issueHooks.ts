@@ -18,6 +18,7 @@ import { completeDraftPartInstallationsForReservation } from "@/lib/parts/instal
 import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { queueRatingRequest } from "@/lib/cron/ratingRequests";
 import { logger } from "@/lib/logger";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export interface CertificateIssuedParams {
   tenantId: string;
@@ -129,11 +130,14 @@ async function triggerPostIssueFollowUp(params: CertificateIssuedParams): Promis
   if (existing?.length) return;
 
   // post_issue 通知ログを queued で記録 (実送信は cron)
-  await admin.from("notification_logs").insert({
-    tenant_id: params.tenantId,
-    type: "post_issue",
-    target_type: "certificate",
-    target_id: params.certificateId,
-    status: "queued",
-  });
+  await bestEffortWrite(
+    admin.from("notification_logs").insert({
+      tenant_id: params.tenantId,
+      type: "post_issue",
+      target_type: "certificate",
+      target_id: params.certificateId,
+      status: "queued",
+    }),
+    "notification_logs insert (triggerPostIssueFollowUp)",
+  );
 }

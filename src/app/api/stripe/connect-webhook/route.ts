@@ -7,6 +7,7 @@ import { captureSecurityEvent } from "@/lib/observability/sentry";
 import { escapeHtml } from "@/lib/sanitize";
 import { executeOrderPayout } from "@/lib/orders/orderPayout";
 import { sendEmail } from "@/lib/email/sendEmail";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 async function sendPayoutFailedEmail(params: {
   to: string;
@@ -271,19 +272,25 @@ export async function POST(req: NextRequest) {
         const transfer = event.data.object as Stripe.Transfer;
 
         // stripe_connect_transfers のステータスを paid に
-        await supabase
-          .from("stripe_connect_transfers")
-          .update({ status: "paid", transferred_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-          .eq("stripe_transfer_id", transfer.id);
+        await bestEffortWrite(
+          supabase
+            .from("stripe_connect_transfers")
+            .update({ status: "paid", transferred_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+            .eq("stripe_transfer_id", transfer.id),
+          "stripe_connect_transfers update (transfer.paid) — 失敗すると台帳と Stripe が食い違う",
+        );
 
         // agent_commissions にも反映（source_type=commission の場合）
         const meta = transfer.metadata as Record<string, string> | null;
         const isCommission = meta?.source_type === "commission" && !!meta?.source_id;
         if (isCommission) {
-          await supabase
-            .from("agent_commissions")
-            .update({ status: "paid", paid_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-            .eq("id", meta!.source_id);
+          await bestEffortWrite(
+            supabase
+              .from("agent_commissions")
+              .update({ status: "paid", paid_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+              .eq("id", meta!.source_id),
+            "agent_commissions update (transfer.paid) — 失敗すると台帳と Stripe が食い違う",
+          );
           console.info("connect-webhook: agent commission paid", {
             commissionId: meta!.source_id,
             transferId: transfer.id,
@@ -292,10 +299,13 @@ export async function POST(req: NextRequest) {
 
         // 車両レポート収益の還元送金が着金 → 台帳を paid に確定
         if (meta?.source_type === "vehicle_report" && meta?.source_id) {
-          await supabase
-            .from("vehicle_report_revenue_shares")
-            .update({ status: "paid", paid_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-            .eq("id", meta.source_id);
+          await bestEffortWrite(
+            supabase
+              .from("vehicle_report_revenue_shares")
+              .update({ status: "paid", paid_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+              .eq("id", meta.source_id),
+            "vehicle_report_revenue_shares update (transfer.paid) — 失敗すると台帳と Stripe が食い違う",
+          );
           console.info("connect-webhook: vehicle report share paid", {
             shareId: meta.source_id,
             transferId: transfer.id,
@@ -360,18 +370,24 @@ export async function POST(req: NextRequest) {
       case "transfer.reversed": {
         const transfer = event.data.object as Stripe.Transfer;
 
-        await supabase
-          .from("stripe_connect_transfers")
-          .update({ status: "reversed", reversed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-          .eq("stripe_transfer_id", transfer.id);
+        await bestEffortWrite(
+          supabase
+            .from("stripe_connect_transfers")
+            .update({ status: "reversed", reversed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+            .eq("stripe_transfer_id", transfer.id),
+          "stripe_connect_transfers update (transfer.reversed) — 失敗すると台帳と Stripe が食い違う",
+        );
 
         // コミッション送金が取消された場合は failed に戻す
         const meta = transfer.metadata as Record<string, string> | null;
         if (meta?.source_type === "commission" && meta?.source_id) {
-          await supabase
-            .from("agent_commissions")
-            .update({ status: "failed", updated_at: new Date().toISOString() })
-            .eq("id", meta.source_id);
+          await bestEffortWrite(
+            supabase
+              .from("agent_commissions")
+              .update({ status: "failed", updated_at: new Date().toISOString() })
+              .eq("id", meta.source_id),
+            "agent_commissions update (transfer.reversed) — 失敗すると台帳と Stripe が食い違う",
+          );
           console.info("connect-webhook: agent commission reversed", {
             commissionId: meta.source_id,
             transferId: transfer.id,
@@ -423,10 +439,17 @@ export async function POST(req: NextRequest) {
         // stripe_connect_transfers の fee_amount を更新（charge から transfer を特定）
         const chargeId = typeof fee.charge === "string" ? fee.charge : (fee.charge?.id ?? null);
         if (chargeId) {
-          await supabase
-            .from("stripe_connect_transfers")
-            .update({ stripe_application_fee_id: fee.id, fee_amount: fee.amount, updated_at: new Date().toISOString() })
-            .eq("stripe_payment_intent_id", chargeId);
+          await bestEffortWrite(
+            supabase
+              .from("stripe_connect_transfers")
+              .update({
+                stripe_application_fee_id: fee.id,
+                fee_amount: fee.amount,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("stripe_payment_intent_id", chargeId),
+            "stripe_connect_transfers update (application_fee.created) — 手数料が台帳に載らない",
+          );
         }
 
         console.info("connect-webhook: application_fee created", {
@@ -530,7 +553,10 @@ export async function POST(req: NextRequest) {
           .maybeSingle();
 
         if (tenant && tenant.stripe_connect_onboarded !== onboarded) {
-          await supabase.from("tenants").update({ stripe_connect_onboarded: onboarded }).eq("id", tenant.id);
+          await bestEffortWrite(
+            supabase.from("tenants").update({ stripe_connect_onboarded: onboarded }).eq("id", tenant.id),
+            "tenants update (account.updated) — Connect の onboarded 同期",
+          );
           console.info("connect-webhook: tenant connect synced", { accountId: account.id, onboarded });
 
           // オンボーディング完了 → pending_onboarding の案件を自動送金 + 通知
@@ -583,7 +609,10 @@ export async function POST(req: NextRequest) {
           .maybeSingle();
 
         if (agent && agent.stripe_onboarding_done !== onboarded) {
-          await supabase.from("agents").update({ stripe_onboarding_done: onboarded }).eq("id", agent.id);
+          await bestEffortWrite(
+            supabase.from("agents").update({ stripe_onboarding_done: onboarded }).eq("id", agent.id),
+            "agents update (account.updated) — Connect の onboarded 同期",
+          );
           console.info("connect-webhook: agent connect synced", { accountId: account.id, onboarded });
 
           if (onboarded && agent.id) {

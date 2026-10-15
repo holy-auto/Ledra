@@ -1,4 +1,3 @@
-
 import { z } from "zod";
 
 import { apiJson, apiInternalError, apiValidationError } from "@/lib/api/response";
@@ -30,7 +29,6 @@ export const dynamic = "force-dynamic";
 export const GET = withCaller(
   async (_req, { caller, supabase }) => {
     try {
-
       const { data } = await supabase
         .from("follow_up_settings")
         .select(
@@ -62,7 +60,6 @@ export const GET = withCaller(
 export const PUT = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const rawBody = await req.json().catch(() => ({}));
       const parsed = followUpSettingsSchema.safeParse(rawBody);
       if (!parsed.success) {
@@ -88,9 +85,14 @@ export const PUT = withCaller(
         .maybeSingle();
 
       if (existing) {
-        await supabase.from("follow_up_settings").update(row).eq("tenant_id", caller.tenantId);
+        const { error: updErr } = await supabase
+          .from("follow_up_settings")
+          .update(row)
+          .eq("tenant_id", caller.tenantId);
+        if (updErr) return apiInternalError(updErr, "follow-up-settings PUT: update");
       } else {
-        await supabase.from("follow_up_settings").insert({ ...row, id: crypto.randomUUID() });
+        const { error: insErr } = await supabase.from("follow_up_settings").insert({ ...row, id: crypto.randomUUID() });
+        if (insErr) return apiInternalError(insErr, "follow-up-settings PUT: insert");
       }
 
       return apiJson({ ok: true });

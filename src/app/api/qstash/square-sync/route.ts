@@ -6,6 +6,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { enqueueSquareSyncNextPage } from "@/lib/qstash/publish";
 import { buildSecretWrite, readSecret } from "@/lib/crypto/tenantSecrets";
 import type { SquareApiOrder, SquareSearchOrdersResponse } from "@/types/square";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 const squareSyncSchema = z.object({
   job_id: z.string().uuid(),
@@ -46,14 +47,17 @@ async function refreshSquareToken(
     const data = await res.json();
     const accessTokenPayload = await buildSecretWrite(data.access_token);
     const refreshTokenPayload = await buildSecretWrite(data.refresh_token);
-    await admin
-      .from("square_connections")
-      .update({
-        square_access_token_ciphertext: accessTokenPayload.ciphertext,
-        square_refresh_token_ciphertext: refreshTokenPayload.ciphertext,
-        square_token_expires_at: data.expires_at,
-      })
-      .eq("id", connectionId);
+    await bestEffortWrite(
+      admin
+        .from("square_connections")
+        .update({
+          square_access_token_ciphertext: accessTokenPayload.ciphertext,
+          square_refresh_token_ciphertext: refreshTokenPayload.ciphertext,
+          square_token_expires_at: data.expires_at,
+        })
+        .eq("id", connectionId),
+      "square_connections update — 更新したトークンの保存。失敗すると次回の同期が通らなくなる",
+    );
 
     return data.access_token as string;
   } catch (e) {
@@ -71,7 +75,10 @@ async function handler(req: NextRequest) {
 
   const { admin } = createTenantScopedAdmin(tenant_id);
 
-  await admin.from("square_sync_runs").update({ status: "processing" }).eq("id", job_id);
+  await bestEffortWrite(
+    admin.from("square_sync_runs").update({ status: "processing" }).eq("id", job_id),
+    "square_sync_runs update (handler)",
+  );
 
   try {
     // 接続情報と sync_run の日付範囲を並行取得 (encrypted columns only)
@@ -92,14 +99,17 @@ async function handler(req: NextRequest) {
     ]);
 
     if (!conn) {
-      await admin
-        .from("square_sync_runs")
-        .update({
-          status: "failed",
-          error_message: "No active Square connection",
-          finished_at: new Date().toISOString(),
-        })
-        .eq("id", job_id);
+      await bestEffortWrite(
+        admin
+          .from("square_sync_runs")
+          .update({
+            status: "failed",
+            error_message: "No active Square connection",
+            finished_at: new Date().toISOString(),
+          })
+          .eq("id", job_id),
+        "square_sync_runs update (handler)",
+      );
       return apiJson({ error: "No connection" }, { status: 400 });
     }
 
@@ -118,14 +128,17 @@ async function handler(req: NextRequest) {
     if (expiresAt <= new Date()) {
       const refreshed = await refreshSquareToken(conn.id as string, refreshToken, admin);
       if (!refreshed) {
-        await admin
-          .from("square_sync_runs")
-          .update({
-            status: "failed",
-            error_message: "Token refresh failed",
-            finished_at: new Date().toISOString(),
-          })
-          .eq("id", job_id);
+        await bestEffortWrite(
+          admin
+            .from("square_sync_runs")
+            .update({
+              status: "failed",
+              error_message: "Token refresh failed",
+              finished_at: new Date().toISOString(),
+            })
+            .eq("id", job_id),
+          "square_sync_runs update (handler)",
+        );
         return apiJson({ error: "Token refresh failed" }, { status: 401 });
       }
       accessToken = refreshed;
@@ -165,23 +178,29 @@ async function handler(req: NextRequest) {
     });
 
     if (res.status === 401) {
-      await admin
-        .from("square_sync_runs")
-        .update({
-          status: "failed",
-          errors_json: [{ message: "Token expired" }],
-          finished_at: new Date().toISOString(),
-        })
-        .eq("id", job_id);
+      await bestEffortWrite(
+        admin
+          .from("square_sync_runs")
+          .update({
+            status: "failed",
+            errors_json: [{ message: "Token expired" }],
+            finished_at: new Date().toISOString(),
+          })
+          .eq("id", job_id),
+        "square_sync_runs update (handler)",
+      );
       // G6: 401 検出 → connection を error 状態にして管理画面で再認可を促す
-      await admin
-        .from("square_connections")
-        .update({
-          status: "error",
-          last_error_reason: "token_expired",
-          last_error_at: new Date().toISOString(),
-        })
-        .eq("tenant_id", tenant_id);
+      await bestEffortWrite(
+        admin
+          .from("square_connections")
+          .update({
+            status: "error",
+            last_error_reason: "token_expired",
+            last_error_at: new Date().toISOString(),
+          })
+          .eq("tenant_id", tenant_id),
+        "square_connections update (handler)",
+      );
       return apiJson({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -263,17 +282,20 @@ async function handler(req: NextRequest) {
       // （Square の cursor は不透明で長大なのでキーには使わない）。
       await enqueueSquareSyncNextPage({ job_id, tenant_id, cursor: nextCursor, page: page + 1 });
 
-      await admin
-        .from("square_sync_runs")
-        .update({
-          status: "processing",
-          cursor: nextCursor,
-          orders_fetched: prevFetched + orders.length,
-          orders_imported: prevImported + imported,
-          orders_skipped: prevSkipped + skipped,
-          processed_count: prevProcessed + orders.length,
-        })
-        .eq("id", job_id);
+      await bestEffortWrite(
+        admin
+          .from("square_sync_runs")
+          .update({
+            status: "processing",
+            cursor: nextCursor,
+            orders_fetched: prevFetched + orders.length,
+            orders_imported: prevImported + imported,
+            orders_skipped: prevSkipped + skipped,
+            processed_count: prevProcessed + orders.length,
+          })
+          .eq("id", job_id),
+        "square_sync_runs update (handler)",
+      );
 
       console.info(`[square-sync] job=${job_id} page done fetched=${orders.length} cursor=${nextCursor}`);
 
@@ -281,39 +303,45 @@ async function handler(req: NextRequest) {
     }
 
     // 全ページ完了
-    await admin
-      .from("square_sync_runs")
-      .update({
-        status: "completed",
-        cursor: null,
-        orders_fetched: prevFetched + orders.length,
-        orders_imported: prevImported + imported,
-        orders_skipped: prevSkipped + skipped,
-        processed_count: prevProcessed + orders.length,
-        errors_json: [],
-        finished_at: new Date().toISOString(),
-      })
-      .eq("id", job_id);
+    await bestEffortWrite(
+      admin
+        .from("square_sync_runs")
+        .update({
+          status: "completed",
+          cursor: null,
+          orders_fetched: prevFetched + orders.length,
+          orders_imported: prevImported + imported,
+          orders_skipped: prevSkipped + skipped,
+          processed_count: prevProcessed + orders.length,
+          errors_json: [],
+          finished_at: new Date().toISOString(),
+        })
+        .eq("id", job_id),
+      "square_sync_runs update (handler)",
+    );
 
     // square_connections の last_synced_at を更新
-    await admin
-      .from("square_connections")
-      .update({ last_synced_at: new Date().toISOString() })
-      .eq("tenant_id", tenant_id);
+    await bestEffortWrite(
+      admin.from("square_connections").update({ last_synced_at: new Date().toISOString() }).eq("tenant_id", tenant_id),
+      "square_connections update (handler)",
+    );
 
     console.info(`[square-sync] job=${job_id} completed total_fetched=${prevFetched + orders.length}`);
 
     return apiJson({ success: true });
   } catch (e) {
     console.error("[square-sync] job failed:", e);
-    await admin
-      .from("square_sync_runs")
-      .update({
-        status: "failed",
-        error_message: e instanceof Error ? e.message : String(e),
-        finished_at: new Date().toISOString(),
-      })
-      .eq("id", job_id);
+    await bestEffortWrite(
+      admin
+        .from("square_sync_runs")
+        .update({
+          status: "failed",
+          error_message: e instanceof Error ? e.message : String(e),
+          finished_at: new Date().toISOString(),
+        })
+        .eq("id", job_id),
+      "square_sync_runs update (handler)",
+    );
     return apiJson({ error: "Job failed" }, { status: 500 });
   }
 }

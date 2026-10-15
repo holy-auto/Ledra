@@ -490,11 +490,12 @@ async function openReceiptAttempt(request: WorkRequestRow, userId: string): Prom
   if (!attempt) throw new Error("receipt attempt insert failed: attempt_no collision");
   // AC-014: 拒否した旧試行 → 新試行のリンク（旧側は上書きせず、後継 ID だけ足す）
   if (request.current_receipt_attempt_id) {
-    await db
+    const { error: supersedeErr } = await db
       .from("outsourced_receipt_attempts")
       .update({ superseded_by_attempt_id: attempt.id })
       .eq("id", request.current_receipt_attempt_id)
       .is("superseded_by_attempt_id", null);
+    if (supersedeErr) throw new Error(`旧受領試行への後継リンクに失敗: ${supersedeErr.message}`);
   }
   return attempt;
 }
@@ -505,7 +506,7 @@ async function openReceiptAttempt(request: WorkRequestRow, userId: string): Prom
  */
 async function markAttemptAccepted(attemptId: string, userId: string, input: TransitionInput): Promise<void> {
   const parsed = receivedPayloadSchema.safeParse(input.payload);
-  await admin()
+  const { error: acceptErr } = await admin()
     .from("outsourced_receipt_attempts")
     .update({
       result: "accepted",
@@ -517,6 +518,7 @@ async function markAttemptAccepted(attemptId: string, userId: string, input: Tra
     })
     .eq("id", attemptId)
     .eq("result", "pending");
+  if (acceptErr) throw new Error(`受領試行の accepted 記録に失敗: ${acceptErr.message}`);
 }
 
 /** 呼び出し側（サービス内）だけが渡せる文脈。API の payload からは作れない。 */
@@ -647,16 +649,18 @@ export async function transitionWorkRequest(
   if (to === "AWAITING_HANDOVER") {
     // TR-002: 準備・引渡しの担当者と日時を部品側にも残す（未記入のものだけ）
     const now = new Date().toISOString();
-    await db
+    const { error: preparedErr } = await db
       .from("outsourced_supplied_parts")
       .update({ prepared_by: caller.userId, prepared_at: now })
       .eq("request_id", request.id)
       .is("prepared_at", null);
-    await db
+    if (preparedErr) throw new Error(`支給部品の準備記録に失敗: ${preparedErr.message}`);
+    const { error: handoverErr } = await db
       .from("outsourced_supplied_parts")
       .update({ handed_over_by: caller.userId, handed_over_at: now, handover_comment: input.reason ?? null })
       .eq("request_id", request.id)
       .is("handed_over_at", null);
+    if (handoverErr) throw new Error(`支給部品の引渡し記録に失敗: ${handoverErr.message}`);
   }
   if (to === "RECEIPT_IN_REVIEW") {
     // TR-003 / TR-032 / TR-041: 受領確認中へ入るたびに新しい受領試行（拒否前の記録は上書きしない）
@@ -668,7 +672,7 @@ export async function transitionWorkRequest(
   if (to === "RECEIVED" && receiptAttemptId) await markAttemptAccepted(receiptAttemptId, caller.userId, input);
   if (to === "RECEIPT_REJECTED" && receiptAttemptId) {
     // TR-015 / AC-013: この受領試行の終端
-    await db
+    const { error: rejectErr } = await db
       .from("outsourced_receipt_attempts")
       .update({
         result: "rejected",
@@ -678,6 +682,7 @@ export async function transitionWorkRequest(
       })
       .eq("id", receiptAttemptId)
       .eq("result", "pending");
+    if (rejectErr) throw new Error(`受領試行の rejected 記録に失敗: ${rejectErr.message}`);
   }
   if (
     to === "QUANTITY_SHORTAGE" ||

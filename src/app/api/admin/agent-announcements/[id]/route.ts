@@ -39,7 +39,8 @@ export const DELETE = withCaller<{ id: string }>(
     const admin = createPlatformScopedAdmin(
       "agent-announcements/[id] — platform-wide agent operations (no tenant scope)",
     );
-    await admin.from("agent_announcements").delete().eq("id", id);
+    const { error: delErr } = await admin.from("agent_announcements").delete().eq("id", id);
+    if (delErr) return apiInternalError(delErr, "agent-announcements DELETE");
     return apiJson({ ok: true });
   },
   { routeName: "agent-announcements/[id] DELETE" },

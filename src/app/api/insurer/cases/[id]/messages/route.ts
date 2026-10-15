@@ -6,6 +6,7 @@ import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { sendCaseMessageNotification } from "@/lib/insurer/notifications";
 import { insurerCaseMessageSchema } from "@/lib/validations/insurer-case";
 import { recordInsurerAccessLog } from "@/lib/insurer/auditActions";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const runtime = "nodejs";
 
@@ -219,7 +220,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
             if (notifications.length > 0) {
               try {
-                await admin.from("insurer_notifications").insert(notifications);
+                await bestEffortWrite(
+                  admin.from("insurer_notifications").insert(notifications),
+                  "insurer_notifications insert (POST)",
+                );
               } catch {
                 // insurer_notifications table may not exist yet — silently skip
                 console.warn("[mention-notification] insurer_notifications table may not exist yet, skipping.");

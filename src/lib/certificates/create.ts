@@ -25,6 +25,7 @@ import { recordCoatingConsumableInstallations } from "@/lib/parts/coatingIntegra
 import { issueCaptureNonce } from "@/lib/certificates/captureNonce";
 import { parseDamageMap } from "@/lib/certificates/damageMap";
 import { parseMileageKm } from "@/lib/maintenance/mileage";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export type CreateCertResult =
   | { ok: true; public_id: string; status: "draft"; photo_required: boolean; capture_nonce: string | null }
@@ -285,11 +286,14 @@ export async function createCertificate(
       .eq("tenant_id", tenantId)
       .maybeSingle();
     if (currentVehicle && !currentVehicle.customer_id) {
-      await supabase
-        .from("vehicles")
-        .update({ customer_id: resolvedCustomerId })
-        .eq("id", resolvedVehicleId)
-        .eq("tenant_id", tenantId);
+      await bestEffortWrite(
+        supabase
+          .from("vehicles")
+          .update({ customer_id: resolvedCustomerId })
+          .eq("id", resolvedVehicleId)
+          .eq("tenant_id", tenantId),
+        "vehicles update — 車両への顧客の紐付け（証明書の発行自体は完了している）",
+      );
     }
   }
 
@@ -580,15 +584,18 @@ export async function createCertificate(
 
     await Promise.all(sideEffects);
   } else if (resolvedVehicleId) {
-    await supabase.from("vehicle_histories").insert({
-      tenant_id: tenantId,
-      vehicle_id: resolvedVehicleId,
-      type: "certificate_issued",
-      title: "施工証明書を発行",
-      description: `Public ID: ${public_id}`,
-      performed_at: now,
-      certificate_id: null,
-    });
+    await bestEffortWrite(
+      supabase.from("vehicle_histories").insert({
+        tenant_id: tenantId,
+        vehicle_id: resolvedVehicleId,
+        type: "certificate_issued",
+        title: "施工証明書を発行",
+        description: `Public ID: ${public_id}`,
+        performed_at: now,
+        certificate_id: null,
+      }),
+      "vehicle_histories insert (createCertificate)",
+    );
   }
 
   // 発行 (active 化) 時の副作用 (保険案件 enqueue / フォローアップ) は、

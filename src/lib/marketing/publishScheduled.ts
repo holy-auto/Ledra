@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { syncExternalPost } from "./externalPublish";
 import { isExternalSite } from "./externalSites";
 import type { SiteContentType } from "@/lib/validations/site-content-post";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 /**
  * 公開日時（published_at）を過ぎた予約投稿（status='scheduled'）を 'published' へ自動昇格する。
@@ -57,7 +58,10 @@ export async function publishScheduledPosts(): Promise<{ published: number; slug
       published_at: row.published_at,
     });
     if (!synced.ok) {
-      await admin.from("site_content_posts").update({ status: "draft" }).eq("id", row.id);
+      await bestEffortWrite(
+        admin.from("site_content_posts").update({ status: "draft" }).eq("id", row.id),
+        "site_content_posts update (publishScheduledPosts)",
+      );
       reverted.add(row.id);
       logger.error("scheduled external post failed; reverted to draft", {
         slug: row.slug,

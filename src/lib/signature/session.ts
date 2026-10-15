@@ -9,6 +9,7 @@ import { randomUUID } from "crypto";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { computeDocumentHash } from "./hash";
 import type { CreateSignatureSessionInput, SignatureSession } from "./types";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 /** 署名セッションの有効時間（環境変数で上書き可、デフォルト72時間） */
 const EXPIRES_HOURS = Number(process.env.SIGNATURE_SESSION_EXPIRES_HOURS ?? 72);
@@ -61,16 +62,19 @@ export async function createSignatureSession(input: CreateSignatureSessionInput)
   }
 
   // 監査ログ: セッション作成
-  await supabase.from("signature_audit_logs").insert({
-    session_id: data.id,
-    event: "session_created",
-    metadata: {
-      certificate_id: input.certificate_id,
-      tenant_id: input.tenant_id,
-      expires_at: expiresAt,
-      document_hash: documentHash,
-    },
-  });
+  await bestEffortWrite(
+    supabase.from("signature_audit_logs").insert({
+      session_id: data.id,
+      event: "session_created",
+      metadata: {
+        certificate_id: input.certificate_id,
+        tenant_id: input.tenant_id,
+        expires_at: expiresAt,
+        document_hash: documentHash,
+      },
+    }),
+    "signature_audit_logs insert (createSignatureSession)",
+  );
 
   return data as SignatureSession;
 }
@@ -175,12 +179,15 @@ export async function expireOldSessions(): Promise<number> {
 
   // 各期限切れセッションに監査ログを記録
   if (data && data.length > 0) {
-    await supabase.from("signature_audit_logs").insert(
-      data.map((s: { id: string }) => ({
-        session_id: s.id,
-        event: "expired",
-        metadata: { expired_at: new Date().toISOString() },
-      })),
+    await bestEffortWrite(
+      supabase.from("signature_audit_logs").insert(
+        data.map((s: { id: string }) => ({
+          session_id: s.id,
+          event: "expired",
+          metadata: { expired_at: new Date().toISOString() },
+        })),
+      ),
+      "signature_audit_logs insert (expireOldSessions)",
     );
   }
 
@@ -214,16 +221,19 @@ export async function cancelPendingSessions(certificateId: string, reason: strin
     .select("id");
 
   if (sessions && sessions.length > 0) {
-    await supabase.from("signature_audit_logs").insert(
-      sessions.map((s: { id: string }) => ({
-        session_id: s.id,
-        event: "cancelled",
-        metadata: {
-          reason,
-          cancelled_by: cancelledBy,
-          cancelled_at: new Date().toISOString(),
-        },
-      })),
+    await bestEffortWrite(
+      supabase.from("signature_audit_logs").insert(
+        sessions.map((s: { id: string }) => ({
+          session_id: s.id,
+          event: "cancelled",
+          metadata: {
+            reason,
+            cancelled_by: cancelledBy,
+            cancelled_at: new Date().toISOString(),
+          },
+        })),
+      ),
+      "signature_audit_logs insert (cancelPendingSessions)",
     );
   }
 }

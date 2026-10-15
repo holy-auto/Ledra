@@ -17,6 +17,7 @@ import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 const academyFeedbackSchema = z.object({
   certificate_id: z.string().uuid("certificate_id が必要です"),
 });
@@ -113,15 +114,18 @@ export const POST = withCaller(
         .eq("user_id", caller.userId)
         .single();
 
-      await admin.from("academy_progress").upsert(
-        {
-          tenant_id: caller.tenantId,
-          user_id: caller.userId,
-          certs_reviewed: (existing?.certs_reviewed ?? 0) + 1,
-          last_activity_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "tenant_id,user_id" },
+      await bestEffortWrite(
+        admin.from("academy_progress").upsert(
+          {
+            tenant_id: caller.tenantId,
+            user_id: caller.userId,
+            certs_reviewed: (existing?.certs_reviewed ?? 0) + 1,
+            last_activity_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "tenant_id,user_id" },
+        ),
+        "academy_progress upsert (POST)",
       );
 
       usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ok" });

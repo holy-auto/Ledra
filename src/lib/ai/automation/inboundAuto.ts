@@ -41,6 +41,7 @@ import {
   decideInboundCommit,
 } from "./orchestrator";
 import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 const AUTO_EXTRACT_ENDPOINT = "/api/line/webhook#auto-extract";
 
@@ -194,11 +195,14 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       if (existingId) {
         resolvedCustomerId = existingId;
         if (messageId) {
-          await admin
-            .from("customer_messages")
-            .update({ customer_id: existingId })
-            .eq("id", messageId)
-            .eq("tenant_id", tenantId);
+          await bestEffortWrite(
+            admin
+              .from("customer_messages")
+              .update({ customer_id: existingId })
+              .eq("id", messageId)
+              .eq("tenant_id", tenantId),
+            "customer_messages update (maybeAutoProcessInboundMessage)",
+          );
         }
       }
     }
@@ -321,11 +325,14 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
             phone: result.phone?.trim() || undefined,
           });
           if (resolvedCustomerId && messageId) {
-            await admin
-              .from("customer_messages")
-              .update({ customer_id: resolvedCustomerId })
-              .eq("id", messageId)
-              .eq("tenant_id", tenantId);
+            await bestEffortWrite(
+              admin
+                .from("customer_messages")
+                .update({ customer_id: resolvedCustomerId })
+                .eq("id", messageId)
+                .eq("tenant_id", tenantId),
+              "customer_messages update (maybeAutoProcessInboundMessage)",
+            );
           }
           if (resolvedCustomerId) {
             // 人の確認なしで顧客を自動作成した事実を監査ログに残す。

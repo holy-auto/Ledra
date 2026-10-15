@@ -5,6 +5,7 @@ import { findTenantIdByExternalApiKey } from "@/lib/security/tenantPrivateSecret
 import { apiOk, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { maybeAutoDetectThicknessForReports } from "@/lib/ai/automation/thicknessAuto";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 const nexptgEnvelopeSchema = z.object({
   data: z
@@ -331,8 +332,10 @@ export async function POST(req: NextRequest) {
       processedReportIds.push(reportId);
 
       // 測定値 / タイヤは「最新に置き換える」方針（再送時の重複防止）
-      await admin.from("thickness_measurements").delete().eq("report_id", reportId);
-      await admin.from("thickness_tires").delete().eq("report_id", reportId);
+      const { error: delMeasErr } = await admin.from("thickness_measurements").delete().eq("report_id", reportId);
+      if (delMeasErr) return apiInternalError(delMeasErr, "nexptg sync: replace measurements (delete)");
+      const { error: delTireErr } = await admin.from("thickness_tires").delete().eq("report_id", reportId);
+      if (delTireErr) return apiInternalError(delTireErr, "nexptg sync: replace tires (delete)");
 
       const measurementRows = flattenMeasurements(r, tenantId, reportId);
       if (measurementRows.length > 0) {
@@ -362,14 +365,17 @@ export async function POST(req: NextRequest) {
 
       // 車両履歴に記録（紐付いた車両がある場合のみ）
       if (vehicleId) {
-        await admin.from("vehicle_histories").insert({
-          tenant_id: tenantId,
-          vehicle_id: vehicleId,
-          type: "thickness_measurement",
-          title: `膜厚測定（NexPTG）: ${r.name ?? externalReportId}`,
-          description: r.comment ?? null,
-          performed_at: toTimestamp(r.date) ?? new Date().toISOString(),
-        });
+        await bestEffortWrite(
+          admin.from("vehicle_histories").insert({
+            tenant_id: tenantId,
+            vehicle_id: vehicleId,
+            type: "thickness_measurement",
+            title: `膜厚測定（NexPTG）: ${r.name ?? externalReportId}`,
+            description: r.comment ?? null,
+            performed_at: toTimestamp(r.date) ?? new Date().toISOString(),
+          }),
+          "vehicle_histories insert (POST)",
+        );
       }
     }
 

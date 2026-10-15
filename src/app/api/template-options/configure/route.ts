@@ -1,4 +1,3 @@
-
 import { z } from "zod";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
@@ -18,7 +17,6 @@ const saveConfigSchema = z.object({
 export const GET = withCaller(
   async (_req, { caller, supabase }) => {
     try {
-
       const { data: configs } = await supabase
         .from("tenant_template_configs")
         // Explicit column list — avoid leaking platform_template_id, updated_at,
@@ -98,11 +96,12 @@ export const POST = withCaller(
       if (error) throw error;
 
       // subscription に template_config_id を紐付け
-      await admin
+      const { error: linkErr } = await admin
         .from("tenant_option_subscriptions")
         .update({ template_config_id: created.id })
         .eq("tenant_id", caller.tenantId)
         .eq("option_type", optionType);
+      if (linkErr) return apiInternalError(linkErr, "template-options/configure: link template_config_id");
 
       return apiOk({ config_id: created.id, created: true });
     } catch (e) {

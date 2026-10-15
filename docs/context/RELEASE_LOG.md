@@ -6,7 +6,7 @@
 
 ## 2026-10-15 施工店の設備・資格の「検証済み」を、施工店からは変えられないようにした
 
-- 内容: マイグレーション `20261015122000_workshop_profiles_lock_verified_at.sql`。`workshop_capability_profiles` の書き込み前トリガーで、利用者のクライアント（authenticated / anon）からの書き込みでは
+- 内容: マイグレーション `20261015123933_workshop_profiles_lock_verified_at.sql`。`workshop_capability_profiles` の書き込み前トリガーで、利用者のクライアント（authenticated / anon）からの書き込みでは
   `verified_at` と `verified_by`（誰が検証したか）を据え置く（新規は NULL）。付けられるのはサーバー側（service role）と運営の SQL だけ。施工店は他の列（設備・資格の中身）はこれまでどおり更新できる。
 - 以前は、施工店向けの書き込みポリシーが列を絞っておらず、施工店が PostgREST から自分の行に `verified_at` を付けられた（メーカー画面に「検証済み」と出る）。
 - テスト: `scripts/replay/checks/workshop_profiles_verified_at_lock.sql`（`npm run check:migrations` の最後に走る）。施工店の更新・新規作成・upsert（画面と同じ `ON CONFLICT DO UPDATE`）で `verified_at`・`verified_by` が変わらないこと、他の列は更新できること、service role は付けられること。
@@ -201,6 +201,37 @@
 - 見るには メーカーポータルのアカウントが要る（デモ用は `npm run demo:setup-manufacturer` で作る `demo@manufacturer.ledra.test`）。
   ポータルのサイドバーはデスクトップ幅のみ（スマホではナビが出ない、既存と同じ）。
 
+## 2026-10-12 無音で失敗していた DB 書き込み 276 件を全部直し、CI で 0 件を維持する
+
+- 内容: Supabase の書き込みは失敗を例外ではなく `{ error }` で返すので、戻り値を受け取らない書き込みは
+  「画面には成功、DB には何も無い」になる。`src/` 全体の **276 件**（検出器で実測）を1件ずつ読んで分けた。
+  - **207 件**: 落ちても利用者の操作は完了している書き込み（監査ログ・通知・キャッシュ・同期の進捗・補償処理）
+    → 共有関数 `bestEffortWrite(op, "理由")`（`src/lib/db/bestEffortWrite.ts`）で包み、**失敗を構造化ログに出す**。
+  - **69 件**: 失敗が利用者の操作の成否を変える書き込み（送金の記録・署名の確定・OTP の消費・請求書番号の stamp・
+    設定の保存・DELETE の成否）→ エラーを受け取って API のエラーを返す／throw する。
+- 件数の出典: 全体は検出器（`npm run check:db-writes`）が修正前の `src` で数えた **276 件**。
+  内訳の 207 は `grep -rho "await bestEffortWrite(" src | wc -l` の実数、69 はその差。
+  **コミットメッセージには途中の数（204 / 72）が残っている** —— 最後の3件を包んだ後に数え直した。
+- 再発防止: `npm run check:db-writes`（`scripts/check-unchecked-db-writes.mjs`）を CI の並列検査に追加。
+  **除外リストは置かない**（0 件まで直し切ってある）。検出器自身の自己検査を 10 件同梱（`--selftest`）。
+- 検証: tsc / vitest 全体 / eslint / 検出器の自己検査。検出器は修正前の `hearings/route.ts` を検出し、修正後は 0 件。
+  最初の版は正規表現が広すぎて「関数に渡している書き込み」を誤検出し、自動修正で3文を壊した（戻して条件を狭め、
+  その誤検出を自己検査に追加した。MISTAKE_LEDGER `M-20261012-loose-write-detector-broke-three-statements`）。
+
+## 2026-10-12 ヒアリング連携を1トランザクションにし、完了ボタンが通るようにした
+
+- 内容（DECISION_LOG 2026-10-12・代表判断「全部修正しろ」）:
+  - 顧客・車両・ヒアリング更新の3つを DB 関数 `public.link_hearing_customer` にまとめた
+    （`supabase/migrations/20261015122028_link_hearing_customer_transaction.sql`）。SECURITY INVOKER なので
+    テナント分離は今までどおり RLS が見る。`for update` で二度押しを直列化し、車両だけは副トランザクションで
+    best-effort（失敗コードを返して画面に出す）。ルートは 60 行減って関数を1回呼ぶだけになった。
+  - `hearings.status` の zod の値を本番 DB の CHECK（`draft` / `completed` / `linked`）に揃えた。
+    **導入ヒアリングの「完了」ボタンは `completed` が zod に無く、常に 400 で失敗していた。**
+- 検証: `scripts/replay/checks/link_hearing_customer.sql` が、authenticated に降りた上で
+  正常系・二度押し・**原子性**（ヒアリング更新を落としたら顧客も残らない）・車両だけの失敗・
+  **閲覧者の遮断**の5つを行を入れて確かめる。**4通りの壊し方**（車両の例外節を外す／`security definer` にする／
+  冪等の分岐を外す／ヒアリング更新の失敗を飲み込む）で、検査がそれぞれ落ちることを確認した。
+  ルート側のテストは9件→6件（原子性と二度押しは SQL 側の検査に移した）。
 
 ## 2026-10-10 施工写真の保存先（`assets` バケット）を非公開にする（写真の非公開化 ③）
 
@@ -233,6 +264,22 @@
 - 検証: 新テスト `src/app/api/cron/__tests__/tenantDiscoveryUuid.test.ts`（修正前 3 件失敗 → 修正後 3 件成功）、polygon-signer のテストに cause 表示の 1 件追加。tsc・eslint・prettier 緑。
 - 対象: LINE 連携で AI 自動化を opt-in しているテナント（全業種）。
 
+## 2026-10-10 ヒアリング→顧客連携のエラー握り潰しを直した（3件）
+
+- 内容: `src/app/api/admin/hearings/route.ts` の `action: "link_customer"` で捨てていたエラーを3件とも扱う。
+  ヒアリング取得の DB エラーは 500（0行の `PGRST116` だけ 404）、車両 insert の失敗は `vehicle_error` を返して
+  `HearingClient` が画面に出す（顧客連携自体は完遂させる）、ヒアリング更新の失敗は 500。
+  `logger.error` にヒアリング ID と顧客 ID を残すので、どの行が車両なしで残ったか後から引ける。
+- あわせて直した: PUT の部分更新で**送っていない18列が `null` で消える**原因（`src/lib/validations/hearing.ts` の
+  `.optional().transform((v) => v || null)`）を外した。現状これを踏む呼び出し元は無い（実測 2026-10-10）が、`status` を1つ直せば発火する。
+- 検証: 新規テスト `src/app/api/admin/hearings/__tests__/link-customer.test.ts`（5件）。
+  修正前のコードに対して**5件のうち4件が落ちる**ことを確認（残り1件は正常系）。ほかに tsc / eslint / prettier。
+- `/code-review` の指摘（#1306・5件）のうち4件を取り込んだ: 連携を**冪等**にした（ヒアリングに `customer_id` /
+  `vehicle_id` が付いていれば作り直さない。500 のあと押し直すと顧客が二重に増えていた
+  —— MISTAKE_LEDGER `M-20261010-comment-claimed-the-500-prevents-double-registration`）、
+  ヒアリング更新の 500 でも ID をログに残す、明示的な `null` は 500 ではなく 400 で返す（`.nullable()` を外した）、
+  メーカーも車種も無いヒアリングで「車両は作っていない」を画面に出す。残り1件は `hearings.status` の語彙（下記）。
+- 直っていないこと: 同じ形（戻り値を受け取らない DB 書き込み）が `src/` に 276 件ある（OPEN_QUESTIONS 2026-10-10）。
 
 ## 2026-10-10 入金済の納品書・請求書を合算請求書に入れられないようにした
 

@@ -9,6 +9,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { buildSecretWrite, readSecret } from "@/lib/crypto/tenantSecrets";
 import { logger } from "@/lib/logger";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 const API_BASE = "https://connect.squareup.com";
 /** Square の API バージョン。QR コード決済（`payment_type: QR_CODE`）を含む。 */
@@ -53,14 +54,17 @@ async function refreshToken(
   const data = (await res.json()) as { access_token: string; refresh_token: string; expires_at: string };
   const access = await buildSecretWrite(data.access_token);
   const refresh = await buildSecretWrite(data.refresh_token);
-  await admin
-    .from("square_connections")
-    .update({
-      square_access_token_ciphertext: access.ciphertext,
-      square_refresh_token_ciphertext: refresh.ciphertext,
-      square_token_expires_at: data.expires_at,
-    })
-    .eq("id", connectionId);
+  await bestEffortWrite(
+    admin
+      .from("square_connections")
+      .update({
+        square_access_token_ciphertext: access.ciphertext,
+        square_refresh_token_ciphertext: refresh.ciphertext,
+        square_token_expires_at: data.expires_at,
+      })
+      .eq("id", connectionId),
+    "square_connections update — 更新したトークンの保存。失敗すると次回の同期が通らなくなる",
+  );
   return data.access_token;
 }
 

@@ -5,6 +5,7 @@ import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { apiOk, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 const templateOrderUpdateSchema = z.object({
   order_id: z.string().uuid("order_id と status は必須です。"),
   status: z.string().trim().min(1, "order_id と status は必須です。").max(50),
@@ -93,14 +94,17 @@ export const PUT = withCaller(
       if (error) throw error;
 
       // ログ記録
-      await admin.from("template_order_logs").insert({
-        order_id,
-        action: "status_change",
-        from_status: current.status,
-        to_status: status,
-        actor: `admin:${caller.userId}`,
-        message: notes ?? null,
-      });
+      await bestEffortWrite(
+        admin.from("template_order_logs").insert({
+          order_id,
+          action: "status_change",
+          from_status: current.status,
+          to_status: status,
+          actor: `admin:${caller.userId}`,
+          message: notes ?? null,
+        }),
+        "template_order_logs insert (PUT)",
+      );
 
       return apiOk({ order_id, status });
     } catch (e) {

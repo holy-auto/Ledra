@@ -1,17 +1,16 @@
-
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 import { apiJson, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { servicePackageUpdateSchema } from "@/lib/validations/service-package";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 export const dynamic = "force-dynamic";
 
 // ─── GET: パッケージ詳細 ───
 export const GET = withCaller<{ id: string }>(
   async (_req, { caller, params }) => {
     try {
-
       const { id } = params;
       const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -46,7 +45,6 @@ export const GET = withCaller<{ id: string }>(
 export const PATCH = withCaller<{ id: string }>(
   async (req, { caller, params }) => {
     try {
-
       const { id } = params;
       const body = await req.json().catch(() => ({}));
       const parsed = servicePackageUpdateSchema.safeParse(body);
@@ -126,7 +124,10 @@ export const PATCH = withCaller<{ id: string }>(
                 sort_order: r.sort_order as number,
                 is_archived: r.is_archived as boolean,
               }));
-              await admin.from("service_package_items").insert(restoreRows);
+              await bestEffortWrite(
+                admin.from("service_package_items").insert(restoreRows),
+                "service_package_items insert (PATCH)",
+              );
             }
             return apiInternalError(insErr, "service-package-items reinsert");
           }
@@ -145,7 +146,6 @@ export const PATCH = withCaller<{ id: string }>(
 export const DELETE = withCaller<{ id: string }>(
   async (_req, { caller, params }) => {
     try {
-
       const { id } = params;
       const { admin } = createTenantScopedAdmin(caller.tenantId);
 

@@ -1,4 +1,3 @@
-
 import { z } from "zod";
 import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
@@ -7,6 +6,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 const shopCheckoutSchema = z.object({
   items: z
@@ -130,7 +130,10 @@ export const POST = withCaller(
           metadata: { tenant_id: caller.tenantId },
         });
         customerId = c.id;
-        await admin.from("tenants").update({ stripe_customer_id: customerId }).eq("id", caller.tenantId);
+        await bestEffortWrite(
+          admin.from("tenants").update({ stripe_customer_id: customerId }).eq("id", caller.tenantId),
+          "tenants update (POST)",
+        );
       }
 
       // 注文番号生成
@@ -160,7 +163,19 @@ export const POST = withCaller(
         ...item,
         order_id: order.id,
       }));
-      await supabase.from("shop_order_items").insert(itemsToInsert);
+      const { error: itemsErr } = await supabase.from("shop_order_items").insert(itemsToInsert);
+      if (itemsErr) {
+        // 明細の無い仮オーダーを残さない（Stripe 失敗側と同じ後片付け・/code-review #1306）。
+        await bestEffortWrite(
+          admin.from("shop_order_items").delete().eq("order_id", order.id),
+          "shop_order_items delete — 明細 insert 失敗の後片付け",
+        );
+        await bestEffortWrite(
+          admin.from("shop_orders").update({ status: "checkout_failed" }).eq("id", order.id),
+          "shop_orders update — 明細 insert 失敗の後片付け",
+        );
+        return apiInternalError(itemsErr, "shop checkout: order items insert");
+      }
 
       // Step 2: Stripe Checkout Session作成
       const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL;
@@ -185,16 +200,23 @@ export const POST = withCaller(
         // Stripe 失敗 → 仮レコードをクリーンアップして孤立オーダーを防ぐ。
         // shop_order_items も合わせて削除しないと、failed order に対する
         // items が DB に残って在庫集計などが歪む。
-        await admin.from("shop_order_items").delete().eq("order_id", order.id);
-        await admin.from("shop_orders").update({ status: "checkout_failed" }).eq("id", order.id);
+        await bestEffortWrite(
+          admin.from("shop_order_items").delete().eq("order_id", order.id),
+          "shop_order_items delete (POST)",
+        );
+        await bestEffortWrite(
+          admin.from("shop_orders").update({ status: "checkout_failed" }).eq("id", order.id),
+          "shop_orders update (POST)",
+        );
         throw stripeErr;
       }
 
       // Step 3: セッションID・ステータスを記録
-      await admin
+      const { error: sessionRecErr } = await admin
         .from("shop_orders")
         .update({ stripe_checkout_session_id: session.id, status: "pending_payment" })
         .eq("id", order.id);
+      if (sessionRecErr) return apiInternalError(sessionRecErr, "shop checkout: record session id");
 
       return apiOk({ url: session.url, order_id: order.id, order_number: orderNumber });
     } catch (e) {

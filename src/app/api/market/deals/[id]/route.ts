@@ -1,5 +1,3 @@
-
-
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { notifyDealStatusChanged } from "@/lib/market/email";
 import { apiJson, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
@@ -18,7 +16,6 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 export const PATCH = withCaller<{ id: string }>(
   async (req, { caller, params }) => {
     try {
-
       const { id: dealId } = params;
       const { admin } = createTenantScopedAdmin(caller.tenantId);
       const parsed = dealStatusUpdateSchema.safeParse(await req.json().catch(() => ({})));
@@ -71,15 +68,17 @@ export const PATCH = withCaller<{ id: string }>(
 
       // Update vehicle status based on deal outcome
       if (newStatus === "completed") {
-        await admin
+        const { error: soldErr } = await admin
           .from("market_vehicles")
           .update({ status: "sold", updated_at: new Date().toISOString() })
           .eq("id", deal.vehicle_id);
+        if (soldErr) return apiInternalError(soldErr, "market/deals PATCH: vehicle sold");
       } else if (newStatus === "cancelled") {
-        await admin
+        const { error: relistErr } = await admin
           .from("market_vehicles")
           .update({ status: "listed", updated_at: new Date().toISOString() })
           .eq("id", deal.vehicle_id);
+        if (relistErr) return apiInternalError(relistErr, "market/deals PATCH: vehicle relisted");
       }
 
       // Notify both parties of status change (non-blocking)
