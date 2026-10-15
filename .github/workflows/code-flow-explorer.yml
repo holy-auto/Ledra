@@ -21,6 +21,19 @@ jobs:
         run: node --check scripts/code-flow-explorer.mjs
       - name: Generate repository code map
         run: node scripts/code-flow-explorer.mjs artifacts/code-flow-explorer.html
+      - name: Verify generated HTML and graph payload
+        run: |
+          test -s artifacts/code-flow-explorer.html
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const html = fs.readFileSync("artifacts/code-flow-explorer.html", "utf8");
+            const m = html.match(/<script type="application\/json" id="payload">([\s\S]*?)<\/script>/);
+            if (!m) throw new Error("Graph payload missing");
+            const d = JSON.parse(m[1]);
+            if (!Array.isArray(d.files) || !Array.isArray(d.links) || !Array.isArray(d.calls)) throw new Error("Invalid graph schema");
+            if (d.files.length === 0) throw new Error("No source files found");
+            console.log("Verified", d.files.length, "files,", d.links.length, "imports,", d.calls.length, "calls");
+          '
       - uses: actions/upload-artifact@v4
         with:
           name: ledra-code-flow-explorer
