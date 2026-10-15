@@ -7,6 +7,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { buildCspHeader } from "@/lib/security/csp";
 import { UTM_COOKIE, utmToPersist } from "@/lib/marketing/utm";
 import { requireAal2OrResponse, requiresAal2ForRequest } from "@/lib/auth/stepUpGuard";
+import { demoWriteGuard } from "@/lib/demoWriteGuard";
 
 /**
  * Generate a cryptographically random nonce for CSP script-src.
@@ -191,6 +192,13 @@ export async function proxy(request: NextRequest) {
   if (csrfResponse) {
     csrfResponse.headers.set("x-request-id", requestId);
     return csrfResponse;
+  }
+
+  // 公開デモアカウントの書き込みは、API・サーバーアクションのどちらもここで断る（lib/demoWriteGuard.ts）
+  const demoDenied = await demoWriteGuard(request);
+  if (demoDenied) {
+    demoDenied.headers.set("x-request-id", requestId);
+    return demoDenied;
   }
 
   // One fail-closed step-up boundary for every platform-wide operation,
