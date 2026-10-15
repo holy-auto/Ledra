@@ -4,6 +4,16 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-13 モバイルの起動オープニングを作り直して再開
+
+- 内容: `remotion/MobileIntro.tsx` を新設。L マークを SVG で描き直し、紺の土台 → 真鍮の L → 留め具・リベット → 光の走り → LEDRA の順に組み上がる
+  2.0 秒の動画を 1080x1920 / 60fps で書き出す（`apps/mobile/assets/ledra-intro.mp4`、212KB（旧 267KB）、BT.709・TV レンジ、音声なし）。
+  0 フレーム目は背景 #d6d0cb の単色でスプラッシュと継ぎ目なし。動きは 1.17 秒（70 フレーム）で止まり、以降は最終フレームと差分なし（連番 PNG で確認）。
+- `scripts/build-mobile-intro.sh` はマスター動画の切り出しをやめ、Remotion から書き出すように変えた（引数不要）。アイコン・スプラッシュの生成は同じで、
+  再生成しても差分なし。LEDRA の文字は Cinzel 800（`public/fonts/Cinzel-800.woff2`、OFL のライセンス文を同梱）。
+- アプリ: 前日に入れた `INTRO_ENABLED = false` を外し、オープニング停止前の `_layout.tsx` に戻した。`introTiming.ts` のコメントを新しい素材に合わせた。
+- 確認: `apps/mobile` の `tsc --noEmit` と `npm test` が通ることを確認。実機での確認は未実施（ストアへの反映は次のビルドから）。
+
 ## 2026-10-13 デモテナントの撮影用の書き込み窓を閉じた（本番）
 
 - 内容: 本番の `demo_tenant_readonly_insert`（certificates）を元の定義 `tenant_id <> デモテナント` に戻した（`scripts/demo-filming-write-window.sql` の CLOSE）。
@@ -25,6 +35,9 @@
 - テスト: メーカー向けの一覧ルートが GET だけを出し、POST/PUT/PATCH/DELETE を出さないこと（同じ検査を旧個別ルートに当てて赤になるのを確認済み）。
 
 ## 2026-10-12 ビルドの最後に「C2PA のバイナリが関数バンドルに入ったか」を確かめる（`--traced`）
+
+- **2026-10-13 に `main` へマージ（squash `0a3c02e9`・PR #1326）。** GitHub Actions は11本すべて緑か skip、Codex のレビューは指摘なし。
+  Vercel のプレビューは OOM で赤のままだが、ログで**この PR の差分は関与していない**ことを確定済み（DECISION_LOG 2026-10-12）。
 
 - 内容: `scripts/check-c2pa-binary.mjs` に `--traced` を追加し、`npm run build` の最後に置いた
   （`node scripts/check-c2pa-binary.mjs && next build && node scripts/prune-build-cache.mjs && node scripts/check-c2pa-binary.mjs --traced`）。
