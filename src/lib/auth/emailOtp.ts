@@ -16,6 +16,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateOtp, hashOtp, verifyOtp, otpExpiresAt, OTP_DEFAULT_MAX_ATTEMPTS } from "./otp";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 const PEPPER = process.env.CUSTOMER_AUTH_PEPPER ?? "";
 
@@ -95,14 +96,21 @@ export async function confirmEmailOtp(
     // userId 単位で 5 req/300s のレート制限を別途掛けているため総当たり耐性は
     // 実質的に保たれる。真のアトミック性が要るなら Postgres 関数化する。
     if (result.reason === "mismatch") {
-      await admin
-        .from("email_otp_codes")
-        .update({ attempts: (row.attempts as number) + 1 })
-        .eq("id", row.id);
+      await bestEffortWrite(
+        admin
+          .from("email_otp_codes")
+          .update({ attempts: (row.attempts as number) + 1 })
+          .eq("id", row.id),
+        "email_otp_codes update — 試行回数の加算（総当たり耐性は呼び出し元のレート制限が持つ）",
+      );
     }
     return { ok: false, reason: result.reason };
   }
 
-  await admin.from("email_otp_codes").update({ used_at: new Date().toISOString() }).eq("id", row.id);
+  const { error: usedErr } = await admin
+    .from("email_otp_codes")
+    .update({ used_at: new Date().toISOString() })
+    .eq("id", row.id);
+  if (usedErr) throw new Error(`OTP の使用済み記録に失敗（コードが再利用できる状態）: ${usedErr.message}`);
   return { ok: true };
 }

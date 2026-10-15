@@ -4,6 +4,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 import { apiInternalError, apiValidationError } from "@/lib/api/response";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { pullEventsFromCalendar, pushReservationsToCalendar } from "@/lib/gcal/client";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -22,7 +23,10 @@ async function handler(req: Request) {
     const pushed = await pushReservationsToCalendar(tenant_id, from, to);
     const pulled = await pullEventsFromCalendar(tenant_id, from, to);
     const { admin } = createTenantScopedAdmin(tenant_id);
-    await admin.from("tenants").update({ gcal_last_synced_at: new Date().toISOString() }).eq("id", tenant_id);
+    await bestEffortWrite(
+      admin.from("tenants").update({ gcal_last_synced_at: new Date().toISOString() }).eq("id", tenant_id),
+      "tenants update (handler)",
+    );
     return Response.json({ ok: true, pushed, ...pulled });
   } catch (error) {
     return apiInternalError(error, "qstash/gcal-tenant-sync");

@@ -17,6 +17,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/sendEmail";
 import { escapeHtml } from "@/lib/sanitize";
 import { logger } from "@/lib/logger";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 type Db = ReturnType<typeof createServiceRoleAdmin>;
 
@@ -68,14 +69,17 @@ async function alreadyNotified(admin: Db, type: string, publicId: string, recipi
 }
 
 async function logSent(admin: Db, tenantId: string, type: string, publicId: string, recipient: string): Promise<void> {
-  await admin.from("notification_logs").insert({
-    tenant_id: tenantId,
-    type,
-    target_type: "certificate",
-    target_id: publicId,
-    recipient_email: recipient,
-    status: "sent",
-  });
+  await bestEffortWrite(
+    admin.from("notification_logs").insert({
+      tenant_id: tenantId,
+      type,
+      target_type: "certificate",
+      target_id: publicId,
+      recipient_email: recipient,
+      status: "sent",
+    }),
+    "notification_logs insert (logSent)",
+  );
 }
 
 /**

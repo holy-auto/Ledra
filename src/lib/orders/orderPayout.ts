@@ -63,13 +63,14 @@ export async function executeOrderPayout(orderId: string): Promise<PayoutResult>
       { idempotencyKey: `order-payout:${orderId}` },
     );
 
-    await supabase
+    const { error: payoutErr } = await supabase
       .from("job_orders")
       .update({
         payout_stripe_transfer_id: transfer.id,
         payout_executed_at: new Date().toISOString(),
       })
       .eq("id", orderId);
+    if (payoutErr) throw new Error(`送金 ID の記録に失敗（送金は実行済み・二重送金の恐れ）: ${payoutErr.message}`);
 
     logger.info("[orderPayout] payout executed", { orderId, transferId: transfer.id });
     return { ok: true, transferId: transfer.id };

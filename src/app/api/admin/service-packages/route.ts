@@ -1,17 +1,16 @@
-
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { servicePackageCreateSchema } from "@/lib/validations/service-package";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 export const dynamic = "force-dynamic";
 
 // ─── GET: パッケージ一覧 ───
 export const GET = withCaller(
   async (req, { caller }) => {
     try {
-
       const url = new URL(req.url);
       const includeArchived = url.searchParams.get("include_archived") === "true";
       const category = url.searchParams.get("category");
@@ -65,7 +64,6 @@ export const GET = withCaller(
 export const POST = withCaller(
   async (req, { caller }) => {
     try {
-
       const body = await req.json().catch(() => ({}));
       const parsed = servicePackageCreateSchema.safeParse(body);
       if (!parsed.success) {
@@ -111,7 +109,10 @@ export const POST = withCaller(
         const { error: itemErr } = await admin.from("service_package_items").insert(rows);
         if (itemErr) {
           // ロールバック相当: 子失敗時は親を消す (テスト容易性のため try ベース)
-          await admin.from("service_packages").delete().eq("id", created.id).eq("tenant_id", caller.tenantId);
+          await bestEffortWrite(
+            admin.from("service_packages").delete().eq("id", created.id).eq("tenant_id", caller.tenantId),
+            "service_packages delete (POST)",
+          );
           return apiInternalError(itemErr, "service-package-items insert");
         }
       }

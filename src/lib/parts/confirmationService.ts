@@ -125,12 +125,13 @@ export async function requestConfirmation(
     if (!signerPhoneFullHash && phone) {
       signerPhoneFullHash = phoneFullHashFromRaw(tenantId, phone);
       if (inst.customer_id) {
-        await admin
+        const { error: hashErr } = await admin
           .from("customers")
           .update({ phone_full_hash: signerPhoneFullHash })
           .eq("id", inst.customer_id)
           .eq("tenant_id", tenantId)
           .is("phone_full_hash", null);
+        if (hashErr) throw new Error(`電話番号ハッシュの保存に失敗: ${hashErr.message}`);
       }
     }
     if (!signerPhoneFullHash) throw new Error("顧客の電話番号が未登録のため確定できません");

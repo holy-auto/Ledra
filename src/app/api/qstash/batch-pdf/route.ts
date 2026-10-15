@@ -5,6 +5,7 @@ import { withQstashSignature } from "@/lib/qstash/verifySignature";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { renderCertificatePdf, type CertRow } from "@/lib/pdfCertificate";
 import { certificatePublicUrl } from "@/lib/url";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 const batchPdfJobSchema = z.object({
   job_id: z.string().uuid(),
@@ -26,10 +27,13 @@ async function handler(req: NextRequest) {
 
   const { admin } = createTenantScopedAdmin(tenant_id);
 
-  await admin
-    .from("batch_pdf_jobs")
-    .update({ status: "processing", updated_at: new Date().toISOString() })
-    .eq("id", job_id);
+  await bestEffortWrite(
+    admin
+      .from("batch_pdf_jobs")
+      .update({ status: "processing", updated_at: new Date().toISOString() })
+      .eq("id", job_id),
+    "batch_pdf_jobs update (handler)",
+  );
 
   try {
     // 現在の進捗を取得（再試行・再開対応）
@@ -145,40 +149,49 @@ async function handler(req: NextRequest) {
       }
 
       // バッチごとに進捗更新
-      await admin
-        .from("batch_pdf_jobs")
-        .update({
-          processed_count: alreadyProcessed + newlyProcessed,
-          result_urls: resultUrls,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", job_id);
+      await bestEffortWrite(
+        admin
+          .from("batch_pdf_jobs")
+          .update({
+            processed_count: alreadyProcessed + newlyProcessed,
+            result_urls: resultUrls,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", job_id),
+        "batch_pdf_jobs update (handler)",
+      );
     }
 
     // 全件完了
-    await admin
-      .from("batch_pdf_jobs")
-      .update({
-        status: "completed",
-        processed_count: public_ids.length,
-        result_urls: resultUrls,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", job_id);
+    await bestEffortWrite(
+      admin
+        .from("batch_pdf_jobs")
+        .update({
+          status: "completed",
+          processed_count: public_ids.length,
+          result_urls: resultUrls,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", job_id),
+      "batch_pdf_jobs update (handler)",
+    );
 
     console.info(`[batch-pdf] job=${job_id} completed count=${public_ids.length}`);
 
     return apiJson({ success: true });
   } catch (e) {
     console.error("[batch-pdf] job failed:", e);
-    await admin
-      .from("batch_pdf_jobs")
-      .update({
-        status: "failed",
-        error_message: e instanceof Error ? e.message : String(e),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", job_id);
+    await bestEffortWrite(
+      admin
+        .from("batch_pdf_jobs")
+        .update({
+          status: "failed",
+          error_message: e instanceof Error ? e.message : String(e),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", job_id),
+      "batch_pdf_jobs update (handler)",
+    );
     return apiJson({ error: "Job failed" }, { status: 500 });
   }
 }

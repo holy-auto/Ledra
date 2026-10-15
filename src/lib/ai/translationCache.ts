@@ -11,6 +11,7 @@
  *     入る場合は translationCacheKey 側に tenant_id を混ぜて隔離する設計
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export interface CachedTranslation {
   translated_text: string;
@@ -57,18 +58,21 @@ export async function putCachedTranslation(input: {
   if (!input.cacheKey || !input.translatedText) return;
   try {
     const admin = createServiceRoleAdmin("translation cache write — tenant-agnostic by design");
-    await admin.from("ai_translation_cache").upsert(
-      {
-        cache_key: input.cacheKey,
-        source_text: input.sourceText,
-        target_lang: input.targetLang,
-        tone: input.tone,
-        translated_text: input.translatedText,
-        model: input.model ?? null,
-        confidence: input.confidence ?? null,
-        last_accessed_at: new Date().toISOString(),
-      },
-      { onConflict: "cache_key" },
+    await bestEffortWrite(
+      admin.from("ai_translation_cache").upsert(
+        {
+          cache_key: input.cacheKey,
+          source_text: input.sourceText,
+          target_lang: input.targetLang,
+          tone: input.tone,
+          translated_text: input.translatedText,
+          model: input.model ?? null,
+          confidence: input.confidence ?? null,
+          last_accessed_at: new Date().toISOString(),
+        },
+        { onConflict: "cache_key" },
+      ),
+      "ai_translation_cache upsert (putCachedTranslation)",
     );
   } catch {
     /* テーブル未作成等は無視 */

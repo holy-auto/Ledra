@@ -10,6 +10,7 @@ import {
 import { withCaller } from "@/lib/api/withCaller";
 import { signAssetPaths } from "@/lib/signedUrl";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 const MV_COLS =
   "id, tenant_id, maker, model, grade, year, mileage, color, color_code, plate_number, chassis_number, engine_type, displacement, transmission, drive_type, fuel_type, door_count, seating_capacity, body_type, inspection_date, repair_history, condition_grade, condition_note, asking_price, wholesale_price, cost_price, supplier_name, acquisition_date, description, features, status, listed_at, created_at, updated_at";
 const MVI_COLS = "id, vehicle_id, tenant_id, storage_path, file_name, content_type, file_size, sort_order, created_at";
@@ -308,7 +309,10 @@ export const DELETE = withCaller(
           // market の objects には読み取りポリシーが無く、ユーザーの権限では消せないので service-role で消す（車両の所有は上で確認済み）
           await createTenantScopedAdmin(caller.tenantId).admin.storage.from("market").remove(paths);
         }
-        await supabase.from("market_vehicle_images").delete().eq("vehicle_id", id).eq("tenant_id", caller.tenantId);
+        await bestEffortWrite(
+          supabase.from("market_vehicle_images").delete().eq("vehicle_id", id).eq("tenant_id", caller.tenantId),
+          "market_vehicle_images delete (DELETE)",
+        );
       }
 
       return apiJson({ ok: true });

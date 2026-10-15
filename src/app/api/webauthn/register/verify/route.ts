@@ -24,7 +24,6 @@ const schema = z.object({
 export const POST = withCaller(
   async (req, { caller }) => {
     try {
-
       const parsed = schema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
 
@@ -65,11 +64,18 @@ export const POST = withCaller(
 
       const { error: insErr } = await admin.from("operator_credentials").insert(row);
       // チャレンジは成否に関わらず消費して再利用(リプレイ)を防ぐ。
-      await admin.from("webauthn_challenges").update({ consumed_at: new Date().toISOString() }).eq("id", ch.id);
+      const { error: consumeErr } = await admin
+        .from("webauthn_challenges")
+        .update({ consumed_at: new Date().toISOString() })
+        .eq("id", ch.id);
+      // **insert の結果を先に見る。** 逆にすると、登録が成功していても消費の失敗で 500 になり、
+      // 23505（既に登録済み）の 400 も潰れる（/code-review #1306）。
       if (insErr) {
         if (insErr.code === "23505") return apiValidationError("この認証器は既に登録済みです。");
         return apiInternalError(insErr, "webauthn/register/verify insert");
       }
+      // 消費できていないチャレンジはリプレイに使えるので、登録が通っていても失敗として返す。
+      if (consumeErr) return apiInternalError(consumeErr, "webauthn/register/verify: consume challenge");
 
       return apiOk({ verified: true, credential_id: row.credential_id });
     } catch (e) {

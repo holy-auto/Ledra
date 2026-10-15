@@ -112,10 +112,11 @@ export async function PUT(req: NextRequest) {
         .maybeSingle();
       const authType = normalizeSupplyApiAuthType(p?.api_auth_type as string | null);
       const configured = authType !== "none" && Boolean(p?.api_endpoint) && Boolean(c?.api_key_ciphertext);
-      await supabase
+      const { error: statusErr } = await supabase
         .from("supply_partners")
         .update({ integration_status: configured ? "connected" : "unconfigured" })
         .eq("id", ctx.partnerId);
+      if (statusErr) return apiInternalError(statusErr, "agent/supply/profile PUT: integration_status");
     }
 
     return apiJson({ ok: true });

@@ -16,6 +16,7 @@ import {
   CONSENT_KIND_LABEL,
   type BodyRepairConsentKind,
 } from "@/lib/signature/bodyRepairConsent";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -65,15 +66,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
 
     // 期限切れ
     if (session.status === "pending" && new Date(session.expires_at) < new Date()) {
-      await supabase.from("signature_sessions").update({ status: "expired" }).eq("id", session.id);
-      await supabase.from("body_repair_consents").update({ status: "expired" }).eq("signature_session_id", session.id);
-      await supabase.from("signature_audit_logs").insert({
-        session_id: session.id,
-        event: "expired",
-        ip,
-        user_agent: ua,
-        metadata: { expired_at: new Date().toISOString() },
-      });
+      await bestEffortWrite(
+        supabase.from("signature_sessions").update({ status: "expired" }).eq("id", session.id),
+        "signature_sessions update (GET)",
+      );
+      await bestEffortWrite(
+        supabase.from("body_repair_consents").update({ status: "expired" }).eq("signature_session_id", session.id),
+        "body_repair_consents update (GET)",
+      );
+      await bestEffortWrite(
+        supabase.from("signature_audit_logs").insert({
+          session_id: session.id,
+          event: "expired",
+          ip,
+          user_agent: ua,
+          metadata: { expired_at: new Date().toISOString() },
+        }),
+        "signature_audit_logs insert (GET)",
+      );
       return apiOk({
         status: "expired",
         message: "同意サインリンクの有効期限が切れています。施工店に再送を依頼してください。",
@@ -88,13 +98,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
       });
     }
 
-    await supabase.from("signature_audit_logs").insert({
-      session_id: session.id,
-      event: "page_opened",
-      ip,
-      user_agent: ua,
-      metadata: { opened_at: new Date().toISOString(), purpose: session.purpose },
-    });
+    await bestEffortWrite(
+      supabase.from("signature_audit_logs").insert({
+        session_id: session.id,
+        event: "page_opened",
+        ip,
+        user_agent: ua,
+        metadata: { opened_at: new Date().toISOString(), purpose: session.purpose },
+      }),
+      "signature_audit_logs insert (GET)",
+    );
 
     // 同意文言の整合性チェック (delivery-receipt と同じ防御)
     const sessionConsentVersion = session.consent_version ?? null;

@@ -12,6 +12,7 @@
  * 失敗は console に出すだけ。AI ルートのレスポンスを止めない。
  */
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export type AiAuditAction =
   | "ai_settings_changed"
@@ -56,15 +57,18 @@ export async function logAiAuditEvent(event: AiAuditEvent): Promise<void> {
       resource: event.resource ?? null,
       detail: event.detail ?? null,
     });
-    await admin.from("vehicle_histories").insert({
-      tenant_id: event.tenantId,
-      vehicle_id: null,
-      certificate_id: null,
-      type: event.action,
-      title: TITLE_MAP[event.action],
-      description,
-      performed_at: new Date().toISOString(),
-    });
+    await bestEffortWrite(
+      admin.from("vehicle_histories").insert({
+        tenant_id: event.tenantId,
+        vehicle_id: null,
+        certificate_id: null,
+        type: event.action,
+        title: TITLE_MAP[event.action],
+        description,
+        performed_at: new Date().toISOString(),
+      }),
+      "vehicle_histories insert (logAiAuditEvent)",
+    );
   } catch (e) {
     console.error("[ai-audit] logAiAuditEvent failed:", e);
   }

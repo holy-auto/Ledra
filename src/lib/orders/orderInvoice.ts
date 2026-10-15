@@ -304,7 +304,7 @@ export async function sendOrderInvoiceEmail(orderId: string): Promise<void> {
   }
 
   // job_orders への控え書き戻し（メール可否に関わらず）。
-  await supabase
+  const { error: stampErr } = await supabase
     .from("job_orders")
     .update({
       invoice_number: invoiceNumber,
@@ -313,6 +313,7 @@ export async function sendOrderInvoiceEmail(orderId: string): Promise<void> {
       payout_amount: payoutAmount,
     })
     .eq("id", orderId);
+  if (stampErr) throw new Error(`請求の控えの書き戻しに失敗: ${stampErr.message}`);
 
   // ─── メール送付は公開案件(platform)のみ・requester_email がある時だけ ───
   // 指名(invoice)は確認後送付（発行元が /admin/documents/share から送る）ため自動送信しない。
@@ -385,7 +386,8 @@ export async function sendOrderInvoiceEmail(orderId: string): Promise<void> {
     return;
   }
 
-  await supabase.from("job_orders").update({ invoice_sent_at: nowIso }).eq("id", orderId);
+  const { error: sentErr } = await supabase.from("job_orders").update({ invoice_sent_at: nowIso }).eq("id", orderId);
+  if (sentErr) throw new Error(`請求の送付記録に失敗（再送で二重請求の恐れ）: ${sentErr.message}`);
 
   logger.info("[orderInvoice] sent", { orderId, invoiceNumber, to: order.requester_email });
 }

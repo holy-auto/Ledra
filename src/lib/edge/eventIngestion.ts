@@ -17,6 +17,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { anchorToPolygon } from "@/lib/anchoring/providers/polygon";
 import { authenticateDevice, touchDeviceLastSeen, verifyDeviceSignature, hashDeviceSecret } from "./deviceRegistry";
 import type { EdgeEvent, EdgeEventPayload, IngestEventRequest } from "./types";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export interface IngestResult {
   eventId: string;
@@ -111,14 +112,17 @@ export async function ingestEdgeEvent(
     const result = await anchorToPolygon(contentHash).catch(() => ({ txHash: null, anchored: false, network: null }));
     if (result.anchored && result.txHash) {
       const { admin: asyncAdmin } = createTenantScopedAdmin(tenantId);
-      await asyncAdmin
-        .from("edge_events")
-        .update({
-          polygon_tx_hash: result.txHash,
-          polygon_network: result.network,
-          polygon_anchored_at: new Date().toISOString(),
-        })
-        .eq("id", eventId);
+      await bestEffortWrite(
+        asyncAdmin
+          .from("edge_events")
+          .update({
+            polygon_tx_hash: result.txHash,
+            polygon_network: result.network,
+            polygon_anchored_at: new Date().toISOString(),
+          })
+          .eq("id", eventId),
+        "edge_events update (ingestEdgeEvent)",
+      );
     }
   });
 

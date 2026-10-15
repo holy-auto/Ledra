@@ -17,6 +17,7 @@ import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 const academyCaseActionSchema = z.object({
   case_id: z.string().uuid("case_id が必要です"),
   action: z.enum(["preview", "publish", "unpublish"], {
@@ -289,23 +290,29 @@ export const POST = withCaller(
         }
 
         // ナレッジチャンクに追加（QA検索用）
-        await admin.from("knowledge_chunks").insert({
-          source_type: "case",
-          source_id: case_id,
-          content: [reviewed.ai_summary, ...goodPoints, ...cautionPoints].join("\n"),
-          category: existingCase.category,
-          tags,
-          tenant_id: null, // 全加盟店共有
-        });
+        await bestEffortWrite(
+          admin.from("knowledge_chunks").insert({
+            source_type: "case",
+            source_id: case_id,
+            content: [reviewed.ai_summary, ...goodPoints, ...cautionPoints].join("\n"),
+            category: existingCase.category,
+            tags,
+            tenant_id: null, // 全加盟店共有
+          }),
+          "knowledge_chunks insert (POST)",
+        );
 
         return apiOk({ message: "事例を公開しました" });
       }
 
       // action === "unpublish"
-      await admin
-        .from("academy_cases")
-        .update({ is_published: false, updated_at: new Date().toISOString() })
-        .eq("id", case_id);
+      await bestEffortWrite(
+        admin
+          .from("academy_cases")
+          .update({ is_published: false, updated_at: new Date().toISOString() })
+          .eq("id", case_id),
+        "academy_cases update (POST)",
+      );
 
       return apiOk({ message: "事例を非公開にしました" });
     } catch (e: unknown) {

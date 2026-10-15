@@ -1,4 +1,3 @@
-
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 import { escapeIlike } from "@/lib/sanitize";
@@ -9,13 +8,13 @@ import { customerCreateSchema, customerDeleteSchema, customerUpdateSchema } from
 import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 export const dynamic = "force-dynamic";
 
 // ─── GET: 顧客一覧 ───
 export const GET = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const url = new URL(req.url);
       const q = (url.searchParams.get("q") ?? "").trim();
       const idParam = (url.searchParams.get("id") ?? "").trim();
@@ -141,7 +140,6 @@ export const GET = withCaller(
 export const POST = withCaller(
   async (req, { caller }) => {
     try {
-
       const deny = await enforceBilling(req, {
         minPlan: "free",
         action: "customer_create",
@@ -192,7 +190,6 @@ export const POST = withCaller(
 export const PUT = withCaller(
   async (req, { caller }) => {
     try {
-
       const deny = await enforceBilling(req, {
         minPlan: "free",
         action: "customer_update",
@@ -236,11 +233,14 @@ export const PUT = withCaller(
           .eq("tenant_id", caller.tenantId);
 
         if (count && count > 0) {
-          await admin
-            .from("vehicles")
-            .update({ updated_at: new Date().toISOString() })
-            .eq("customer_id", id)
-            .eq("tenant_id", caller.tenantId);
+          await bestEffortWrite(
+            admin
+              .from("vehicles")
+              .update({ updated_at: new Date().toISOString() })
+              .eq("customer_id", id)
+              .eq("tenant_id", caller.tenantId),
+            "vehicles update (PUT)",
+          );
         }
       } catch (syncErr) {
         // 同期失敗はログのみ（顧客更新自体は成功扱い）

@@ -17,6 +17,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { verifySignature } from "@/lib/signature/crypto";
+import { bestEffortWrite } from "@/lib/db/bestEffortWrite";
 
 export const dynamic = "force-dynamic";
 
@@ -94,16 +95,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sess
     const isValid = verifySignature(session.signing_payload ?? "", session.signature ?? "", keyRecord.public_key);
 
     // 'verified' 監査ログを記録
-    await supabase.from("signature_audit_logs").insert({
-      session_id: session.id,
-      event: "verified",
-      ip,
-      user_agent: ua,
-      metadata: {
-        is_valid: isValid,
-        verified_at: new Date().toISOString(),
-      },
-    });
+    await bestEffortWrite(
+      supabase.from("signature_audit_logs").insert({
+        session_id: session.id,
+        event: "verified",
+        ip,
+        user_agent: ua,
+        metadata: {
+          is_valid: isValid,
+          verified_at: new Date().toISOString(),
+        },
+      }),
+      "signature_audit_logs insert (GET)",
+    );
 
     // Supabase リレーションクエリは配列で返るため、先頭要素を取得する
     const certRaw = session.certificates as { public_id?: string | null } | Array<{ public_id?: string | null }> | null;
