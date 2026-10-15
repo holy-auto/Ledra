@@ -15,6 +15,8 @@ import { resolveCampaign } from "@/lib/billing/campaign";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { resolveActiveMembership } from "@/lib/auth/checkRole";
+import { isDemoTenant } from "@/lib/demo";
+import { demoReadOnlyResponse } from "@/lib/demoWriteGuard";
 import { hasMinRole } from "@/lib/auth/roles";
 
 export const runtime = "nodejs";
@@ -57,6 +59,8 @@ export async function POST(req: NextRequest) {
     if (!m) return apiNotFound("テナントメンバーシップが見つかりません。");
     if (!hasMinRole(m.role, "owner"))
       return apiForbidden("課金の操作（プラン購入・変更・再開・請求ポータル）はオーナーのみ行えます。");
+    // cookie を付けず本文の access_token だけで呼ばれると、proxy の demoWriteGuard からは利用者が見えない。ここでも断る
+    if (isDemoTenant(m.tenantId)) return demoReadOnlyResponse();
 
     const tenant_id = m.tenantId;
 
