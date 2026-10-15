@@ -59,6 +59,14 @@
 > 通知が届いたら CSR と一緒に ssl.com へ送る。**Notice of Conformance の着信は Routine「Watch C2PA Notice」が毎日 8:45 / 17:45（JST）に
 > Gmail を確認し、届いたら代表に通知する**（2026-10-05 設定、届いたら自動で止める）。
 
+> **2026-10-15 訂正（C2PA 適合審査はまだ Approver に回っていない）**: 代表の問い合わせに Administrator が「Trust List を参照していることを示す
+> **更新済みのサンプル一式**が届くまで先に進めない。サンプルが適合チェックを通ったら Approver に回す」と返信した。10-02 の「合格・これ以上は不要」は
+> アーキテクチャ（GPSA）だけの話で、サンプルの Trust List 指摘は**要対応のまま**だった（`M-20261015-read-the-sample-finding-as-advice-after-the-architecture-passed`）。
+> 同日、現行コード（#1221 の Trust List 入り）でサンプル a〜d を作り直した。a・b の ingredient は `signingCredential.trusted`・`timeStamp.trusted` を記録
+> （10-02 版は `untrusted`、a は `expired` も）。c・d の ingredient は c2pa-rs のテスト証明書で自作したものなので `untrusted` のまま。
+> 出力自体はテスト証明書の署名なので `signingCredential.untrusted`（本番証明書は Notice の後でしか出ない）。この環境から ssl.com の TSA に届かないため、
+> 出力にタイムスタンプは付いていない。zip `Ledra-C2PA-Samples-TrustList-01a06690.zip`（samples 8ファイル）と返信の下書き（Gmail）を代表に渡した。**未送信**。
+
 > 2026-10-05 追記（**モバイル一覧カードの `>` はバッジの右隣に並べてある**）: 一覧6画面（作業・車両・証明・顧客・
 > 実証テスト2画面）の `>` は、カードの見出し行の末尾で**ステータスバッジの右隣**に置き、バッジと同じ高さに揃えている
 > （`trailing` = `flexDirection: "row"` + `alignItems: "center"` + `alignSelf: "flex-start"`）。以前は
