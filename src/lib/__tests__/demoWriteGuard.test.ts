@@ -98,7 +98,10 @@ describe("demoWriteGuard", () => {
     const auth = /\bwithCaller\s*[<(]|\bresolveMobileCaller\(|\bresolveCallerWithRole\(|\bresolveActiveMembership\(/;
     const write = /export (const|async function) (POST|PUT|PATCH|DELETE)\b/;
     const routes = walkSource("src/app/api", (n) => n === "route.ts").filter((f) => {
-      const src = stripComments(readFileSync(f, "utf8"), f);
+      const raw = readFileSync(f, "utf8");
+      // 構文解析（stripComments）は重いので、生の文字列で当たらないファイルは先に落とす
+      if (!write.test(raw) || !auth.test(raw)) return false;
+      const src = stripComments(raw, f);
       return write.test(src) && auth.test(src);
     });
     // 当たりを取る: 走査が空なら何も見ていない
@@ -107,5 +110,6 @@ describe("demoWriteGuard", () => {
       .map((f) => f.replace(/^src\/app/, "").replace(/\/route\.ts$/, ""))
       .filter((p) => !GUARDED_PREFIXES.some((g) => p.startsWith(g)));
     expect(uncovered).toEqual([]);
-  });
+    // 全 route を構文解析するので、CI で全テストと並ぶと既定の 5 秒を超える（2026-10-15 に 5 秒で落ちた）
+  }, 60_000);
 });
