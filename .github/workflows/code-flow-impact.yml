@@ -1,0 +1,33 @@
+name: Code Flow Impact (advisory)
+
+on:
+  pull_request:
+    branches: [main, staging]
+
+permissions:
+  contents: read
+
+jobs:
+  impact:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate static impact report
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: node scripts/code-flow-impact.mjs "origin/$BASE_REF" artifacts/code-flow-impact.md
+      - name: Add report to job summary
+        run: cat artifacts/code-flow-impact.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code-flow-impact
+          path: artifacts/code-flow-impact.md
+          retention-days: 14
