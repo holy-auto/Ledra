@@ -4,6 +4,38 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-15 本番に無かった保存先 2 本を作り、マーケットの画像の保存先を非公開にする
+
+- 内容: 証明書 PDF の一括生成（`certificates`）と保険会社の案件の添付（`case-attachments`）は、本番に無いバケットへ保存していて
+  保存がすべて失敗していた。2 本とも非公開で作る（読み書きは service-role だけ）。あわせて、マーケットの画像の保存先（`market`）を非公開にした
+  （画面はログイン必須なのに、画像は公開 URL で誰でも開けた。表示は #1322 で署名 URL に切り替え済み）。
+  `20261015124952_create_missing_buckets_and_privatize_market.sql`、マージで本番に適用。使い捨ての Postgres で 2 回流して、
+  作成・非公開化・2 回目が何もしないことを確認。
+- 保存先を作ると動き出すコードも直した（/code-review の指摘）:
+  - 保険会社の添付: 一覧に署名 URL を付けてダウンロードできるようにした（以前は保存するだけで開く経路が無かった）。行の作成に失敗したら保存したファイルを消す。
+  - 証明書 PDF の一括生成: 1 時間で切れる署名 URL をジョブに保存していたのを、保存パスを持って取得のたびに署名する形にした。保存先のパスは証明書ごとに固定（作り直しで上書き）。
+  - マーケットの画像の削除: Storage の削除は読み取り権限も要り、market には読み取りポリシーが無いので、ユーザーの権限では黙って何も消えなかった。所有を確かめたうえで service-role で消す。
+- 本番の実害（2026-10-15 集計）: マーケットの画像 0 件・保険会社の添付 0 件。
+- 写真の表示の確認（OPEN_QUESTIONS の保留分）: 本番のログで、非公開化の後も署名 URL で写真が出ていることを確認（10/15、取得 5 件すべて 200）。
+
+## 2026-10-15 #1306 をマージし、ヒアリング連携の1トランザクション化が本番に入った
+
+- マージ: PR #1306（`9e946323`、150 ファイル）。代表判断「全部修正しろ」の3つ
+  （`hearings.status` の語彙／1トランザクション化／無音の DB 書き込み 276 件）が本番に入った。
+- **本番適用の確認（実測 2026-10-15）**:
+  - `DB migrate (apply to production)` ワークフロー: success
+  - 本番の台帳の最新が `20261015122028 link_hearing_customer_transaction`
+  - `public.link_hearing_customer(p_hearing_id uuid, p_tenant_id uuid)` が存在し、
+    **`prosecdef = false`（SECURITY INVOKER のまま＝RLS が効く）**、`proconfig = search_path=""`、
+    EXECUTE は `authenticated` / `postgres` / `service_role` のみ（**anon には無い**）
+- マージ時点の CI: 直前の head `b9ba4bf` で 9/9 緑（Lint/Type/Unit・Migrations Replay・
+  E2E Playwright・CodeQL・Analyze・Gitleaks・Bundle Size・LOC）。マージした head `10d7813` は
+  その後に main を取り込んだ差分（main 側のコミットと MISTAKE_LEDGER の型表の和集合）のみで、
+  手元で tsc 0 / eslint 0 errors / vitest 666 ファイル・6364 件 / 再生 OK・振る舞いの検査 11 件を確認済み。
+- マイグレーションは**4回改名した**（main が短時間に4本のマイグレーションを入れ、そのたびに
+  `migration-version-before-base-head` で落ちたため）。本番の台帳に無い版なので改名でよい。
+
+
 ## 2026-10-13 モバイルの起動オープニングを作り直して再開
 
 - 内容: `remotion/MobileIntro.tsx` を新設。L マークを SVG で描き直し、紺の土台 → 真鍮の L → 留め具・リベット → 光の走り → LEDRA の順に組み上がる
@@ -25,6 +57,16 @@
 - 確認: 適用後に `pg_policies` で INSERT・UPDATE とも元の条件になっていることを確認。デモテナントの証明書は 29 件（シード 27 件＋2026-05 作成の 2 件）で、
   10/8〜10/13 に作られてシード以外で残っているものは無い。
 - 残したもの: 撮影用のアンカー表示（ダミー tx・11 件）とパスポート・購入済みレポート（`--filming-cleanup` は未実行。OPEN_QUESTIONS「撮影用の特例を戻す」(1)）。
+
+
+## 2026-10-15 Remotion をアプリの依存から外す（Vercel のビルドキャッシュを小さくする）
+
+- 内容: 動画書き出しにしか使わない `remotion` と `@remotion/cli`（rspack 等を含め 168 パッケージ）を package.json から外した。
+- 実装: `npm uninstall`（ロックの差分は削除だけで、ほかのパッケージの版は変わっていないことを確認）。`video:deps` を追加し、
+  `video:studio` / `video:render` / `video:render:tour` は先に入れてから動く。`render-video.yml` は `npm ci` の後に `npm run video:deps`。
+- 検証: 外した状態でアプリの tsc・eslint が通る。`video:deps` の後で `tsc -p tsconfig.remotion.json` と `remotion --version` が通る。
+  node_modules は gzip 換算で約 564 MB → 472 MB。動画の実際の書き出し（`render-video.yml`）は次に動かしたときに確認【要確認】。
+
 
 ## 2026-10-13 メーカーは施工店の設備・資格を閲覧だけに（編集をなくした）
 

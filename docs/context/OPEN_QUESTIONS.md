@@ -90,7 +90,9 @@
   2. **点検記録の写真** → ✅ 公開 URL ではなく保存パスを保存する形に変更（2026-10-10、RELEASE_LOG）。本番は 0 件なので移行は不要。
   3. **バケットを非公開にする** → ✅ 本番に適用（2026-10-10、#1300、`20261010130513_make_assets_bucket_private.sql`、RELEASE_LOG）。
      適用後、写真の公開 URL は 400。**残り: 署名 URL での表示を本番で目視確認する**（適用後まだアクセスが無く未確認。
-     公開証明書・管理画面・代表の端末のアプリで写真が出るか）。→ **2026-10-12 代表判断で【要確認】のまま保留**。
+     公開証明書・管理画面・代表の端末のアプリで写真が出るか）。→ 2026-10-12 代表判断で保留 →
+     **✅ 2026-10-15 本番のログで確認**: 10/15 01:36 UTC に署名 URL の発行（POST /object/sign/assets、200）1 回と、その署名 URL での
+     写真の取得（GET、200）5 件。非公開化の後も、署名 URL で写真が出ている（デモの証明書）。
 
 ## `assets` バケットの制限（画像のみ・10MB）が、アプリが受け付けるアップロードを弾いている（2026-10-10）
 
@@ -125,6 +127,9 @@
 
 ## 本番に無いバケットへ保存しているコードがある（2026-10-12）
 
+- **→ 2026-10-15 対応**: 2 本とも非公開で作る（`20261015124952_create_missing_buckets_and_privatize_market.sql`、RELEASE_LOG）。
+  保険会社の案件の添付は、保存・一覧はあったがダウンロードする経路が無かった（`storage_path` を返すだけ）ので、同じ PR で署名 URL を付けた。
+
 - 状況: 本番の Storage バケットは agent-applications・agent-materials・agent-shared-files・assets・certificate-images・
   ft-evidence・kyc-documents・line-media・market の 9 本（2026-10-10 に storage.buckets で確認）。コードには、このどれでもない
   バケットへの保存がある:
@@ -135,6 +140,8 @@
 - 公開区分: 非公開
 
 ## マーケットの画像の保存先（`market`）は、パスを知っていれば誰でも開ける（2026-10-12）
+
+- **→ 2026-10-15 非公開にした**（代表の「残りを対応して」を受けて、画面と同じくログイン必須に揃えた。DECISION_LOG 2026-10-15）。
 
 - 状況: `market` バケットは公開（public=true）なので、保存パスを知っていればログインしていない人も公開 URL で画像を開ける。
   一覧（list）用の読み取りポリシー `market_storage_select` は 20260616000003 で外してあり、本番にも無い（2026-10-12 に pg_policies で確認）。
@@ -582,6 +589,7 @@ opt-in `tenants.require_inspector_qualification`・既定 false）。残って�
      **2026-10-09 実装**: `npm run build` の後に `scripts/prune-build-cache.mjs` で古い版を消し、キャッシュと node_modules の大きさを
      `[build-cache]` としてビルドログに出す（今の版は消さない）。残る課題は「今の版が育つこと」で、これはまだ止められていない。
      減らせる候補: 動画書き出し用の `@remotion/cli` 一式（gzip 約 74 MB）をアプリの依存から外し、`render-video.yml` でだけ入れる。
+     → **2026-10-15 実施**（DECISION_LOG 同日）。node_modules が gzip 換算で約 564 MB → 472 MB（-92 MB）。
      **2026-10-12 再発**: プレビュー（`ae2b495`、`claude/imp-000-implementation-r0eje1`）で `Previous build cache ... was too large` →
      8 GB 機で全部ビルド → 約 3 分で OOM（137）。古い版を消すだけでは、今の版が育つのは止まらないことが実例で分かった。
      そこで「キャッシュが捨てられても 8 GB に収まる」側を取った（DECISION_LOG 2026-10-12）。手元実測（キャッシュなし、ピークは全プロセスの RSS 合計）:

@@ -93,7 +93,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       .select("id, case_id, file_name, file_size, file_type, storage_path, uploaded_by, created_at")
       .single();
 
-    if (attachErr) return apiValidationError(attachErr.message);
+    if (attachErr) {
+      // 行が作れなければ、保存したファイルは誰からも辿れなくなるので消す
+      await admin.storage.from("case-attachments").remove([uploadData.path]);
+      return apiValidationError(attachErr.message);
+    }
 
     // Log to insurer_access_logs
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
