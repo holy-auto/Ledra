@@ -1,6 +1,8 @@
 name: Ledra Full Code Explorer
 on:
   workflow_dispatch:
+  push:
+    branches: [docs/code-flow-observability-proposal]
   pull_request:
     branches: [main, staging]
 permissions:
