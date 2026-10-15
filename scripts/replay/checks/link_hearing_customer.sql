@@ -10,6 +10,9 @@
 --      —— `security definer` に変えたり、関数の外に出したりすると最初に壊れる
 --   4. 車両だけの失敗は本処理を止めない（副トランザクションの `exception` 節）
 --      —— ここを消すと、車両の CHECK 違反1つで顧客の連携が永久にできなくなる
+--   5. **既にある車両を引き当てる**（代表判断 2026-10-15・選択肢 b）: ナンバー → VIN →
+--      顧客+メーカー+車種。緩むと**違う車に紐付き**、きつくなると同じ車の行が増える。
+--      アプリ側の双子は `src/lib/vehicles/resolveExistingVehicle.ts`
 --
 -- 3 と 4 は「落ちたときどうなるか」なので、トリガで**実際に落として**確かめる。
 --
@@ -48,6 +51,29 @@ INSERT INTO public.hearings (id, tenant_id, customer_name, vehicle_maker, vehicl
   ('00000000-0000-4000-8000-0000000000f3', '00000000-0000-4000-8000-0000000000f1', '佐藤', 'ホンダ', 'N-BOX'),
   ('00000000-0000-4000-8000-0000000000f4', '00000000-0000-4000-8000-0000000000f1', '鈴木', 'スズキ', 'ジムニー');
 
+-- 既存車両の引き当て用。f6: ナンバー一致／f7: VIN 一致／f8: 顧客+メーカー+車種／f9: ナンバー違い。
+INSERT INTO public.hearings (id, tenant_id, customer_name, vehicle_maker, vehicle_model, vehicle_plate, vehicle_vin) VALUES
+  ('00000000-0000-4000-8000-0000000000f6', '00000000-0000-4000-8000-0000000000f1', '田中', 'トヨタ', 'プリウス', '品川300あ1234', ''),
+  ('00000000-0000-4000-8000-0000000000f7', '00000000-0000-4000-8000-0000000000f1', '伊藤', 'トヨタ', 'プリウス', '', 'zvw30-abc 1234'),
+  ('00000000-0000-4000-8000-0000000000f8', '00000000-0000-4000-8000-0000000000f1', '渡辺', 'ホンダ', 'フィット', '', ''),
+  ('00000000-0000-4000-8000-0000000000f9', '00000000-0000-4000-8000-0000000000f1', '山本', 'トヨタ', 'プリウス', '品川300あ9999', '');
+
+-- 引き当て先。plate / VIN を持つ1台（VIN はトリガが正規化キーを埋める）。
+INSERT INTO public.vehicles (id, tenant_id, maker, model, plate_display, vin_code)
+VALUES ('00000000-0000-4000-8000-0000000000d1', '00000000-0000-4000-8000-0000000000f1',
+        'トヨタ', 'プリウス', '品川300あ1234', 'ZVW30ABC1234');
+
+-- f9（ナンバー違い）の顧客には、**同じメーカー・車種の車を1台持たせておく**。
+-- これが無いと、③ のガード（ナンバー・VIN があるときは顧客+メーカー+車種に落ちない）を
+-- 外しても寄せる先が無く、検査が素通りする —— 実際に1回見逃した。
+INSERT INTO public.customers (id, tenant_id, name)
+VALUES ('00000000-0000-4000-8000-0000000000c9', '00000000-0000-4000-8000-0000000000f1', '山本');
+INSERT INTO public.vehicles (id, tenant_id, customer_id, maker, model)
+VALUES ('00000000-0000-4000-8000-0000000000d9', '00000000-0000-4000-8000-0000000000f1',
+        '00000000-0000-4000-8000-0000000000c9', 'トヨタ', 'プリウス');
+UPDATE public.hearings SET customer_id = '00000000-0000-4000-8000-0000000000c9'
+ WHERE id = '00000000-0000-4000-8000-0000000000f9';
+
 -- 落とすためのトリガ。所有者権限が要るので authenticated に降りる前に作る。
 CREATE OR REPLACE FUNCTION public.__replay_raise_trigger() RETURNS trigger
 LANGUAGE plpgsql AS $$
@@ -65,6 +91,7 @@ DECLARE
   n_cust integer;
   n_veh integer;
   v_state text;
+  v_reuse_id uuid;
 BEGIN
   -- ── 1. 正常系 ──────────────────────────────────────────────
   EXECUTE 'SET LOCAL ROLE authenticated';
@@ -97,7 +124,11 @@ BEGIN
   EXECUTE 'RESET ROLE';
   v_again := (v_res->>'customer_id')::uuid;
 
-  SELECT count(*) INTO n_cust FROM public.customers WHERE tenant_id = '00000000-0000-4000-8000-0000000000f1';
+  -- c9 は「既存車両の引き当て」用に最初から入れてある顧客なので、以降の件数から除く
+  -- （d1 / d9 を車両の件数から除くのと同じ理由）。
+  SELECT count(*) INTO n_cust FROM public.customers
+   WHERE tenant_id = '00000000-0000-4000-8000-0000000000f1'
+     AND id <> '00000000-0000-4000-8000-0000000000c9';
   IF v_again <> v_customer_id OR n_cust <> 1 THEN
     RAISE EXCEPTION
       '二度押しで顧客が増えた（1回目 % / 2回目 % / 顧客 % 件）。`customer_id is null` の分岐が効いていない',
@@ -127,7 +158,9 @@ BEGIN
   END IF;
 
   -- **ここが原子性の本体。** 顧客が1件のまま（＝佐藤の分が巻き戻った）であること。
-  SELECT count(*) INTO n_cust FROM public.customers WHERE tenant_id = '00000000-0000-4000-8000-0000000000f1';
+  SELECT count(*) INTO n_cust FROM public.customers
+   WHERE tenant_id = '00000000-0000-4000-8000-0000000000f1'
+     AND id <> '00000000-0000-4000-8000-0000000000c9';
   IF n_cust <> 1 THEN
     RAISE EXCEPTION
       'ヒアリング更新が落ちたのに顧客が % 件残った（期待 1）。1トランザクションになっていない',
@@ -155,8 +188,13 @@ BEGIN
   END IF;
 
   SELECT status INTO v_status FROM public.hearings WHERE id = '00000000-0000-4000-8000-0000000000f4';
-  SELECT count(*) INTO n_cust FROM public.customers WHERE tenant_id = '00000000-0000-4000-8000-0000000000f1';
-  SELECT count(*) INTO n_veh  FROM public.vehicles  WHERE tenant_id = '00000000-0000-4000-8000-0000000000f1';
+  SELECT count(*) INTO n_cust FROM public.customers
+   WHERE tenant_id = '00000000-0000-4000-8000-0000000000f1'
+     AND id <> '00000000-0000-4000-8000-0000000000c9';
+  -- d1 / d9 は「既存車両の引き当て」用に最初から入れてある2台なので数えない。
+  SELECT count(*) INTO n_veh  FROM public.vehicles
+   WHERE tenant_id = '00000000-0000-4000-8000-0000000000f1'
+     AND id NOT IN ('00000000-0000-4000-8000-0000000000d1', '00000000-0000-4000-8000-0000000000d9');
   IF v_status <> 'linked' OR n_cust <> 2 OR n_veh <> 1 THEN
     RAISE EXCEPTION
       '車両だけの失敗で顧客・ヒアリングまで巻き戻った（status=% 顧客=% 車両=%、期待 linked/2/1）',
@@ -187,12 +225,105 @@ BEGIN
       '閲覧者の連携が RLS で止まらなかった（state=% 返り値=%）。関数経由でテナント内の権限が抜けている',
       v_state, v_res;
   END IF;
-  SELECT count(*) INTO n_cust FROM public.customers WHERE tenant_id = '00000000-0000-4000-8000-0000000000f1';
+  SELECT count(*) INTO n_cust FROM public.customers
+   WHERE tenant_id = '00000000-0000-4000-8000-0000000000f1'
+     AND id <> '00000000-0000-4000-8000-0000000000c9';
   IF n_cust <> 2 THEN
     RAISE EXCEPTION '閲覧者の試行で顧客が % 件に増えた（期待 2）', n_cust;
   END IF;
 
-  RAISE NOTICE 'link_hearing_customer: 正常系・二度押し・原子性・車両だけの失敗・閲覧者の遮断、5つとも期待どおり';
+  -- ── 6. 既にある車両を引き当てる（代表判断 2026-10-15・選択肢 b）──────
+  -- ① ナンバー一致 → d1 に紐付く（新規作成しない）
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  SELECT public.link_hearing_customer(
+    '00000000-0000-4000-8000-0000000000f6', '00000000-0000-4000-8000-0000000000f1'
+  ) INTO v_res;
+  EXECUTE 'RESET ROLE';
+  IF (v_res->>'vehicle_id')::uuid <> '00000000-0000-4000-8000-0000000000d1' THEN
+    RAISE EXCEPTION 'ナンバー一致で既存車両に紐付かなかった: %', v_res;
+  END IF;
+
+  -- ② VIN 一致（全角・小文字・ハイフン入りでも正規化して当たる）
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  SELECT public.link_hearing_customer(
+    '00000000-0000-4000-8000-0000000000f7', '00000000-0000-4000-8000-0000000000f1'
+  ) INTO v_res;
+  EXECUTE 'RESET ROLE';
+  IF (v_res->>'vehicle_id')::uuid <> '00000000-0000-4000-8000-0000000000d1' THEN
+    RAISE EXCEPTION 'VIN 一致で既存車両に紐付かなかった（正規化していない可能性）: %', v_res;
+  END IF;
+
+  -- ③ ナンバーも VIN も無い → 顧客 + メーカー + 車種。1回目で作った車両に2回目が寄る。
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  SELECT public.link_hearing_customer(
+    '00000000-0000-4000-8000-0000000000f8', '00000000-0000-4000-8000-0000000000f1'
+  ) INTO v_res;
+  EXECUTE 'RESET ROLE';
+  v_reuse_id := (v_res->>'vehicle_id')::uuid;
+  v_customer_id := (v_res->>'customer_id')::uuid;
+  IF v_reuse_id IS NULL THEN
+    RAISE EXCEPTION 'ナンバーも VIN も無い連携で車両が作られなかった: %', v_res;
+  END IF;
+  -- 同じ顧客・同じメーカー・車種で2件目のヒアリング（連携をもう一度通す）。
+  INSERT INTO public.hearings (id, tenant_id, customer_id, customer_name, vehicle_maker, vehicle_model)
+  VALUES ('00000000-0000-4000-8000-0000000000fa', '00000000-0000-4000-8000-0000000000f1',
+          v_customer_id, '渡辺', 'ホンダ', 'フィット');
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  SELECT public.link_hearing_customer(
+    '00000000-0000-4000-8000-0000000000fa', '00000000-0000-4000-8000-0000000000f1'
+  ) INTO v_res;
+  EXECUTE 'RESET ROLE';
+  IF (v_res->>'vehicle_id')::uuid <> v_reuse_id THEN
+    RAISE EXCEPTION
+      '顧客+メーカー+車種で既存車両に寄らなかった（1回目 % / 2回目 %）。同じ車の行が増える',
+      v_reuse_id, v_res->>'vehicle_id';
+  END IF;
+
+  -- ④ ナンバーが違えば寄らない。**ここが緩むと違う車に紐付く。**
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  SELECT public.link_hearing_customer(
+    '00000000-0000-4000-8000-0000000000f9', '00000000-0000-4000-8000-0000000000f1'
+  ) INTO v_res;
+  EXECUTE 'RESET ROLE';
+  -- d9 はこの顧客が持つ同じメーカー・車種の車。ナンバーが違うのでここに寄ってはいけない。
+  IF (v_res->>'vehicle_id')::uuid IN (
+       '00000000-0000-4000-8000-0000000000d1',
+       '00000000-0000-4000-8000-0000000000d9'
+     ) THEN
+    RAISE EXCEPTION
+      'ナンバーが違うのに既存車両（同じメーカー・車種）に紐付いた: %。違う車に紐付く', v_res;
+  END IF;
+
+  -- ⑤ 同じ顧客でも**車種が違えば寄らない**。メーカーだけで寄せると
+  --    「ホンダ・フィット」に「ホンダ・ステップワゴン」が吸われる。
+  INSERT INTO public.hearings (id, tenant_id, customer_id, customer_name, vehicle_maker, vehicle_model)
+  VALUES ('00000000-0000-4000-8000-0000000000fb', '00000000-0000-4000-8000-0000000000f1',
+          v_customer_id, '渡辺', 'ホンダ', 'ステップワゴン');
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  SELECT public.link_hearing_customer(
+    '00000000-0000-4000-8000-0000000000fb', '00000000-0000-4000-8000-0000000000f1'
+  ) INTO v_res;
+  EXECUTE 'RESET ROLE';
+  IF (v_res->>'vehicle_id')::uuid = v_reuse_id THEN
+    RAISE EXCEPTION
+      '車種が違うのに同じ車両に寄った（% ）。メーカーだけで照合している', v_res;
+  END IF;
+
+  -- ⑥ **別の顧客の同じメーカー・車種には寄らない**（他人の車に紐付く）。
+  INSERT INTO public.hearings (id, tenant_id, customer_id, customer_name, vehicle_maker, vehicle_model)
+  VALUES ('00000000-0000-4000-8000-0000000000fc', '00000000-0000-4000-8000-0000000000f1',
+          '00000000-0000-4000-8000-0000000000c9', '山本', 'ホンダ', 'フィット');
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  SELECT public.link_hearing_customer(
+    '00000000-0000-4000-8000-0000000000fc', '00000000-0000-4000-8000-0000000000f1'
+  ) INTO v_res;
+  EXECUTE 'RESET ROLE';
+  IF (v_res->>'vehicle_id')::uuid = v_reuse_id THEN
+    RAISE EXCEPTION
+      '別の顧客の車両に寄った（%）。customer_id の条件が効いていない', v_res;
+  END IF;
+
+  RAISE NOTICE 'link_hearing_customer: 正常系・二度押し・原子性・車両だけの失敗・閲覧者の遮断・既存車両の引き当て、6つとも期待どおり';
 END $$;
 
 ROLLBACK;
