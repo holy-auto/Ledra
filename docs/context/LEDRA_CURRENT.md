@@ -65,7 +65,8 @@
 > 同日、現行コード（#1221 の Trust List 入り）でサンプル a〜d を作り直した。a・b の ingredient は `signingCredential.trusted`・`timeStamp.trusted` を記録
 > （10-02 版は `untrusted`、a は `expired` も）。c・d の ingredient は c2pa-rs のテスト証明書で自作したものなので `untrusted` のまま。
 > 出力自体はテスト証明書の署名なので `signingCredential.untrusted`（本番証明書は Notice の後でしか出ない）。この環境から ssl.com の TSA に届かないため、
-> 出力にタイムスタンプは付いていない。zip `Ledra-C2PA-Samples-TrustList-01a06690.zip`（samples 8ファイル）と返信の下書き（Gmail）を代表に渡した。**未送信**。
+> 出力にタイムスタンプは付いていない。zip `Ledra-C2PA-Samples-TrustList-01a06690.zip`（samples 8ファイル）と返信の下書き（Gmail）を代表に渡し、
+> **2026-10-15 13:40 UTC に代表が送信**（Gmail の送信済みで確認、zip は Drive リンク）。次は Administrator のサンプル判定待ち（Routine「Watch C2PA Notice」が見張る）。
 
 > 2026-10-05 追記（**モバイル一覧カードの `>` はバッジの右隣に並べてある**）: 一覧6画面（作業・車両・証明・顧客・
 > 実証テスト2画面）の `>` は、カードの見出し行の末尾で**ステータスバッジの右隣**に置き、バッジと同じ高さに揃えている
