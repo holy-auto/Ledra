@@ -20,7 +20,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Syntax validation
-        run: node --check scripts/code-flow-explorer.mjs
+        run: |
+          node --check scripts/code-flow-explorer.mjs
+          node --check scripts/code-flow-network.mjs
       - name: Generate repository code map
         run: node scripts/code-flow-explorer.mjs artifacts/code-flow-explorer.html
       - name: Add interactive network graph
