@@ -13,7 +13,10 @@
 4. 違和感・問題: 入口は Web の `withCaller`（311 本）・モバイルの `resolveMobileCaller`（42 本）・テナントを直接引く route（8 本）・
    サーバーアクション（5 ファイル）に散らばっており、入口ごとに足すと漏れる（`withCaller` だけで足りると一度勧めて誤った）。
 5. 決めたこと: デモテナントの利用者の書き込みメソッド（GET・HEAD・OPTIONS 以外）を、全リクエストが通る proxy で 403 にする。
-   ログイン・テナント切替・CSP レポート・請求状態の読み取り（billing-state）は通す。access_token を本文で受ける Stripe の 3 本は route 側でも断る。
+   対象はテナントの利用者として書き込む route があるパス（`GUARDED_PREFIXES`、/admin のサーバーアクションを含む）だけ。公開ページの
+   問い合わせ・資料請求・新規登録は、デモを試した人が同じブラウザで送るので断らない。範囲の漏れはテストが route を走査して検出する。
+   請求状態の読み取り（billing-state）は通す。access_token を本文で受ける Stripe の 3 本は route 側でも断る。
+   利用者は署名された access_token の sub で判定する（cookie の user.id は書き換えられる。/code-review で判明）。
 6. 捨てた選択肢: (a) `withCaller` と `resolveMobileCaller` に足す —— 残り 13 か所に手で足すことになり、今後の route も漏れる。
    `resolveMobileCaller` は null を返すと 401 になり、アプリが再ログインを繰り返しうる。(b) デモアカウントのロールを下げる —— ロール判定の無い経路は塞がらない。
    (c) proxy で Supabase の getSession() を使う —— 期限切れのとき refresh token を消費してセッションが壊れる。cookie を直接読む。

@@ -16,20 +16,46 @@
  * access_token を本文で受け取る Stripe 系の route は proxy から利用者が見えないので、route 側で断る
  * （isDemoTenant）。
  */
-import { NextResponse, type NextRequest } from "next/server";
+import type { NextRequest, NextResponse } from "next/server";
 import { combineChunks, stringFromBase64URL } from "@supabase/ssr";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { apiError } from "@/lib/api/response";
 import { DEMO_TENANT_ID } from "@/lib/demo";
 
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-// セッションの出入り（ログイン・テナント切替・認証コールバック）は書き込みメソッドでも通す。
-// ログアウトはブラウザから Supabase へ直接行くので、ここは通らない。
+/**
+ * テナントの利用者として認証して書き込む route があるパス（と、サーバーアクションを持つ /admin）。
+ * 公開ページの問い合わせ・資料請求・新規登録（/api/contact・/api/marketing・/api/signup 等）は含めない ——
+ * デモを試した人が同じブラウザで送ると、ここで断ってしまうため。
+ * 新しい場所にテナントの書き込み route を足したら、ここにも足す（demoWriteGuard.test.ts が検出する）。
+ */
+export const GUARDED_PREFIXES = [
+  "/admin",
+  "/api/admin/",
+  "/api/certificates/",
+  "/api/consent/",
+  "/api/identity/",
+  "/api/market/",
+  "/api/mobile/",
+  "/api/parts/",
+  "/api/passport/",
+  "/api/signature/",
+  "/api/stripe/",
+  "/api/template-options",
+  "/api/vehicles",
+  "/api/webauthn/",
+];
+
 // billing-state は access_token を本文で送るため POST だが、中身は読み取りだけ。
-const ALLOWED_PREFIXES = ["/api/auth/", "/auth/", "/login", "/api/csp-report", "/api/admin/billing-state"];
+const ALLOWED_PREFIXES = ["/api/admin/billing-state"];
 
 export function isGuardedWrite(method: string, pathname: string): boolean {
-  return !READ_METHODS.has(method.toUpperCase()) && !ALLOWED_PREFIXES.some((p) => pathname.startsWith(p));
+  return (
+    !READ_METHODS.has(method.toUpperCase()) &&
+    GUARDED_PREFIXES.some((p) => pathname.startsWith(p)) &&
+    !ALLOWED_PREFIXES.some((p) => pathname.startsWith(p))
+  );
 }
 
 function jwtSub(token: string): string | null {
@@ -61,9 +87,11 @@ export async function requestUserIds(request: NextRequest): Promise<string[]> {
     if (raw) {
       try {
         const json = raw.startsWith("base64-") ? stringFromBase64URL(raw.slice("base64-".length)) : raw;
-        const session = JSON.parse(json);
-        const id = session?.user?.id ?? (session?.access_token ? jwtSub(session.access_token) : null);
-        if (typeof id === "string") ids.push(id);
+        // 署名された access_token の sub だけを見る。同じ cookie の user.id は誰でも書き換えられる
+        // （後段の auth.getUser() は access_token しか見ないので、書き換えても通ってしまう）。
+        const accessToken = JSON.parse(json)?.access_token;
+        const id = typeof accessToken === "string" ? jwtSub(accessToken) : null;
+        if (id) ids.push(id);
       } catch {
         // 読めない cookie は後段の auth.getUser() も読めないので、ここで判定しなくてよい
       }
@@ -74,30 +102,52 @@ export async function requestUserIds(request: NextRequest): Promise<string[]> {
 }
 
 const MEMBER_TTL_MS = 5 * 60_000;
-let memberCache: { ids: Set<string>; at: number } | null = null;
+const FAILURE_TTL_MS = 30_000;
+let memberCache: { ids: Set<string> | null; at: number; ttl: number } | null = null;
+let inFlight: Promise<Set<string> | null> | null = null;
 
-// ponytail: デモテナントの所属者を 5 分キャッシュする（今は 1 人）。所属を足しても最大 5 分は
-// 古い一覧で判定する。取得に失敗し、キャッシュも無いときは通す（失敗のたびに全テナントの書き込みを
-// 止めないため）。その間はデモの書き込みが通りうる。
+// ponytail: デモテナントの所属者を 5 分キャッシュする（今は公開アカウントの 1 人だけ）。所属を足しても最大 5 分は
+// 古い一覧で判定する。判定は「デモテナントに所属しているか」で、選択中のテナントは見ない —— デモテナントに
+// 運営者を所属させると、その人は全テナントで書き込めなくなる（デモテナントには公開アカウントだけを置く）。
+// 取得に失敗したら（鍵が無い環境も含む）30 秒は「不明」として通す（失敗のたびに全テナントの書き込みを
+// 止めたり、毎回問い合わせて遅くしたりしないため）。その間はデモの書き込みが通りうる。
 async function demoMemberIds(): Promise<Set<string> | null> {
-  if (memberCache && Date.now() - memberCache.at < MEMBER_TTL_MS) return memberCache.ids;
-  const { data, error } = await getSupabaseAdmin()
-    .from("tenant_memberships")
-    .select("user_id")
-    .eq("tenant_id", DEMO_TENANT_ID);
-  if (error) {
-    console.warn("[demoWriteGuard] demo members lookup failed", error.message);
-    return memberCache?.ids ?? null;
-  }
-  memberCache = { ids: new Set((data ?? []).map((r: { user_id: string }) => r.user_id)), at: Date.now() };
-  return memberCache.ids;
+  if (memberCache && Date.now() - memberCache.at < memberCache.ttl) return memberCache.ids;
+  inFlight ??= (async () => {
+    try {
+      const { data, error } = await getSupabaseAdmin()
+        .from("tenant_memberships")
+        .select("user_id")
+        .eq("tenant_id", DEMO_TENANT_ID);
+      if (error) throw error;
+      const ids = new Set((data ?? []).map((r: { user_id: string }) => r.user_id));
+      memberCache = { ids, at: Date.now(), ttl: MEMBER_TTL_MS };
+      return ids;
+    } catch (e) {
+      console.warn("[demoWriteGuard] demo members lookup failed", e instanceof Error ? e.message : e);
+      const ids = memberCache?.ids ?? null;
+      memberCache = { ids, at: Date.now(), ttl: FAILURE_TTL_MS };
+      return ids;
+    } finally {
+      inFlight = null;
+    }
+  })();
+  return inFlight;
 }
 
 export function demoReadOnlyResponse(): NextResponse {
-  return NextResponse.json(
-    { error: "demo_read_only", message: "デモ環境では保存・変更はできません。" },
-    { status: 403 },
-  );
+  return apiError({
+    code: "forbidden",
+    status: 403,
+    message: "デモ環境では保存・変更はできません。",
+    data: { reason: "demo_read_only" },
+  });
+}
+
+/** テスト用: キャッシュを捨てる */
+export function resetDemoMemberCacheForTest(): void {
+  memberCache = null;
+  inFlight = null;
 }
 
 /** 公開デモアカウントの書き込みなら 403 を返す。それ以外は null。 */

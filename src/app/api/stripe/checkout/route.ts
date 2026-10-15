@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
     if (!m) return apiNotFound("テナントメンバーシップが見つかりません。");
     if (!hasMinRole(m.role, "owner"))
       return apiForbidden("課金の操作（プラン購入・変更・再開・請求ポータル）はオーナーのみ行えます。");
-    // access_token を本文で受けるので proxy の demoWriteGuard からは利用者が見えない。ここで断る
+    // cookie を付けず本文の access_token だけで呼ばれると、proxy の demoWriteGuard からは利用者が見えない。ここでも断る
     if (isDemoTenant(m.tenantId)) return demoReadOnlyResponse();
 
     const tenant_id = m.tenantId;
