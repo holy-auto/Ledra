@@ -12,6 +12,23 @@
 - テスト: `scripts/replay/checks/workshop_profiles_verified_at_lock.sql`（`npm run check:migrations` の最後に走る）。施工店の更新・新規作成・upsert（画面と同じ `ON CONFLICT DO UPDATE`）で `verified_at`・`verified_by` が変わらないこと、他の列は更新できること、service role は付けられること。
   マイグレーションを外すと落ちるのを確認済み。
 
+## 2026-10-15 #1306 をマージし、ヒアリング連携の1トランザクション化が本番に入った
+
+- マージ: PR #1306（`9e946323`、150 ファイル）。代表判断「全部修正しろ」の3つ
+  （`hearings.status` の語彙／1トランザクション化／無音の DB 書き込み 276 件）が本番に入った。
+- **本番適用の確認（実測 2026-10-15）**:
+  - `DB migrate (apply to production)` ワークフロー: success
+  - 本番の台帳の最新が `20261015122028 link_hearing_customer_transaction`
+  - `public.link_hearing_customer(p_hearing_id uuid, p_tenant_id uuid)` が存在し、
+    **`prosecdef = false`（SECURITY INVOKER のまま＝RLS が効く）**、`proconfig = search_path=""`、
+    EXECUTE は `authenticated` / `postgres` / `service_role` のみ（**anon には無い**）
+- マージ時点の CI: 直前の head `b9ba4bf` で 9/9 緑（Lint/Type/Unit・Migrations Replay・
+  E2E Playwright・CodeQL・Analyze・Gitleaks・Bundle Size・LOC）。マージした head `10d7813` は
+  その後に main を取り込んだ差分（main 側のコミットと MISTAKE_LEDGER の型表の和集合）のみで、
+  手元で tsc 0 / eslint 0 errors / vitest 666 ファイル・6364 件 / 再生 OK・振る舞いの検査 11 件を確認済み。
+- マイグレーションは**4回改名した**（main が短時間に4本のマイグレーションを入れ、そのたびに
+  `migration-version-before-base-head` で落ちたため）。本番の台帳に無い版なので改名でよい。
+
 ## 2026-10-13 モバイルの起動オープニングを作り直して再開
 
 - 内容: `remotion/MobileIntro.tsx` を新設。L マークを SVG で描き直し、紺の土台 → 真鍮の L → 留め具・リベット → 光の走り → LEDRA の順に組み上がる
