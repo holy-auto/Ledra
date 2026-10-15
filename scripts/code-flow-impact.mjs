@@ -46,7 +46,7 @@ for (const file of files) {
   // Conservative lexical import scan; may include comments and miss dynamic computed imports.
   // Static import/export, bare side-effect import, and literal dynamic import/require.
   // Avoid a cross-statement regex that could accidentally attach an unrelated string.
-  const specs = /\\b(?:import|export)\\s+(?:(?:[^;"'\\n]*?\\s+from\\s*)?["']([^"'\\n]+)["'])|\\b(?:import|require)\\s*\\(\\s*["']([^"'\\n]+)["']/g;
+  const specs = /\b(?:import|export)\s+(?:(?:[^;"'\n]*?\s+from\s*)?["']([^"'\n]+)["'])|\b(?:import|require)\s*\(\s*["']([^"'\n]+)["']/g;
   for (const match of src.matchAll(specs)) {
     const dep = resolveImport(file, match[1] || match[2]);
     if (!dep) continue;
