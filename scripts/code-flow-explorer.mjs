@@ -17,14 +17,14 @@ else if(ts.isExportDeclaration(n)&&n.moduleSpecifier&&ts.isStringLiteral(n.modul
 function visit(n){if(ts.isCallExpression(n)){const x=n.expression;let item=null,symbol="";if(ts.isIdentifier(x)){item=imported.get(x.text);symbol=item?.symbol;}else if(ts.isPropertyAccessExpression(x)&&ts.isIdentifier(x.expression)){const v=imported.get(x.expression.text);if(v?.symbol==="*"){item=v;symbol=x.name.text;}}if(item)calls.push({from:file,to:item.to,symbol,line:ast.getLineAndCharacterOfPosition(n.getStart(ast)).line+1});if(x.kind===ts.SyntaxKind.ImportKeyword&&n.arguments.length===1&&ts.isStringLiteral(n.arguments[0]))add(n.arguments[0].text,n,"dynamic-import");}ts.forEachChild(n,visit);}visit(ast);}
 const integrations=[];
 const patterns=[
-  ["supabase-db",/\\b(?:supabase|admin|db)\\s*\\.\\s*from\\s*\\(/g],
-  ["supabase-auth",/\\.auth\\.(?:getUser|getSession|signIn|signOut|admin)\\b/g],
-  ["queue",/\\b(?:qstash|publishJSON|publish|enqueue)\\s*\\(/g],
-  ["http",/\\bfetch\\s*\\(/g],
-  ["stripe",/\\bstripe\\.[A-Za-z]+\\./g],
-  ["logging",/\\b(?:logger|console)\\.(?:info|warn|error|debug)\\s*\\(/g]
+  ["supabase-db",/\b(?:supabase|admin|db)\s*\.\s*from\s*\(/g],
+  ["supabase-auth",/\.auth\.(?:getUser|getSession|signIn|signOut|admin)\b/g],
+  ["queue",/\b(?:qstash|publishJSON|publish|enqueue)\s*\(/g],
+  ["http",/\bfetch\s*\(/g],
+  ["stripe",/\bstripe\.[A-Za-z]+\./g],
+  ["logging",/\b(?:logger|console)\.(?:info|warn|error|debug)\s*\(/g]
 ];
-for(const file of files){const source=fs.readFileSync(file,"utf8");for(const [kind,re] of patterns){for(const m of source.matchAll(re)){const line=source.slice(0,m.index).split("\\n").length;integrations.push({file,kind,line});}}}
+for(const file of files){const source=fs.readFileSync(file,"utf8");for(const [kind,re] of patterns){for(const m of source.matchAll(re)){const line=source.slice(0,m.index).split("\n").length;integrations.push({file,kind,line});}}}
 const data={files,links,calls,integrations,commit:process.env.GITHUB_SHA||"main"},payload=JSON.stringify(data).replaceAll("<","\\u003c");
 const html=[
 '<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ledra Code Flow Explorer</title>',
