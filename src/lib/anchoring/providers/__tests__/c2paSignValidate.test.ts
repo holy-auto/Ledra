@@ -172,6 +172,22 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
       expect(actions?.created, `actions assertion is a created assertion for ${mime}`).toBe(true);
       const orientation = list.find((a) => a.action === "c2pa.orientation");
       expect(orientation?.digitalSourceType, `c2pa.orientation has digitalSourceType for ${mime}`).toBeTruthy();
+
+      // Conformulator 0.2 / Spec 2.4 rubric v1.1 (2026-10-15): softwareAgent is a generator-info-map with a
+      // non-empty name (actions_software_agent_mandatory_name), and no thumbnail assertion is embedded
+      // (thumbnail_format_mime_type failed on c2pa-rs's automatic thumbnails).
+      const agents = list.flatMap((a) =>
+        "softwareAgent" in a ? [(a as { softwareAgent?: unknown }).softwareAgent] : [],
+      );
+      expect(agents.length, `transform actions carry a softwareAgent for ${mime}`).toBeGreaterThan(0);
+      for (const agent of agents) {
+        expect((agent as { name?: unknown })?.name, `softwareAgent.name for ${mime}`).toEqual(expect.any(String));
+      }
+      expect(m.thumbnail, `no claim thumbnail for ${mime}`).toBeUndefined();
+      expect(
+        (m.ingredients ?? []).map((i: { thumbnail?: unknown }) => i.thumbnail),
+        `no ingredient thumbnail for ${mime}`,
+      ).toEqual([undefined]);
     });
   }
 
@@ -306,5 +322,11 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
       actions?.data.actions?.map((a) => a.action),
       "redaction is declared",
     ).toContain("c2pa.redacted");
+    // actions v2 mandatory fields (Conformulator actions_v2_mandatory_fields): a redaction names its reason
+    // and the redacted assertion.
+    const redacted = actions?.data.actions?.find((a) => a.action === "c2pa.redacted") as
+      { reason?: string; parameters?: { redacted?: string } } | undefined;
+    expect(redacted?.reason, "redaction reason").toBe("c2pa.PII.present");
+    expect(redacted?.parameters?.redacted, "redacted assertion").toContain("c2pa.metadata");
   });
 });

@@ -67,6 +67,12 @@
 > 出力自体はテスト証明書の署名なので `signingCredential.untrusted`（本番証明書は Notice の後でしか出ない）。この環境から ssl.com の TSA に届かないため、
 > 出力にタイムスタンプは付いていない。zip `Ledra-C2PA-Samples-TrustList-01a06690.zip`（samples 8ファイル）と返信の下書き（Gmail）を代表に渡し、
 > **2026-10-15 13:40 UTC に代表が送信**（Gmail の送信済みで確認、zip は Drive リンク）。次は Administrator のサンプル判定待ち（Routine「Watch C2PA Notice」が見張る）。
+> **2026-10-15 19:34 UTC 差し戻し**: Administrator が Conformulator（0.2 / Spec 2.4 rubric v1.1）で 82/85、不適合3件を返した
+> （softwareAgent に name が無い・actions v2 の必須項目・thumbnail の MIME type）。「ツールで全部通るまで直してから再提出」。
+> 署名側を直した: softwareAgent を `{ name: "sharp" }` にし、サムネイル（claim・ingredient）を出さない。サンプル a〜d を作り直し
+> （zip `Ledra-C2PA-Samples-v2-01a06690.zip`、約21MB、c・d の入力もサムネイルなしで作り直し）、Trust List の判定は前回どおり（a・b の ingredient が trusted）。
+> **サムネイルの不合格の原因は未特定**（形式は image/jpeg 等で入っていた）。Conformulator はこの環境から届かないので、
+> **送る前に代表が Conformulator で4枚とも全項目通るかを確かめる**（`M-20261015-wrote-only-finding-without-running-the-reviewers-checker`）。
 
 > 2026-10-05 追記（**モバイル一覧カードの `>` はバッジの右隣に並べてある**）: 一覧6画面（作業・車両・証明・顧客・
 > 実証テスト2画面）の `>` は、カードの見出し行の末尾で**ステータスバッジの右隣**に置き、バッジと同じ高さに揃えている

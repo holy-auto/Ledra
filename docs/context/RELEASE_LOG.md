@@ -4,7 +4,14 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
-## 2026-10-15 本番に無かった保存先 2 本を作り、マーケットの画像の保存先を非公開にする
+## 2026-10-15 C2PA の署名: softwareAgent を `{ name }` にし、自動サムネイルを外す
+
+- 内容: Conformulator（0.2 / Spec 2.4 rubric v1.1）の不適合3件への対応。`c2pa.orientation`・`c2pa.converted`・`c2pa.edited.metadata` の
+  softwareAgent を文字列から `{ name: "sharp" }` にした。署名の設定で claim と ingredient のサムネイルを作らない。
+- 確認: `c2paSignValidate.test.ts` に検査を追加（JPEG・PNG・WebP・HEIC の4形式）。修正前のコードで赤になることを確認。
+  `src/lib/anchoring` のテスト 204 件が通過。
+- 本番への影響: 本番の C2PA はまだ disabled なので、本番証明書を入れてオンにした日から効く。
+
 
 - 内容: 証明書 PDF の一括生成（`certificates`）と保険会社の案件の添付（`case-attachments`）は、本番に無いバケットへ保存していて
   保存がすべて失敗していた。2 本とも非公開で作る（読み書きは service-role だけ）。あわせて、マーケットの画像の保存先（`market`）を非公開にした
