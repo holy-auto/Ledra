@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 type MediaTypeOption = "video" | "before_after";
 
@@ -85,7 +86,7 @@ export default function MediaUploadSection({ publicId, existing }: Props) {
 
     const form = new FormData();
     form.append("media_type", type);
-    form.append("file", primary);
+    if (type !== "video") form.append("file", primary);
     if (before) form.append("before", before);
     if (poster) form.append("poster", poster);
     if (caption.trim()) form.append("caption", caption.trim());
@@ -94,6 +95,29 @@ export default function MediaUploadSection({ publicId, existing }: Props) {
 
     startTransition(async () => {
       try {
+        // 動画は Vercel の関数の本文上限（約 4.5MB）を超えるので、Storage へ直接送ってから保存パスだけを登録する
+        if (type === "video") {
+          const urlRes = await fetch(`/api/certificates/${encodeURIComponent(publicId)}/media/upload-url`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ content_type: primary.type, size: primary.size }),
+          });
+          const urlJson = (await urlRes.json().catch(() => ({}))) as Record<string, unknown>;
+          if (!urlRes.ok || typeof urlJson.path !== "string" || typeof urlJson.token !== "string") {
+            setMessage(null);
+            setError((urlJson?.message as string) ?? `アップロードの準備に失敗しました (HTTP ${urlRes.status})。`);
+            return;
+          }
+          const { error: upErr } = await createClient()
+            .storage.from("assets")
+            .uploadToSignedUrl(urlJson.path, urlJson.token, primary, { contentType: primary.type });
+          if (upErr) {
+            setMessage(null);
+            setError(`動画のアップロードに失敗しました。（${upErr.message}）`);
+            return;
+          }
+          form.append("primary_path", urlJson.path);
+        }
         const res = await fetch(`/api/certificates/${encodeURIComponent(publicId)}/media`, {
           method: "POST",
           body: form,

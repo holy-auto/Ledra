@@ -10,12 +10,14 @@ import {
   SUPPORTED_MEDIA_TYPES,
   detectMediaMime,
   extensionForMime,
+  isOwnDirectVideoPath,
   type MediaType,
 } from "@/lib/certificateMedia";
 import { apiOk, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
 
 import { withCaller } from "@/lib/api/withCaller";
 import { watchGateReadyTransition } from "@/lib/certificates/gateReadyNotify";
+import { inspectStoredVideo } from "@/lib/certificateMedia/inspectStoredVideo";
 
 export const runtime = "nodejs";
 // Videos can be up to 100 MB so we need extra time for upload + storage write.
@@ -23,7 +25,9 @@ export const maxDuration = 60;
 
 type UploadInput = {
   mediaType: MediaType;
-  primary: File;
+  /** multipart で届いた主ファイル。動画は代わりに primaryPath（Storage へ直接アップロード済み）で届く */
+  primary: File | null;
+  primaryPath: string | null;
   before: File | null;
   poster: File | null;
   caption: string | null;
@@ -40,7 +44,13 @@ function parseInput(form: FormData): { input?: UploadInput; error?: string } {
   }
 
   const primary = form.get("file");
-  if (!(primary instanceof File) || primary.size === 0) {
+  const primaryFile = primary instanceof File && primary.size > 0 ? primary : null;
+  const rawPath = form.get("primary_path");
+  const primaryPath = typeof rawPath === "string" && rawPath.trim() ? rawPath.trim() : null;
+  if (primaryPath && mediaType !== "video") {
+    return { error: "primary_path は動画でのみ指定できます。" };
+  }
+  if (!primaryFile && !primaryPath) {
     return { error: "file (主たるメディア) は必須です。" };
   }
 
@@ -60,7 +70,8 @@ function parseInput(form: FormData): { input?: UploadInput; error?: string } {
   return {
     input: {
       mediaType,
-      primary,
+      primary: primaryPath ? null : primaryFile,
+      primaryPath,
       before: beforeFile,
       poster: posterFile,
       caption,
@@ -145,9 +156,19 @@ export const POST = withCaller<{ id: string }>(
       if (!certRes.data?.id) return apiNotFound("証明書が見つかりません。");
       const certId = certRes.data.id;
 
-      const primaryExpected: "video" | "image" = input.mediaType === "video" ? "video" : "image";
-      const primaryResult = await validateFile(input.primary, primaryExpected);
-      if (!primaryResult.ok) return apiValidationError(primaryResult.error);
+      // 動画を Storage へ直接アップロードした場合は、自分の証明書の保存パスかを確かめてから実物を検査する。
+      // 形式・大きさが合わなければ、置かれたファイルは消す（登録されないまま残さない）。
+      const directPath = input.primaryPath;
+      if (directPath && !isOwnDirectVideoPath(directPath, tenantId, certId)) {
+        return apiValidationError("primary_path が不正です。");
+      }
+      const primaryResult = directPath
+        ? await inspectStoredVideo(admin, directPath)
+        : await validateFile(input.primary as File, input.mediaType === "video" ? "video" : "image");
+      if (!primaryResult.ok) {
+        if (directPath) await admin.storage.from(CERTIFICATE_MEDIA_BUCKET).remove([directPath]);
+        return apiValidationError(primaryResult.error);
+      }
 
       let beforeResult: ValidatedFile | null = null;
       if (input.before) {
@@ -174,14 +195,16 @@ export const POST = withCaller<{ id: string }>(
 
       const ts = Date.now();
       const basePath = `${CERTIFICATE_MEDIA_STORAGE_PREFIX}/${tenantId}/${certId}/${ts}`;
-      const primaryPath = `${basePath}_main.${primaryResult.data.ext}`;
+      const primaryPath = directPath ?? `${basePath}_main.${primaryResult.data.ext}`;
       const beforePath = beforeResult ? `${basePath}_before.${beforeResult.ext}` : null;
       const posterPath = posterResult ? `${basePath}_poster.${posterResult.ext}` : null;
 
-      // Upload primary
-      const uploads: { path: string; buf: Buffer; mime: string }[] = [
-        { path: primaryPath, buf: primaryResult.data.buffer, mime: primaryResult.data.mime },
-      ];
+      // Upload primary（直接アップロード済みの動画は置き済みなので送らない）
+      const uploads: { path: string; buf: Buffer; mime: string }[] = [];
+      const primaryBuffer = (primaryResult.data as Partial<ValidatedFile>).buffer;
+      if (!directPath && primaryBuffer) {
+        uploads.push({ path: primaryPath, buf: primaryBuffer, mime: primaryResult.data.mime });
+      }
       if (beforeResult && beforePath) {
         uploads.push({ path: beforePath, buf: beforeResult.buffer, mime: beforeResult.mime });
       }
@@ -189,7 +212,8 @@ export const POST = withCaller<{ id: string }>(
         uploads.push({ path: posterPath, buf: posterResult.buffer, mime: posterResult.mime });
       }
 
-      const uploaded: string[] = [];
+      // 失敗時に消す対象。直接アップロード済みの動画も含める（登録されないまま残さない）
+      const uploaded: string[] = directPath ? [directPath] : [];
       for (const u of uploads) {
         const { error: upErr } = await admin.storage
           .from(CERTIFICATE_MEDIA_BUCKET)
