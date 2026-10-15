@@ -2,6 +2,7 @@ import { z } from "zod";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { signAssetPaths } from "@/lib/signedUrl";
 import { enforceBilling } from "@/lib/billing/guard";
 
 import { apiJson, apiOk, apiValidationError, apiInternalError } from "@/lib/api/response";
@@ -28,7 +29,6 @@ const batchPdfSchema = z.object({
 export const GET = withCaller(
   async (req, { caller }) => {
     try {
-
       const jobId = req.nextUrl.searchParams.get("job_id");
       if (!jobId) return apiValidationError("job_id は必須です。");
 
@@ -42,7 +42,19 @@ export const GET = withCaller(
 
       if (error || !job) return apiValidationError("ジョブが見つかりません。");
 
-      return apiOk(job);
+      // 結果には保存パスだけを持ち、見るたびに 1 時間の署名 URL を付ける（保存した URL は 1 時間で切れていた）
+      type Result = { public_id: string; storage_path?: string; pdf_url?: string; error?: string };
+      const results = (Array.isArray(job.result_urls) ? job.result_urls : []) as Result[];
+      const urls = await signAssetPaths(
+        admin,
+        results.map((r) => r.storage_path),
+        "certificates",
+      );
+      const result_urls = results.map((r) =>
+        r.storage_path ? { ...r, pdf_url: urls.get(r.storage_path) ?? null } : r,
+      );
+
+      return apiOk({ ...job, result_urls });
     } catch (e) {
       return apiInternalError(e, "admin/certificates/batch-pdf GET");
     }
@@ -64,7 +76,6 @@ export const POST = withCaller(
     // still allowing legitimate batch operations.
 
     try {
-
       const billingDeny = await enforceBilling(req, {
         minPlan: "starter",
         action: "batch_pdf",
