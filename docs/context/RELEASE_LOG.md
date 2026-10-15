@@ -4,6 +4,64 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-13 メーカーは施工店の設備・資格を閲覧だけに（編集をなくした）
+
+- 内容: メーカーポータルの実証テスト「設備・資格」タブから、編集ボタンと編集フォームを消した。メーカー向けの個別ルート `/api/manufacturer/field-test/workshop-profiles/[tenantId]` は
+  GET・PUT とも消した（GET は編集フォームを消すとどこからも呼ばれなくなった。判定用の `isParticipatingTenant` とそのテストも一緒に削除）。メーカーが読むのはプロジェクト指定の一覧 GET だけ。
+  タブの上に「設備・資格は各施工店が登録・更新します。メーカーからは閲覧のみです。」と出し、未登録のときの文言を「施工店が自分で登録すると表示されます」に変えた。
+- 登録・更新は施工店本人の口（管理画面 `/api/admin/field-test/workshop-profile`、モバイル `/api/mobile/field-test/workshop-profile`）だけ。DB の更新ポリシーも自分の施工店の行だけ（変更なし）。
+- テスト: メーカー向けの一覧ルートが GET だけを出し、POST/PUT/PATCH/DELETE を出さないこと（同じ検査を旧個別ルートに当てて赤になるのを確認済み）。
+
+## 2026-10-12 ビルドの最後に「C2PA のバイナリが関数バンドルに入ったか」を確かめる（`--traced`）
+
+- 内容: `scripts/check-c2pa-binary.mjs` に `--traced` を追加し、`npm run build` の最後に置いた
+  （`node scripts/check-c2pa-binary.mjs && next build && node scripts/prune-build-cache.mjs && node scripts/check-c2pa-binary.mjs --traced`）。
+  前段のロード検査は**ビルド機で `require` できるか**しか見ない。`serverExternalPackages` に入れてあるので、
+  48MB の `dist/index.node` は Turbopack のバンドルではなく **output file tracing 経由でだけ**関数に入る。
+  tracing が拾わなければ、ビルドもデプロイも緑のまま**実行時に** `signer_unavailable` → #1209 のゲートが全アップロードを 503 で断る。
+- 見るもの: **#1209 のゲートの背後にある2本の route**（`/api/certificates/images/upload`、`/api/mobile/certificates/images/upload` ——
+  `uploadHandler` を呼んでいるのはこの2本だけ）の trace を読み、**その trace が実在し、`dist/index.node` の絶対パスを挙げていること**を要求する。
+  `C2PA_MODE=production` のときだけ走り、`C2PA_LIBRARY_PATH` が空でなく設定されているときは skip する
+  （実行時 env で決まるパスを tracing は辿れない。空文字は skip しない —— 見るものが変わらないため）。
+- **route 単位で見る。** 初版は「パッケージを挙げている trace が全部バイナリも挙げている」という全体条件で、
+  **ゲートの背後の route だけが落ちた回を緑にしていた**（無関係な route が1本挙げていれば exit 0。`/code-review` が実測）。
+  tracing は entrypoint ごとに辿るので、落ちるときも route ごとに落ちる。
+- 実測（2026-10-12・Next 16.3.8 の手元のビルド成果物。同日に2回、別のツリーで）: パッケージを挙げている trace は9本で、**9本とも `index.node` を挙げている**。
+  **trace の総数は書かない** —— route が増えるたびに動く（2回で 1076 → 1082）。
+  `dist/` の 18 エントリのうち `types/`（ディレクトリ）以外の 17 が入っており、誰も import していない `Builder.spec.js` まで入っている
+  → 推定: `require(C2PA_LIBRARY_PATH ?? "./index.node")` が静的に解けないので tracing が `dist/` を丸ごと取り込んでいる。
+- パスは `require.resolve` で解いた絶対パスと比べる（trace の行は trace ファイルのディレクトリ基準で解決する）。
+  **ファイル名（`index.node`）の一致では見ない** —— ネイティブモジュールの名前は被るので、無関係なバイナリで緑になる。
+- 検査: `scripts/__tests__/checkC2paBinary.test.ts` に9本追加（計19本）。使い捨てディレクトリに `.nft.json` を2本置いて
+  子プロセスで走らせる形なので、本物のビルドを回さずに全分岐を踏める。変異10種のうち**9種で赤**
+  （trace が無くても進む／`files` の形を見ない／バイナリ欠落を見逃す／空文字の override で skip する／mode の gate を外す／
+  壊れた JSON を飛ばす／1本目の route だけ見る／ファイル名だけ一致を見る／`--traced` の印を出さない）。
+  残る1種（trace の行を cwd 基準で解く）は fixture では差が出ない —— 使い捨て cwd と本物のバイナリの共通の先祖が `/` しか無く、
+  どの基準でも `..` が root でクランプして同じパスに着く。**本物の `.next` では赤になることを実測した**（テストの docblock に明記）。
+- OPEN_QUESTIONS の【要確認】を1件閉じた。原文の塞ぎ方（「ビルド後に `.next/` 配下の実在を見る」）は誤りで、
+  tracing はファイルを `.next/` へコピーしない（manifest に書くだけ）—— MISTAKE_LEDGER `M-20261012-planned-to-look-for-a-file-tracing-never-copies`。
+
+## 2026-10-12 メーカーが他社の施工店の設備・資格を読めた・書き換えられた穴を塞いだ
+
+- 内容: 施工店の設備・資格（`workshop_capability_profiles`。許可番号・整備士の資格者名・対応地域。1施工店1行でメーカーをまたいで共有）を、
+  **自社の実証テストに参加している施工店（どれかのプロジェクトで応募承認済み、または案件割当済み）だけ**に絞った。
+  - `GET /api/manufacturer/field-test/workshop-profiles`: `project_id` を必須にした。条件なし（全施工店 200件）と `tenant_id` 指定の分岐を消した（画面はプロジェクト指定でしか呼んでいない）。
+  - `GET / PUT /api/manufacturer/field-test/workshop-profiles/[tenantId]`: 参加していない施工店は GET が 404、PUT が 403。**以前は、どのメーカーの管理者でも任意の施工店の設備・資格を上書きできた。**
+  - 判定は `isParticipatingTenant()`（`src/lib/fieldTest/applicationGate.ts`、テスト4件）。設備・資格タブが出す施工店と同じ条件。
+  - **DB の参照ポリシーも絞った**（`20261012222500_workshop_profiles_select_own_tenant.sql`）。以前は `USING (true)` で、ログインした人なら誰でも PostgREST から全施工店の行を読めた
+    （API を通らない経路。本番の `pg_policies` で確認）。自分の施工店の行だけ読める（`my_tenant_ids()`）に変えた。施工店の画面（Web・モバイル）は自分の行しか読まず、メーカーは service role で読むので影響しない。
+  - 設備・資格タブの編集で保存に失敗したとき、黙って閉じずにエラーを出す。施工店 ID・プロジェクト ID が UUID でなければ 404 / 400（以前は 500）。
+- 見つけた経緯: #1323 の `/code-review` で一覧 API の分岐が指摘され、直す際に個別ルートの GET/PUT にも同じ穴があることを見つけた。
+- 実害: 本番の `workshop_capability_profiles` は 2026-10-12 時点で1行だけで、それはデモ施工店の行（同日 `demo-manufacturer-portal.sql` で入れたもの。それ以前は0行）。
+  実在の施工店の設備・資格は1件も無かったので、読まれた・書き換えられたものは無い（本番 DB で件数を確認）。
+- 本番反映: 2026-10-13 に #1329 をマージ。DB のポリシーは `db-migrate.yml` で自動適用され、本番の `pg_policies` で SELECT が `workshop_cap_profiles_tenant_select`（`my_tenant_ids()`）だけになり、`USING (true)` の旧ポリシーが消えたことを確認。
+
+## 2026-10-12 デモの施工写真に「AI で生成したイメージ」と表示
+
+- 内容: 管理画面上部のデモ帯（`DemoTenantBanner`）に「施工写真は AI で生成したイメージで、実際の施工写真ではありません」を足した。
+  公開証明書ページ（`/c/[public_id]`）でも、店舗がデモテナント（slug `ledra-motors-demo`、本番の tenants で確認）で写真が見えているときだけ、写真の上に同じ注記を出す。
+- モバイルアプリには出していない（OPEN_QUESTIONS）。
+
 ## 2026-10-12 ブランド証明書のロゴと、マーケットの車両画像が出ていなかったのを直す
 
 - ブランド証明書のロゴ: テンプレート設定で上げたロゴ（`branding.logo_asset_id` = `template_assets` の行 ID）を、
@@ -20,6 +78,16 @@
 - ブランド証明書のロゴ（補足）: テンプレートのロゴが署名できないときは証明書側のロゴに落とす。メーカー指定デザインでロゴ ID があるときは
   ロゴを出さない（施工店のロゴをメーカーのデザインに差し込まない。以前と同じ見た目）。
 - 本番の実害: 2026-10-12 時点でロゴ付きのテンプレート 0 件・`template_assets` 0 件・マーケットの画像 0 件（storage.objects で確認）。
+
+## 2026-10-12 キャッシュの無いビルドでも 8GB のビルド機で落ちにくくする
+
+- 内容: Vercel のビルドキャッシュが大きすぎて捨てられると全部ビルドになり、8 GB 機で OOM になっていた（2026-10-12 にプレビュー `ae2b495` で再発）。
+  ビルドのメモリそのものを下げる。
+- 実装: `next.config.ts` に `typescript.ignoreBuildErrors: true`（型チェックは CI の `tsc --noEmit` に任せる）と
+  `experimental.serverSourceMaps: false`（サーバー側のソースマップを作らない）。理由と捨てた案は DECISION_LOG 2026-10-12。
+- 検証: 手元でキャッシュなしのビルドを測定（Sentry あり、型チェックを省いた同士）: サーバー側ソースマップありで 7.6 / 7.6 GB、なしで 6.0 / 6.8 GB。
+  サーバー側の .map が 5580 個 → 0 個になり、ブラウザ側のソースマップの扱い（Sentry が送った後に消す）は変わらないことを確認。
+  prettier / eslint（既存の警告 2 件のみ）/ tsc。Vercel の 8 GB 機で通るかは、次にキャッシュが捨てられた回で確認【要確認】。
 
 ## 2026-10-12 デモデータ: 施工写真（AI 生成）を種類ごとに入れ、施工・整備記録に詳細文を入れる（本番のデモテナントに反映済み）
 
@@ -121,7 +189,7 @@
 
 - 内容（DECISION_LOG 2026-10-12・代表判断「全部修正しろ」）:
   - 顧客・車両・ヒアリング更新の3つを DB 関数 `public.link_hearing_customer` にまとめた
-    （`supabase/migrations/20261012140200_link_hearing_customer_transaction.sql`）。SECURITY INVOKER なので
+    （`supabase/migrations/20261015122028_link_hearing_customer_transaction.sql`）。SECURITY INVOKER なので
     テナント分離は今までどおり RLS が見る。`for update` で二度押しを直列化し、車両だけは副トランザクションで
     best-effort（失敗コードを返して画面に出す）。ルートは 60 行減って関数を1回呼ぶだけになった。
   - `hearings.status` の zod の値を本番 DB の CHECK（`draft` / `completed` / `linked`）に揃えた。

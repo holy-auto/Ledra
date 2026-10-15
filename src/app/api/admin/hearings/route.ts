@@ -98,7 +98,7 @@ export const PUT = withCaller(
       if (action === "link_customer") {
         // 顧客 insert・車両 insert・ヒアリング更新の3つは **DB 側で1トランザクション**に
         // まとめてある（`public.link_hearing_customer`、
-        // `supabase/migrations/20261012140200_link_hearing_customer_transaction.sql`）。
+        // `supabase/migrations/20261015122028_link_hearing_customer_transaction.sql`）。
         //
         // アプリから3回に分けて投げていた頃は、途中で落ちると宙に浮いた行が残り、
         // 操作者が押し直すと顧客が二重に増えた（一覧のボタンは `status !== "linked"` の
