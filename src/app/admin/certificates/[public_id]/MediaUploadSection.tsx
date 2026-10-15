@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { CERTIFICATE_MEDIA_BUCKET } from "@/lib/certificateMedia";
 
 type MediaTypeOption = "video" | "before_after";
 
@@ -23,6 +24,14 @@ type Props = {
 
 const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100 MB
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MB
+// 動画と一緒に multipart で送るポスター画像は、Vercel の関数の本文上限（約 4.5MB）に収める
+const MAX_MULTIPART_POSTER_BYTES = 4 * 1024 * 1024;
+
+/** ブラウザが MIME を出さない・別名で出す動画（.m4v など）は拡張子で決める。中身はサーバーが実物で確かめる */
+function videoContentType(file: File): "video/mp4" | "video/quicktime" {
+  if (file.type === "video/mp4" || file.type === "video/quicktime") return file.type;
+  return /\.mov$/i.test(file.name) ? "video/quicktime" : "video/mp4";
+}
 
 const VIDEO_ACCEPT = "video/mp4,video/quicktime";
 const IMAGE_ACCEPT = "image/jpeg,image/png";
@@ -47,7 +56,11 @@ export default function MediaUploadSection({ publicId, existing }: Props) {
   const beforeRef = useRef<HTMLInputElement>(null);
   const posterRef = useRef<HTMLInputElement>(null);
 
+  // 直接アップロードは済んだが登録が一時的に失敗した動画。同じファイルで再試行するときは送り直さない（取り残しを増やさない）
+  const directUpload = useRef<{ file: File; path: string } | null>(null);
+
   const reset = () => {
+    directUpload.current = null;
     setPrimary(null);
     setBefore(null);
     setPoster(null);
@@ -79,6 +92,12 @@ export default function MediaUploadSection({ publicId, existing }: Props) {
         return;
       }
     }
+    if (type === "video" && poster && poster.size > MAX_MULTIPART_POSTER_BYTES) {
+      setError(
+        `ポスター画像のサイズが大きすぎます (動画と一緒に送るときは ${Math.round(MAX_MULTIPART_POSTER_BYTES / 1024 / 1024)}MB まで)。`,
+      );
+      return;
+    }
     if (poster && poster.size > MAX_IMAGE_BYTES) {
       setError(`ポスター画像のサイズが大きすぎます (上限 ${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)}MB)。`);
       return;
@@ -97,26 +116,30 @@ export default function MediaUploadSection({ publicId, existing }: Props) {
       try {
         // 動画は Vercel の関数の本文上限（約 4.5MB）を超えるので、Storage へ直接送ってから保存パスだけを登録する
         if (type === "video") {
-          const urlRes = await fetch(`/api/certificates/${encodeURIComponent(publicId)}/media/upload-url`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ content_type: primary.type, size: primary.size }),
-          });
-          const urlJson = (await urlRes.json().catch(() => ({}))) as Record<string, unknown>;
-          if (!urlRes.ok || typeof urlJson.path !== "string" || typeof urlJson.token !== "string") {
-            setMessage(null);
-            setError((urlJson?.message as string) ?? `アップロードの準備に失敗しました (HTTP ${urlRes.status})。`);
-            return;
+          if (directUpload.current?.file !== primary) {
+            const contentType = videoContentType(primary);
+            const urlRes = await fetch(`/api/certificates/${encodeURIComponent(publicId)}/media/upload-url`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ content_type: contentType, size: primary.size }),
+            });
+            const urlJson = (await urlRes.json().catch(() => ({}))) as Record<string, unknown>;
+            if (!urlRes.ok || typeof urlJson.path !== "string" || typeof urlJson.token !== "string") {
+              setMessage(null);
+              setError((urlJson?.message as string) ?? `アップロードの準備に失敗しました (HTTP ${urlRes.status})。`);
+              return;
+            }
+            const { error: upErr } = await createClient()
+              .storage.from(CERTIFICATE_MEDIA_BUCKET)
+              .uploadToSignedUrl(urlJson.path, urlJson.token, primary, { contentType });
+            if (upErr) {
+              setMessage(null);
+              setError(`動画のアップロードに失敗しました。（${upErr.message}）`);
+              return;
+            }
+            directUpload.current = { file: primary, path: urlJson.path };
           }
-          const { error: upErr } = await createClient()
-            .storage.from("assets")
-            .uploadToSignedUrl(urlJson.path, urlJson.token, primary, { contentType: primary.type });
-          if (upErr) {
-            setMessage(null);
-            setError(`動画のアップロードに失敗しました。（${upErr.message}）`);
-            return;
-          }
-          form.append("primary_path", urlJson.path);
+          form.append("primary_path", directUpload.current!.path);
         }
         const res = await fetch(`/api/certificates/${encodeURIComponent(publicId)}/media`, {
           method: "POST",

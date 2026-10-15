@@ -13,14 +13,14 @@ import {
   isOwnDirectVideoPath,
   type MediaType,
 } from "@/lib/certificateMedia";
-import { apiOk, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { apiOk, apiError, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
 
 import { withCaller } from "@/lib/api/withCaller";
 import { watchGateReadyTransition } from "@/lib/certificates/gateReadyNotify";
 import { inspectStoredVideo } from "@/lib/certificateMedia/inspectStoredVideo";
 
 export const runtime = "nodejs";
-// Videos can be up to 100 MB so we need extra time for upload + storage write.
+// 動画の本体は Storage へ直接アップロードされ、この関数は先頭だけを読む。Before/After の画像の保存に余裕を持たせる。
 export const maxDuration = 60;
 
 type UploadInput = {
@@ -126,9 +126,18 @@ async function validateFile(
 
 export const POST = withCaller<{ id: string }>(
   async (req, { caller, params }) => {
+    // 直接アップロード済みの動画のうち、まだ登録されていないもの。失敗で返るときはどの経路でも消す（登録されないまま残さない）
+    let pendingDirectPath: string | null = null;
+    const tenantId = caller.tenantId;
+    const discardPending = async () => {
+      if (!pendingDirectPath) return;
+      const { admin } = createTenantScopedAdmin(tenantId);
+      await admin.storage
+        .from(CERTIFICATE_MEDIA_BUCKET)
+        .remove([pendingDirectPath])
+        .catch((e) => console.error("[media upload] discard direct upload failed", e));
+    };
     try {
-      const tenantId = caller.tenantId;
-
       const { id: publicId } = params;
       if (!publicId) return apiValidationError("public_id は必須です。");
 
@@ -156,31 +165,58 @@ export const POST = withCaller<{ id: string }>(
       if (!certRes.data?.id) return apiNotFound("証明書が見つかりません。");
       const certId = certRes.data.id;
 
-      // 動画を Storage へ直接アップロードした場合は、自分の証明書の保存パスかを確かめてから実物を検査する。
-      // 形式・大きさが合わなければ、置かれたファイルは消す（登録されないまま残さない）。
+      // 動画を Storage へ直接アップロードした場合: 自分の証明書の、まだ登録されていない保存パスかを確かめる。
+      // 登録済みのパス（同じ形）を渡されたら、重複登録もしないし、消しもしない。
       const directPath = input.primaryPath;
-      if (directPath && !isOwnDirectVideoPath(directPath, tenantId, certId)) {
-        return apiValidationError("primary_path が不正です。");
-      }
-      const primaryResult = directPath
-        ? await inspectStoredVideo(admin, directPath)
-        : await validateFile(input.primary as File, input.mediaType === "video" ? "video" : "image");
-      if (!primaryResult.ok) {
-        if (directPath) await admin.storage.from(CERTIFICATE_MEDIA_BUCKET).remove([directPath]);
-        return apiValidationError(primaryResult.error);
+      if (directPath) {
+        if (!isOwnDirectVideoPath(directPath, tenantId, certId)) return apiValidationError("primary_path が不正です。");
+        const { data: dup, error: dupErr } = await admin
+          .from("certificate_media")
+          .select("id")
+          .eq("storage_path", directPath)
+          .limit(1)
+          .maybeSingle();
+        if (dupErr) throw dupErr;
+        if (dup) return apiError({ code: "conflict", message: "この動画は登録済みです。", status: 409 });
+        pendingDirectPath = directPath;
       }
 
       let beforeResult: ValidatedFile | null = null;
       if (input.before) {
         const r = await validateFile(input.before, "image");
-        if (!r.ok) return apiValidationError(`before: ${r.error}`);
+        if (!r.ok) {
+          await discardPending();
+          return apiValidationError(`before: ${r.error}`);
+        }
         beforeResult = r.data;
       }
       let posterResult: ValidatedFile | null = null;
       if (input.poster) {
         const r = await validateFile(input.poster, "image");
-        if (!r.ok) return apiValidationError(`poster: ${r.error}`);
+        if (!r.ok) {
+          await discardPending();
+          return apiValidationError(`poster: ${r.error}`);
+        }
         posterResult = r.data;
+      }
+
+      // 主ファイル: 直接アップロードは Storage の実物を検査（中身が不正と確定したときだけ消す。一時的に読めないときは残して再試行させる）。
+      // multipart はバッファを検査する。
+      let primary: { mime: string; ext: string; size: number; buffer: Buffer | null };
+      if (directPath) {
+        const r = await inspectStoredVideo(admin, directPath);
+        if (!r.ok) {
+          if (r.definitive) await discardPending();
+          return r.definitive
+            ? apiValidationError(r.error)
+            : apiError({ code: "internal_error", message: r.error, status: 503 });
+        }
+        primary = { ...r.data, buffer: null };
+      } else {
+        if (!input.primary) return apiValidationError("file (主たるメディア) は必須です。");
+        const r = await validateFile(input.primary, input.mediaType === "video" ? "video" : "image");
+        if (!r.ok) return apiValidationError(r.error);
+        primary = r.data;
       }
 
       // Determine sort_order = current max + 1
@@ -195,16 +231,13 @@ export const POST = withCaller<{ id: string }>(
 
       const ts = Date.now();
       const basePath = `${CERTIFICATE_MEDIA_STORAGE_PREFIX}/${tenantId}/${certId}/${ts}`;
-      const primaryPath = directPath ?? `${basePath}_main.${primaryResult.data.ext}`;
+      const primaryPath = directPath ?? `${basePath}_main.${primary.ext}`;
       const beforePath = beforeResult ? `${basePath}_before.${beforeResult.ext}` : null;
       const posterPath = posterResult ? `${basePath}_poster.${posterResult.ext}` : null;
 
       // Upload primary（直接アップロード済みの動画は置き済みなので送らない）
       const uploads: { path: string; buf: Buffer; mime: string }[] = [];
-      const primaryBuffer = (primaryResult.data as Partial<ValidatedFile>).buffer;
-      if (!directPath && primaryBuffer) {
-        uploads.push({ path: primaryPath, buf: primaryBuffer, mime: primaryResult.data.mime });
-      }
+      if (primary.buffer) uploads.push({ path: primaryPath, buf: primary.buffer, mime: primary.mime });
       if (beforeResult && beforePath) {
         uploads.push({ path: beforePath, buf: beforeResult.buffer, mime: beforeResult.mime });
       }
@@ -214,6 +247,7 @@ export const POST = withCaller<{ id: string }>(
 
       // 失敗時に消す対象。直接アップロード済みの動画も含める（登録されないまま残さない）
       const uploaded: string[] = directPath ? [directPath] : [];
+      pendingDirectPath = null; // ここから先の失敗は uploaded で消す
       for (const u of uploads) {
         const { error: upErr } = await admin.storage
           .from(CERTIFICATE_MEDIA_BUCKET)
@@ -249,8 +283,8 @@ export const POST = withCaller<{ id: string }>(
           poster_path: posterPath,
           caption: input.caption,
           sort_order: nextSort,
-          content_type: primaryResult.data.mime,
-          file_size: primaryResult.data.size,
+          content_type: primary.mime,
+          file_size: primary.size,
         })
         .select(
           "id, media_type, storage_path, before_path, poster_path, caption, sort_order, content_type, file_size, created_at",
@@ -270,6 +304,7 @@ export const POST = withCaller<{ id: string }>(
       if (notifyIfGateBecameReady) after(notifyIfGateBecameReady);
       return apiOk({ media: inserted });
     } catch (e) {
+      await discardPending();
       return apiInternalError(e, "media upload");
     }
   },
