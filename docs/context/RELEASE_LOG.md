@@ -12,6 +12,28 @@
 - テスト: `scripts/replay/checks/workshop_profiles_verified_at_lock.sql`（`npm run check:migrations` の最後に走る）。施工店の更新・新規作成・upsert（画面と同じ `ON CONFLICT DO UPDATE`）で `verified_at`・`verified_by` が変わらないこと、他の列は更新できること、service role は付けられること。
   マイグレーションを外すと落ちるのを確認済み。
 
+## 2026-10-13 モバイルの起動オープニングを作り直して再開
+
+- 内容: `remotion/MobileIntro.tsx` を新設。L マークを SVG で描き直し、紺の土台 → 真鍮の L → 留め具・リベット → 光の走り → LEDRA の順に組み上がる
+  2.0 秒の動画を 1080x1920 / 60fps で書き出す（`apps/mobile/assets/ledra-intro.mp4`、212KB（旧 267KB）、BT.709・TV レンジ、音声なし）。
+  0 フレーム目は背景 #d6d0cb の単色でスプラッシュと継ぎ目なし。動きは 1.17 秒（70 フレーム）で止まり、以降は最終フレームと差分なし（連番 PNG で確認）。
+- `scripts/build-mobile-intro.sh` はマスター動画の切り出しをやめ、Remotion から書き出すように変えた（引数不要）。アイコン・スプラッシュの生成は同じで、
+  再生成しても差分なし。LEDRA の文字は Cinzel 800（`public/fonts/Cinzel-800.woff2`、OFL のライセンス文を同梱）。
+- アプリ: 前日に入れた `INTRO_ENABLED = false` を外し、オープニング停止前の `_layout.tsx` に戻した。`introTiming.ts` のコメントを新しい素材に合わせた。
+- 確認: `apps/mobile` の `tsc --noEmit` と `npm test` が通ることを確認。実機での確認は未実施（ストアへの反映は次のビルドから）。
+
+## 2026-10-13 デモテナントの撮影用の書き込み窓を閉じた（本番）
+
+- 内容: 本番の `demo_tenant_readonly_insert`（certificates）を元の定義 `tenant_id <> デモテナント` に戻した（`scripts/demo-filming-write-window.sql` の CLOSE）。
+  **これで止まるのは RLS を通る書き込み（利用者のセッションでの直接の INSERT）だけ。** サービスロールは RLS を素通りする
+  （本番の `pg_roles.rolbypassrls = true`）ので、サービスロールで書く API（証明書作成 `/api/certificates/create`・複製など）からは、
+  公開のデモアカウントで今もデモテナントに書ける。読み取り専用ポリシーも certificates / vehicles / customers の3表にしか無い。
+  実際に、公開デモアカウントが 2026-05-18・05-23 に作った証明書 2 件が本番に残っている（読み取り専用ポリシーのファイル名は 20260514 だが、本番の migration 履歴に同じ版が無く、本番に入った日は分からない【要確認】。2件がポリシーより後かどうかは未確定）。
+  Codex のレビュー（#1332）で判明。OPEN_QUESTIONS「デモテナントの読み取り専用が、サービスロールで書く API には効いていない」。
+- 確認: 適用後に `pg_policies` で INSERT・UPDATE とも元の条件になっていることを確認。デモテナントの証明書は 29 件（シード 27 件＋2026-05 作成の 2 件）で、
+  10/8〜10/13 に作られてシード以外で残っているものは無い。
+- 残したもの: 撮影用のアンカー表示（ダミー tx・11 件）とパスポート・購入済みレポート（`--filming-cleanup` は未実行。OPEN_QUESTIONS「撮影用の特例を戻す」(1)）。
+
 ## 2026-10-13 メーカーは施工店の設備・資格を閲覧だけに（編集をなくした）
 
 - 内容: メーカーポータルの実証テスト「設備・資格」タブから、編集ボタンと編集フォームを消した。メーカー向けの個別ルート `/api/manufacturer/field-test/workshop-profiles/[tenantId]` は
@@ -21,6 +43,9 @@
 - テスト: メーカー向けの一覧ルートが GET だけを出し、POST/PUT/PATCH/DELETE を出さないこと（同じ検査を旧個別ルートに当てて赤になるのを確認済み）。
 
 ## 2026-10-12 ビルドの最後に「C2PA のバイナリが関数バンドルに入ったか」を確かめる（`--traced`）
+
+- **2026-10-13 に `main` へマージ（squash `0a3c02e9`・PR #1326）。** GitHub Actions は11本すべて緑か skip、Codex のレビューは指摘なし。
+  Vercel のプレビューは OOM で赤のままだが、ログで**この PR の差分は関与していない**ことを確定済み（DECISION_LOG 2026-10-12）。
 
 - 内容: `scripts/check-c2pa-binary.mjs` に `--traced` を追加し、`npm run build` の最後に置いた
   （`node scripts/check-c2pa-binary.mjs && next build && node scripts/prune-build-cache.mjs && node scripts/check-c2pa-binary.mjs --traced`）。
