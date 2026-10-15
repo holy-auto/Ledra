@@ -21,6 +21,8 @@ jobs:
         run: node --check scripts/code-flow-explorer.mjs
       - name: Generate repository code map
         run: node scripts/code-flow-explorer.mjs artifacts/code-flow-explorer.html
+      - name: Add interactive network graph
+        run: node scripts/code-flow-network.mjs artifacts/code-flow-explorer.html
       - name: Verify generated HTML and graph payload
         run: |
           test -s artifacts/code-flow-explorer.html
