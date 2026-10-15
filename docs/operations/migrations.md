@@ -199,7 +199,10 @@ Key (version)=(<古い版>) already exists.  At statement: 19
 ```
 
 `list_branches` の `status` が `CREATING_PROJECT` / `RUNNING_MIGRATIONS` の間は待つ。
-`MIGRATIONS_PASSED` になってから push する。衝突してしまったら、
+`MIGRATIONS_PASSED` になってから push する。**改名していなくても、マイグレーションを足した PR は最初の push で分岐が作られて全部を流すので、最初の数分はこの状態になる**（2026-10-15 / PR #1339）。
+衝突してしまったら、**まず分岐の台帳を引く**（`execute_sql(project_id = <分岐の project_ref>)` で
+`select count(*), max(version) from supabase_migrations.schema_migrations`）。衝突したのは後から来た適用だけで、先に走っていた適用が
+最後まで終わっていることがある。件数と最後の版がリポジトリと揃っていれば、リセットは要らない（次の push で緑に戻る）。揃っていなければ、
 `reset_branch(migration_version = "<最後のファイルの版>")` で最後まで流し直す
 （リセットは指定した版まで**リポジトリのファイルから**適用し直す）。
 

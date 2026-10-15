@@ -12,6 +12,15 @@
   `src/lib/anchoring` のテスト 204 件が通過。
 - 本番への影響: 本番の C2PA はまだ disabled なので、本番証明書を入れてオンにした日から効く。
 
+## 2026-10-15 施工店の設備・資格の「検証済み」を、施工店からは変えられないようにした
+
+- 内容: マイグレーション `20261015134519_workshop_profiles_lock_verified_at.sql`。`workshop_capability_profiles` の書き込み前トリガーで、利用者のクライアント（authenticated / anon）からの書き込みでは
+  `verified_at` と `verified_by`（誰が検証したか）を据え置く（新規は NULL）。付けられるのはサーバー側（service role）と運営の SQL だけ。施工店は他の列（設備・資格の中身）はこれまでどおり更新できる。
+- 以前は、施工店向けの書き込みポリシーが列を絞っておらず、施工店が PostgREST から自分の行に `verified_at` を付けられた（メーカー画面に「検証済み」と出る）。
+- テスト: `scripts/replay/checks/workshop_profiles_verified_at_lock.sql`（`npm run check:migrations` の最後に走る）。施工店の更新・新規作成・upsert（画面と同じ `ON CONFLICT DO UPDATE`）で `verified_at`・`verified_by` が変わらないこと、他の列は更新できること、service role は付けられること。
+  マイグレーションを外すと落ちるのを確認済み。
+
+## 2026-10-15 本番に無かった保存先 2 本を作り、マーケットの画像の保存先を非公開にする
 
 - 内容: 証明書 PDF の一括生成（`certificates`）と保険会社の案件の添付（`case-attachments`）は、本番に無いバケットへ保存していて
   保存がすべて失敗していた。2 本とも非公開で作る（読み書きは service-role だけ）。あわせて、マーケットの画像の保存先（`market`）を非公開にした
