@@ -208,27 +208,32 @@ export default function VehiclePickerSection({
     setSizeClass(null);
   };
 
+  // 車両マスタとの紐付けを切るときは、**その行から来た VIN も一緒に落とす**。
+  // `vin_code` は hidden 入力なので画面に出ず、残すとナンバーを打ち替えた発行が
+  // VIN 照合で**元の車に付く**（`src/lib/vehicles/resolveExistingVehicle.ts` の②）。
+  // 車検証 OCR は setMaker 等を直接呼ぶので、ここを通らず VIN は消えない。
+  const clearMasterLink = () => {
+    if (selectedId) {
+      setSelectedId("");
+      setVinCode("");
+    }
+  };
+
   const handleMakerChange = (val: string) => {
     setMaker(val);
     // Clear master link when user types freely
-    if (selectedId) {
-      setSelectedId("");
-    }
+    clearMasterLink();
     setVehicleSearchOpen(true);
   };
 
   const handleModelChange = (val: string) => {
     setModel(val);
-    if (selectedId) {
-      setSelectedId("");
-    }
+    clearMasterLink();
   };
 
   const handlePlateChange = (val: string) => {
     setPlate(val);
-    if (selectedId) {
-      setSelectedId("");
-    }
+    clearMasterLink();
   };
 
   const handleCustomerSelect = (c: Customer) => {
