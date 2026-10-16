@@ -29,7 +29,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { data: cert } = await caller.supabase
       .from("certificates")
       .select(
-        "id, status, public_id, customer_id, customer_name, vehicle_info_json, service_type, created_by, reservation_id, maintenance_json",
+        "id, status, public_id, customer_id, vehicle_id, customer_name, vehicle_info_json, service_type, created_by, reservation_id, maintenance_json",
       )
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
@@ -89,6 +89,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       certificateId: id,
       customerName: (cert.customer_name as string | null) ?? "",
       customerId: (cert.customer_id as string | null) ?? null,
+      vehicleId: (cert.vehicle_id as string | null) ?? null,
       vehicleModel: vinfo.model ?? null,
       vehiclePlate: vinfo.plate ?? null,
       serviceType: (cert.service_type as string | null) ?? null,

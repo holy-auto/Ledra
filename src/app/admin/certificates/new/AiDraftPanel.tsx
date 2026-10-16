@@ -7,6 +7,12 @@
  */
 
 import { useState } from "react";
+import { compressToJpeg } from "@/lib/media/compressToJpeg";
+
+/** 下書きに使う写真の枚数と 1 枚あたりの目安。route 側の上限 (2 枚・2MB) と揃える。 */
+const DRAFT_PHOTO_LIMIT = 2;
+const DRAFT_PHOTO_BYTES = 1.5 * 1024 * 1024;
+const VISION_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 interface DraftMaterial {
   name: string;
@@ -30,15 +36,21 @@ interface Props {
   vehicleId?: string;
   hearingId?: string;
   templateCategory?: string;
+  /** 作成中フォームに添付済みの写真 (未アップロード)。あれば下書きの材料として送る。 */
+  getPhotos?: () => File[];
   onApply: (draft: DraftResult) => void;
 }
 
-export default function AiDraftPanel({ vehicleId, hearingId, templateCategory, onApply }: Props) {
+export default function AiDraftPanel({ vehicleId, hearingId, templateCategory, getPhotos, onApply }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [draft, setDraft] = useState<DraftResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sourceMeta, setSourceMeta] = useState<{ similar_certs_used: number; hearing_used: boolean } | null>(null);
+  const [sourceMeta, setSourceMeta] = useState<{
+    similar_certs_used: number;
+    hearing_used: boolean;
+    photos_analyzed?: number;
+  } | null>(null);
 
   const generate = async () => {
     if (!vehicleId && !hearingId) {
@@ -49,11 +61,27 @@ export default function AiDraftPanel({ vehicleId, hearingId, templateCategory, o
     setError(null);
     setDraft(null);
     try {
-      const res = await fetch("/api/admin/certificates/ai-draft", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vehicle_id: vehicleId, hearing_id: hearingId, template_category: templateCategory }),
-      });
+      // 使える写真が2枚そろうまで先頭から縮める (変換できない HEIC 等は飛ばす)。
+      const photos: File[] = [];
+      for (const f of getPhotos?.() ?? []) {
+        if (photos.length >= DRAFT_PHOTO_LIMIT) break;
+        const c = await compressToJpeg(f, { targetBytes: DRAFT_PHOTO_BYTES, maxDimension: 1568 });
+        if (c && VISION_TYPES.has(c.type) && c.size <= DRAFT_PHOTO_BYTES) photos.push(c);
+      }
+      let body: BodyInit;
+      const headers: HeadersInit = {};
+      if (photos.length > 0) {
+        const fd = new FormData();
+        if (vehicleId) fd.append("vehicle_id", vehicleId);
+        if (hearingId) fd.append("hearing_id", hearingId);
+        if (templateCategory) fd.append("template_category", templateCategory);
+        photos.forEach((f) => fd.append("photos", f));
+        body = fd;
+      } else {
+        headers["Content-Type"] = "application/json";
+        body = JSON.stringify({ vehicle_id: vehicleId, hearing_id: hearingId, template_category: templateCategory });
+      }
+      const res = await fetch("/api/admin/certificates/ai-draft", { method: "POST", headers, body });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message ?? "AI下書き生成に失敗しました");
       setDraft(data.draft);
@@ -89,7 +117,7 @@ export default function AiDraftPanel({ vehicleId, hearingId, templateCategory, o
       {open && (
         <div className="px-4 pb-4 space-y-3 border-t border-accent/20">
           <p className="text-xs text-muted mt-3">
-            車両情報・ヒアリング・過去施工履歴を基に施工内容の下書きを自動生成します。
+            車両情報・ヒアリング・過去施工履歴と、添付済みの施工写真（2枚まで）を基に施工内容の下書きを自動生成します。
           </p>
 
           {/* 生成ボタン */}
@@ -127,6 +155,9 @@ export default function AiDraftPanel({ vehicleId, hearingId, templateCategory, o
                     <span className="text-muted">|</span>
                     <span className="text-muted">参照事例: {sourceMeta.similar_certs_used}件</span>
                     {sourceMeta.hearing_used && <span className="text-accent">✓ ヒアリングデータ使用</span>}
+                    {!!sourceMeta.photos_analyzed && (
+                      <span className="text-accent">✓ 写真 {sourceMeta.photos_analyzed} 枚を参照</span>
+                    )}
                   </>
                 )}
               </div>

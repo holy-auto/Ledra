@@ -291,6 +291,7 @@ export async function maybeAutoCreateDraftCertificateForReservation(
           certificateId: cert.id as string,
           customerName,
           customerId: reservation.customer_id,
+          vehicleId: reservation.vehicle_id,
           vehicleModel: vehicleModel,
           vehiclePlate,
           reservationId,

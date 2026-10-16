@@ -10,22 +10,48 @@ import { z } from "zod";
 import { apiOk, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateCertificateDraft } from "@/lib/ai/draftCertificate";
-import { modelForPlanTier } from "@/lib/ai/client";
+import { modelForPlanTier, visionModelForPlanTier } from "@/lib/ai/client";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { loadAiAutomationSettings, filterDraftByPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
 import { CERT_AI_COLUMNS, certAiFields } from "@/lib/certificates/aiFields";
+import { draftPhotoContent, type ImageMediaType } from "@/lib/ai/photoContentDraft";
 
 import { withCaller } from "@/lib/api/withCaller";
 const aiDraftSchema = z
   .object({
     vehicle_id: z.string().uuid().optional(),
     hearing_id: z.string().uuid().optional(),
-    photo_urls: z.array(z.string().url()).max(20).optional(),
     template_category: z.string().trim().max(100).optional(),
   })
   .refine((v) => !!v.vehicle_id || !!v.hearing_id, {
     message: "vehicle_id または hearing_id が必要です",
   });
+
+/** 作成中フォームの写真 (まだ未アップロード) を multipart で受ける上限。コストと 4.5MB body 上限のため 2 枚。 */
+const MAX_DRAFT_PHOTOS = 2;
+const MAX_DRAFT_PHOTO_BYTES = 2 * 1024 * 1024;
+const VISION_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
+/** JSON か multipart (写真付き) を読み、検証前の値と写真ファイルを返す。 */
+async function readDraftRequest(req: Request): Promise<{ body: unknown; photos: File[] }> {
+  if (!(req.headers.get("content-type") ?? "").includes("multipart/form-data")) {
+    return { body: await req.json().catch(() => ({})), photos: [] };
+  }
+  const fd = await req.formData().catch(() => null);
+  if (!fd) return { body: {}, photos: [] };
+  const str = (k: string) => {
+    const v = fd.get(k);
+    return typeof v === "string" && v ? v : undefined;
+  };
+  const photos = fd
+    .getAll("photos")
+    .filter((f): f is File => f instanceof File && VISION_MIME.has(f.type) && f.size <= MAX_DRAFT_PHOTO_BYTES)
+    .slice(0, MAX_DRAFT_PHOTOS);
+  return {
+    body: { vehicle_id: str("vehicle_id"), hearing_id: str("hearing_id"), template_category: str("template_category") },
+    photos,
+  };
+}
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -47,11 +73,12 @@ export const POST = withCaller(
       const limited = await checkRateLimit(req, "ai", `cert-ai-draft:${caller.tenantId}`);
       if (limited) return limited;
 
-      const parsed = aiDraftSchema.safeParse(await req.json().catch(() => ({})));
+      const { body, photos } = await readDraftRequest(req);
+      const parsed = aiDraftSchema.safeParse(body);
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
       }
-      const { vehicle_id, hearing_id, photo_urls, template_category } = parsed.data;
+      const { vehicle_id, hearing_id, template_category } = parsed.data;
 
       const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -75,6 +102,24 @@ export const POST = withCaller(
           ai_disabled: true,
         });
       }
+
+      // 作成中フォームの写真から施工内容を読み取り、下書きの材料に加える (写真ソース許可時のみ)。
+      // DB 参照と無関係なので先に走らせ、下書き生成の直前で待つ。
+      const usePhotos =
+        photos.length > 0 &&
+        isSourceAllowed(automation, "photos") &&
+        canUseFeature(caller.planTier, "ai_quality_vision");
+      const photoContentPromise = usePhotos
+        ? Promise.all(
+            photos.map(async (f) => ({
+              base64: Buffer.from(await f.arrayBuffer()).toString("base64"),
+              mediaType: f.type as ImageMediaType,
+            })),
+          )
+            .then((images) => draftPhotoContent(images, { model: visionModelForPlanTier(caller.planTier) }))
+            // 待つ前に DB 参照が throw しても未処理の reject を残さない。
+            .catch(() => null)
+        : Promise.resolve(null);
 
       // 車両情報取得
       let vehicle: Record<string, unknown> = {};
@@ -124,6 +169,9 @@ export const POST = withCaller(
             .limit(5)
         : { data: [] as Array<Record<string, unknown>> };
 
+      const photoContent = await photoContentPromise;
+      const photoText = photoContent?.contentDraft || undefined;
+
       const draft = await generateCertificateDraft(
         {
           vehicle: {
@@ -144,7 +192,7 @@ export const POST = withCaller(
           similarCertificates: (similar ?? []).map((s) => ({
             ...certAiFields(s),
           })),
-          photoDescriptions: undefined, // Vision解析は別途
+          photoDescriptions: photoText ? [photoText] : undefined,
           templateCategory: template_category,
         },
         { model: modelForPlanTier(caller.planTier) },
@@ -157,7 +205,8 @@ export const POST = withCaller(
         policies: filtered.policies,
         source_data: {
           similar_certs_used: similar?.length ?? 0,
-          photos_analyzed: isSourceAllowed(automation, "photos") ? (photo_urls?.length ?? 0) : 0,
+          // 読み取れた内容が下書きに入ったときだけ数える (Vision 失敗時は 0)。
+          photos_analyzed: photoText ? photos.length : 0,
           hearing_used: !!hearing,
         },
       });
