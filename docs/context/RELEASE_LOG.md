@@ -12,6 +12,19 @@
   `src/lib/anchoring` のテスト 204 件が通過。
 - 本番への影響: 本番の C2PA はまだ disabled なので、本番証明書を入れてオンにした日から効く。
 
+## 2026-10-15 公開デモアカウントからの書き込みを、proxy でまとめて断るようにした（#1341）
+
+- 内容: デモテナントの利用者が書き込みメソッド（GET・HEAD・OPTIONS 以外）で、テナントの書き込み route があるパス
+  （`GUARDED_PREFIXES`。`/admin` のサーバーアクションを含む）を叩くと、proxy が 403（`demo_read_only`）を返す（`src/lib/demoWriteGuard.ts`、`src/proxy.ts`）。
+  利用者は Bearer と Supabase のセッション cookie から、署名された access_token の `sub` で判定する（cookie の `user.id` は書き換えられるので見ない）。
+  公開ページの問い合わせ・資料請求・新規登録と、請求状態の読み取り（`/api/admin/billing-state`）は通す。
+  access_token を本文で受ける Stripe の 3 本（checkout・resume・portal）は route 側でも断る。
+- 以前は、デモの読み取り専用は 3 表の RLS だけで、サービスロールで書く API（証明書作成など）は公開アカウントでも書けた（OPEN_QUESTIONS 2026-10-13）。
+- テスト: `src/lib/__tests__/demoWriteGuard.test.ts`（6 件）。route を走査し、テナントの書き込み route がすべて `GUARDED_PREFIXES` の下にあることも確かめる
+  （判定を `user.id` に戻す・`/api/vehicles` を外す、の 2 通りで落ちるのを確認）。CI は緑でマージ。
+- 未対応: ブラウザから DB を直接書く経路（RLS を全表に広げる、別 PR）。サーバーアクションへの 403 は画面がエラー表示になる（書き込みは止まる）。
+- 台本: `docs/agent-demo-guide.md` のシナリオ A・C・Q6 を、入っているデータを見せる流れに書き換えた。
+
 ## 2026-10-15 証明書の動画を Storage へ直接アップロードする（4.5MB を超える動画を保存できるようにする）
 
 - 内容: 証明書の動画は上限 100MB を約束していたのに、Vercel の関数に multipart で送っていたため、本文が約 4.5MB を超える動画は
