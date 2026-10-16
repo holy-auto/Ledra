@@ -73,6 +73,9 @@
 > （zip `Ledra-C2PA-Samples-v2-01a06690.zip`、約21MB、c・d の入力もサムネイルなしで作り直し）、Trust List の判定は前回どおり（a・b の ingredient が trusted）。
 > **サムネイルの不合格の原因は未特定**（形式は image/jpeg 等で入っていた）。Conformulator はこの環境から届かないので、
 > **送る前に代表が Conformulator で4枚とも全項目通るかを確かめる**（`M-20261015-wrote-only-finding-without-running-the-reviewers-checker`）。
+> **2026-10-16 代表が確認: 4枚とも「C2PA Asset Conformance 0.2 Spec 2.4 Rubric v1.1」が PASS（85/85）**（代表の申告と画面写真）。
+> 残る赤は2つで、どちらも想定内: Integrity Rubric の `trusted_success`（テスト証明書の untrusted）と、0.2 Spec 2.2 Rubric の
+> `mandatory_spec_version`（Ledra は specVersion 2.4 を主張しているので 2.2 用の rubric では合わない）。返信の下書き（Gmail）に zip を添付して代表が送る。
 
 > 2026-10-05 追記（**モバイル一覧カードの `>` はバッジの右隣に並べてある**）: 一覧6画面（作業・車両・証明・顧客・
 > 実証テスト2画面）の `>` は、カードの見出し行の末尾で**ステータスバッジの右隣**に置き、バッジと同じ高さに揃えている
