@@ -11,8 +11,11 @@ const MAX_DIMENSION = 2048; // scale long side down to 2048 px before compressin
 // Scales dimensions then tries quality 0.85 → 0.70 → 0.55 until under TARGET_BYTES.
 // createImageBitmap で直接デコードする（object URL を img.src に流さず、ユーザー選択
 // ファイル由来の値が URL sink に到達する経路を作らない。PartInstallClient と同じ方式）。
-export async function compressToJpeg(file: File): Promise<File | null> {
-  if (file.size <= TARGET_BYTES) return file;
+export async function compressToJpeg(
+  file: File,
+  { targetBytes = TARGET_BYTES, maxDimension = MAX_DIMENSION }: { targetBytes?: number; maxDimension?: number } = {},
+): Promise<File | null> {
+  if (file.size <= targetBytes) return file;
 
   let bmp: ImageBitmap | null = null;
   try {
@@ -21,13 +24,13 @@ export async function compressToJpeg(file: File): Promise<File | null> {
     let h = bmp.height;
     if (!w || !h) return null;
 
-    if (w > MAX_DIMENSION || h > MAX_DIMENSION) {
+    if (w > maxDimension || h > maxDimension) {
       if (w >= h) {
-        h = Math.round((h * MAX_DIMENSION) / w);
-        w = MAX_DIMENSION;
+        h = Math.round((h * maxDimension) / w);
+        w = maxDimension;
       } else {
-        w = Math.round((w * MAX_DIMENSION) / h);
-        h = MAX_DIMENSION;
+        w = Math.round((w * maxDimension) / h);
+        h = maxDimension;
       }
     }
 
@@ -43,7 +46,7 @@ export async function compressToJpeg(file: File): Promise<File | null> {
     for (let qi = 0; qi < qualities.length; qi++) {
       const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", qualities[qi]));
       if (!blob) return null;
-      if (blob.size <= TARGET_BYTES || qi === qualities.length - 1) {
+      if (blob.size <= targetBytes || qi === qualities.length - 1) {
         return new File([blob], newName, { type: "image/jpeg" });
       }
     }

@@ -972,7 +972,12 @@ export default function CertNewFormWrapper({
 
             {/* AI下書き生成パネル（Standard以上） */}
             {canAiDraft && (
-              <AiDraftPanel vehicleId={selectedVehicleId} templateCategory={serviceType} onApply={handleAiDraftApply} />
+              <AiDraftPanel
+                vehicleId={selectedVehicleId}
+                templateCategory={serviceType}
+                getPhotos={() => photoRef.current?.getFiles() ?? []}
+                onApply={handleAiDraftApply}
+              />
             )}
 
             {/* 音声メモパネル（Standard以上）— マイクで喋った内容を AI が整形してフォームへ */}
