@@ -33,6 +33,13 @@
    手動起動して確かめる。`storage` の表・関数・トリガのドリフトは引き続き見えない（OPEN_QUESTIONS に残す）。
 9. 公開区分: 公開可（検出器の設計の一般論。本番のポリシー名は出すが、式の中身とテナント情報は出さない）
 
+**2026-10-16 訂正（項目8）**: 「workflow_dispatch で手動起動して確かめる」は、**このセッションからはできない**。
+`POST actions/workflows/supabase-advisors.yml/dispatches` が 403 `Resource not accessible by integration` を返す
+（GitHub MCP と `gh api` の両方で確認）。起動できる権限があるかを先に確かめずに検証手順として書いていた
+（`M-20261016-promised-a-workflow-dispatch-i-cannot-send`）。**代表が GitHub の Actions 画面で
+「Supabase Advisors」→ Run workflow を押すまで、この変更は本番に対して一度も動いていない。**
+押さない場合は、次の月曜 00:00 UTC の定期実行が最初の実行になる。
+
 ## 2026-10-16 公開デモアカウントは、DB・Storage を直接書く経路も RLS でまとめて断る
 
 1. 日付: 2026-10-16（`date -u` で確認）
