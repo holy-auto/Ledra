@@ -4,6 +4,32 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-10-16 追記型ログを含む PR は、ローカルで CI 相当を通したうえで clean の瞬間にマージする
+
+1. 日付: 2026-10-16（`date -u` で確認）
+2. 起きたこと: #1347（C2PA の softwareAgent を `{ name }` にし、自動サムネイルを外す）を出してから、
+   `main` に `docs/context/` を触るコミットが次々入り、PR が何度も `dirty` に戻った。
+   このブランチには **base 取り込みのマージコミットが7本**（PR の commits のうち親が2つのもの。うち私が push したのは2本、
+   1本はローカルで作って捨てた）。**13:23:11Z から 13:45:26Z の22分で6本**。衝突は毎回、追記型の事業ログの先頭だけだった。
+3. 以前の考え: PR は「base を取り込む → GitHub の CI を一周待つ（約10分）→ 緑でマージ」で進める。
+4. 違和感・問題: `main` に `docs/context/` を触るコミットが数分おきに入る日は、CI の一周が終わる前に次の衝突が来る。
+   待つほど終わらない。さらに、同じブランチを別セッションも進めていて、同じ base 取り込みを二重にやった
+   （`M-20261016-base-merged-a-branch-another-session-was-already-pushing`）。
+5. 決めたこと: 追記型ログを含む PR では、(a) **その SHA のまま** `scripts/ci-parallel-checks.sh`（CI と同じ11項目）をローカルで通し、
+   (b) GitHub が `mergeable=true` / `clean` になった瞬間にマージする。(a) をその SHA で通していれば、
+   GitHub 側に残った最後の1本が `in_progress` でも待たなくてよい。今回は最後の1本（Lint, Type Check & Unit Tests）も
+   マージ前に緑になったので待った —— 待たない判断は使っていない。
+   他セッションのブランチに触る前に `git fetch` して `git log --oneline -1 origin/<branch>` を見る。
+6. 捨てた選択肢: (1) GitHub の auto-merge に任せる —— このリポジトリは branch protection が無く、
+   API が `Protected branch rules not configured for this branch` で断った（実測）。
+   (2) rebase / force-push で履歴を整える —— 他セッションのブランチなので不可。
+   (3) 追記型ログの構成を今すぐ変える（1エントリ1ファイル等）—— 読む側の都合が主なので OPEN_QUESTIONS に回した。
+7. 判断理由: 「緑でマージ」の目的は、壊れたものを `main` に入れないこと。その保証は、同じ SHA で同じ11項目を通せば得られる。
+   GitHub の CI を待つ時間はそのまま衝突の窓になる。窓を閉じるのは、検査を省くこととは別。
+8. まだ答えが出ていないこと: 追記型ログの衝突を構造で減らすか（OPEN_QUESTIONS 2026-10-16）。
+   並行セッションが同じブランチを進めているときに、誰が base 取り込みをやるかの決め方。
+9. 公開区分: 公開可（技術運用の一般論。PR 番号とリポジトリ名以外の固有情報は無い）
+
 ## 2026-10-15 C2PA の署名から自動サムネイルを外し、softwareAgent を generator-info-map にする
 
 1. 日付: 2026-10-15（`date -u` で確認）
