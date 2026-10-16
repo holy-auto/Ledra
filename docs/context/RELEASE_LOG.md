@@ -4,6 +4,14 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-15 C2PA の署名: softwareAgent を `{ name }` にし、自動サムネイルを外す
+
+- 内容: Conformulator（0.2 / Spec 2.4 rubric v1.1）の不適合3件への対応。`c2pa.orientation`・`c2pa.converted`・`c2pa.edited.metadata` の
+  softwareAgent を文字列から `{ name: "sharp" }` にした。署名の設定で claim と ingredient のサムネイルを作らない。
+- 確認: `c2paSignValidate.test.ts` に検査を追加（JPEG・PNG・WebP・HEIC の4形式）。修正前のコードで赤になることを確認。
+  `src/lib/anchoring` のテスト 204 件が通過。
+- 本番への影響: 本番の C2PA はまだ disabled なので、本番証明書を入れてオンにした日から効く。
+
 ## 2026-10-16 施工店が設備・資格の中身を書き換えたら「検証済み」を外すようにした
 
 - 内容: マイグレーション `20261016132923_workshop_profiles_clear_verified_on_edit.sql`。2026-10-15 のトリガー関数を差し替え、施工店（authenticated / anon）からの UPDATE で
