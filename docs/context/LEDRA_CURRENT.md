@@ -77,6 +77,11 @@
 > **2026-10-16 代表が確認: 4枚とも「C2PA Asset Conformance 0.2 Spec 2.4 Rubric v1.1」が PASS（85/85）**（代表の申告と画面写真）。
 > 残る赤は2つで、どちらも想定内: Integrity Rubric の `trusted_success`（テスト証明書の untrusted）と、0.2 Spec 2.2 Rubric の
 > `mandatory_spec_version`（Ledra は specVersion 2.4 を主張しているので 2.2 用の rubric では合わない）。返信の下書き（Gmail）に zip を添付して代表が送る。
+> **2026-10-16 00:14:52 UTC に代表が v2 一式を送信済み**（Gmail の送信済みで確認。宛先 conformance@c2pa.org、
+> 添付 `Ledra-C2PA-Samples-v2-01a06690.zip`、メール容量 28.9MB）。**2026-10-16 13:51 UTC 時点で返信なし**
+> （スレッド全10通を確認。最後の1通がこちらの送信）。Notice of Conformance 待ちで、Routine「Watch C2PA Notice」が見張る。
+> 署名側の修正（softwareAgent・サムネイル）は **#1347 として main にマージ**（2026-10-16 13:51 UTC・squash `ef118b85`）。
+> 本番の C2PA はまだ disabled なので、本番証明書を入れてオンにした日から効く。
 
 > 2026-10-05 追記（**モバイル一覧カードの `>` はバッジの右隣に並べてある**）: 一覧6画面（作業・車両・証明・顧客・
 > 実証テスト2画面）の `>` は、カードの見出し行の末尾で**ステータスバッジの右隣**に置き、バッジと同じ高さに揃えている

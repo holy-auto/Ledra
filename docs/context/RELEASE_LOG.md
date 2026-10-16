@@ -22,6 +22,7 @@
 - 確認: `c2paSignValidate.test.ts` に検査を追加（JPEG・PNG・WebP・HEIC の4形式）。修正前のコードで赤になることを確認。
   `src/lib/anchoring` のテスト 204 件が通過。
 - 本番への影響: 本番の C2PA はまだ disabled なので、本番証明書を入れてオンにした日から効く。
+- マージ: 2026-10-16 13:51 UTC に #1347 として main へ（squash `ef118b85`）。CI 11 項目と Vercel プレビューが緑、`/code-review low` は指摘なし。
 
 ## 2026-10-16 施工店が設備・資格の中身を書き換えたら「検証済み」を外すようにした
 
