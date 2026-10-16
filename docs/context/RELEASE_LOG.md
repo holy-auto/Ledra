@@ -4,6 +4,15 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-16 施工店が設備・資格の中身を書き換えたら「検証済み」を外すようにした
+
+- 内容: マイグレーション `20261016132923_workshop_profiles_clear_verified_on_edit.sql`。2026-10-15 のトリガー関数を差し替え、施工店（authenticated / anon）からの UPDATE で
+  中身（`verified_at`・`verified_by`・`updated_at`・`created_at` 以外の全列）が1つでも変わったら `verified_at`・`verified_by` を NULL にする。中身が変わらない保存では据え置き、
+  施工店が自分で付けられないこと（新規は NULL）は前のとおり。サーバー側（service role）と運営の SQL は対象外。
+- 施工店の画面（Web `/admin/field-test/workshop-profile`・モバイル `field-test/workshop-profile`）の「認証済」の下に「内容を変更して保存すると、認証済みは外れます。」を出す。
+- テスト: `scripts/replay/checks/workshop_profiles_verified_at_lock.sql` を書き直し、中身を変えない書き込み・upsert では据え置き、中身を書き換えた UPDATE・upsert では外れること、
+  新規では付けられないこと、service role は付けられることを確かめる。新しいマイグレーションを外すと「中身を書き換えても『検証済み』が残った」で落ちるのを確認済み。
+
 ## 2026-10-16 #1348 をマージし、車両の同一性（代表判断 b）が本番に入った
 
 - `abc16dc` でマージ（squash）。マイグレーションは **`20261016131500_link_hearing_customer_reuse_vehicle.sql`**。
