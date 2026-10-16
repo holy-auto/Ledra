@@ -10,6 +10,7 @@ import { NextRequest } from "next/server";
 
 const T1 = "11111111-1111-4111-8111-111111111111";
 const MISSING = "99999999-9999-4999-8999-999999999999";
+const SEEN = "2026-10-16T00:00:00+00:00";
 
 const h = vi.hoisted(() => {
   const h: any = {
@@ -29,10 +30,13 @@ const h = vi.hoisted(() => {
       function run(single: boolean) {
         if (op === "insert") return { data: single ? (inserted[0] ?? null) : inserted, error: null };
         if (op === "update") {
-          for (const r of rows.filter((r: any) => filters.every((f) => f(r)))) Object.assign(r, payload);
-          return { data: null, error: null };
+          // set_updated_at トリガ相当で updated_at も進める
+          const hit = rows.filter((r: any) => filters.every((f) => f(r)));
+          for (const r of hit) Object.assign(r, payload, { updated_at: "2026-10-17T00:00:00+00:00" });
+          return { data: single ? (hit[0] ?? null) : hit, error: null };
         }
-        const out = rows.filter((r: any) => filters.every((f) => f(r)));
+        // PostgREST と同じく写しを返す（参照だと後の update が読んだ値まで書き換える）
+        const out = rows.filter((r: any) => filters.every((f) => f(r))).map((r: any) => ({ ...r }));
         return { data: single ? (out[0] ?? null) : out, error: null };
       }
       const b: any = {
@@ -81,7 +85,7 @@ beforeEach(() => {
         tenant_id: T1,
         verified_at: null,
         verified_by: null,
-        updated_at: "2026-10-16",
+        updated_at: SEEN,
         tenants: { name: "施工店A" },
       },
     ],
@@ -107,8 +111,9 @@ describe("GET /api/admin/platform/workshop-profiles", () => {
 
 describe("POST /api/admin/platform/workshop-profiles (検証済みの付与・解除)", () => {
   it("運営は検証済みにでき、検証者は操作した運営で、監査ログが残る", async () => {
-    const res = await POST(postReq({ tenant_id: T1, verified: true }));
+    const res = await POST(postReq({ tenant_id: T1, verified: true, seen_updated_at: SEEN }));
     expect(res.status).toBe(200);
+    expect((await res.json()).updated_at).toBe("2026-10-17T00:00:00+00:00");
     const row = h.store.workshop_capability_profiles[0];
     expect(row.verified_at).toEqual(expect.any(String));
     expect(row.verified_by).toBe("u1");
@@ -119,28 +124,38 @@ describe("POST /api/admin/platform/workshop-profiles (検証済みの付与・�
 
   it("外すと verified_at・verified_by とも NULL に戻る", async () => {
     Object.assign(h.store.workshop_capability_profiles[0], { verified_at: "2026-10-01", verified_by: "u0" });
-    const res = await POST(postReq({ tenant_id: T1, verified: false }));
+    const res = await POST(postReq({ tenant_id: T1, verified: false, seen_updated_at: SEEN }));
     expect(res.status).toBe(200);
     const row = h.store.workshop_capability_profiles[0];
     expect(row.verified_at).toBeNull();
     expect(row.verified_by).toBeNull();
     expect(h.store.admin_audit_logs[0].action).toBe("platform.workshop_profile.unverify");
+    // 行から消えた検証者は監査ログに残る
+    expect(h.store.admin_audit_logs[0].meta.before).toEqual({ verified_at: "2026-10-01", verified_by: "u0" });
+  });
+
+  it("運営が見た後に中身が書き換わっていたら 409 で付けない", async () => {
+    h.store.workshop_capability_profiles[0].updated_at = "2026-10-16T05:00:00+00:00";
+    const res = await POST(postReq({ tenant_id: T1, verified: true, seen_updated_at: SEEN }));
+    expect(res.status).toBe(409);
+    expect(h.store.workshop_capability_profiles[0].verified_at).toBeNull();
+    expect(h.store.admin_audit_logs).toHaveLength(0);
   });
 
   it("非運営は 403 で変更されない", async () => {
     h.isPlatform = false;
-    const res = await POST(postReq({ tenant_id: T1, verified: true }));
+    const res = await POST(postReq({ tenant_id: T1, verified: true, seen_updated_at: SEEN }));
     expect(res.status).toBe(403);
     expect(h.store.workshop_capability_profiles[0].verified_at).toBeNull();
   });
 
   it("不正な body は 400", async () => {
-    const res = await POST(postReq({ tenant_id: "not-a-uuid", verified: true }));
+    const res = await POST(postReq({ tenant_id: "not-a-uuid", verified: true, seen_updated_at: SEEN }));
     expect(res.status).toBe(400);
   });
 
   it("設備・資格が無い施工店は 404", async () => {
-    const res = await POST(postReq({ tenant_id: MISSING, verified: true }));
+    const res = await POST(postReq({ tenant_id: MISSING, verified: true, seen_updated_at: SEEN }));
     expect(res.status).toBe(404);
   });
 });

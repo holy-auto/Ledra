@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { WORKSHOP_CAPABILITY_LABELS } from "@/types/manufacturer";
 
 type Permit = { type: string; number?: string; expires_at?: string };
-type Cert = { grade: string; holder_name?: string };
+type Cert = { grade: string; holder_name?: string; cert_number?: string };
 
 interface ProfileRow {
   id: string;
@@ -14,7 +14,9 @@ interface ProfileRow {
   mechanic_certifications: Cert[];
   supported_vehicles: string[];
   service_area: { prefectures?: string[]; radius_km?: number; notes?: string };
+  equipment_notes: string | null;
   verified_at: string | null;
+  verified_by: string | null;
   updated_at: string;
   [key: string]: unknown;
 }
@@ -29,22 +31,27 @@ export default function WorkshopProfilesClient() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // 初回ロード（set-state は async コールバック内のみ = effect 内の同期 setState を避ける）
+  // set-state は async コールバック内のみ = effect 内の同期 setState を避ける
+  const load = useCallback(async (isActive: () => boolean = () => true) => {
+    try {
+      const json = await fetch("/api/admin/platform/workshop-profiles", { cache: "no-store" }).then((r) => r.json());
+      if (!isActive()) return;
+      if (json?.ok) setProfiles(json.profiles ?? []);
+      else setMsg(json?.message ?? "読み込みに失敗しました。");
+    } catch {
+      if (isActive()) setMsg("読み込みに失敗しました。");
+    } finally {
+      if (isActive()) setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
-    fetch("/api/admin/platform/workshop-profiles", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((json) => {
-        if (!active) return;
-        if (json?.ok) setProfiles(json.profiles ?? []);
-        else setMsg(json?.message ?? "読み込みに失敗しました。");
-      })
-      .catch(() => active && setMsg("読み込みに失敗しました。"))
-      .finally(() => active && setLoading(false));
+    load(() => active);
     return () => {
       active = false;
     };
-  }, []);
+  }, [load]);
 
   const toggleVerified = async (p: ProfileRow) => {
     const verified = !p.verified_at;
@@ -54,14 +61,22 @@ export default function WorkshopProfilesClient() {
       const res = await fetch("/api/admin/platform/workshop-profiles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenant_id: p.tenant_id, verified }),
+        body: JSON.stringify({ tenant_id: p.tenant_id, verified, seen_updated_at: p.updated_at }),
       });
       const json = await res.json().catch(() => null);
       if (res.ok && json?.ok) {
         setProfiles((prev) =>
-          prev.map((x) => (x.tenant_id === p.tenant_id ? { ...x, verified_at: json.verified_at } : x)),
+          prev.map((x) =>
+            x.tenant_id === p.tenant_id
+              ? { ...x, verified_at: json.verified_at, verified_by: json.verified_by, updated_at: json.updated_at }
+              : x,
+          ),
         );
         setMsg(`${p.tenant_name ?? "施工店"} を${verified ? "検証済みにしました" : "未検証に戻しました"}。`);
+      } else if (res.status === 409) {
+        // 見た後に施工店が書き換えた。最新を出し直して、もう一度中身を見てもらう
+        await load();
+        setMsg(json?.message ?? "内容が変わりました。中身を確かめてください。");
       } else {
         setMsg(json?.message ?? "更新に失敗しました。");
       }
@@ -144,6 +159,7 @@ export default function WorkshopProfilesClient() {
                             <div key={i}>
                               {c.grade}
                               {c.holder_name && <span className="ml-1 text-secondary">（{c.holder_name}）</span>}
+                              {c.cert_number && <span className="ml-1 text-secondary">No.{c.cert_number}</span>}
                             </div>
                           ))}
                     </dd>
@@ -163,8 +179,18 @@ export default function WorkshopProfilesClient() {
                       {p.service_area.prefectures?.length ? (
                         <div className="text-secondary">{p.service_area.prefectures.join("、")}</div>
                       ) : null}
+                      {p.service_area.radius_km != null && (
+                        <div className="text-secondary">半径 {p.service_area.radius_km}km</div>
+                      )}
+                      {p.service_area.notes && <div className="text-secondary">{p.service_area.notes}</div>}
                     </dd>
                   </div>
+                  {p.equipment_notes && (
+                    <div className="sm:col-span-2">
+                      <dt className="text-xs font-semibold text-secondary">設備メモ</dt>
+                      <dd className="whitespace-pre-wrap">{p.equipment_notes}</dd>
+                    </div>
+                  )}
                 </dl>
               </div>
             );
