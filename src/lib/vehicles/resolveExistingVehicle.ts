@@ -33,7 +33,7 @@ import { logger } from "@/lib/logger";
  * ## SQL 側の双子
  *
  * ヒアリング→顧客連携は DB 関数 `public.link_hearing_customer` が同じ規則を持つ
- * （`supabase/migrations/20261015*_link_hearing_customer_reuse_vehicle.sql`）。
+ * （`supabase/migrations/20261016131500_link_hearing_customer_reuse_vehicle.sql`）。
  * **どちらかを変えたら両方変える。** `normalizeVin()` と `vin_normalize()` の関係と同じ約束で、
  * 片方だけ直すと経路によって同一性の判定が変わる。
  */
