@@ -6,7 +6,7 @@
 -- 陽性対照として、別テナントの owner は同じ書き込みができることも確かめる。
 --
 -- 落ちたら: 新しい表なら、20261016132455_demo_member_readonly_all_tables.sql の DO ブロックを
--- 新しいマイグレーションにそのまま写して流す（付いている表は飛ばす）。
+-- 新しいマイグレーションにそのまま写して流す（付いているポリシーは飛ばす）。
 --
 -- 最後に ROLLBACK するので DB には何も残らない。
 -- 走らせ方: npm run check:migrations（再生の最後に自動で走る）
@@ -30,6 +30,29 @@ BEGIN
   IF (SELECT count(*) FROM pg_policy WHERE polrelid = 'storage.objects'::regclass AND NOT polpermissive
       AND polname LIKE 'demo_member_readonly_%') <> 3 THEN
     RAISE EXCEPTION 'storage.objects にデモの書き込みを断るポリシーが 3 本ない';
+  END IF;
+
+  -- RLS が切れている表では、ポリシーがあっても効かない
+  SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO missing
+  FROM pg_class c
+  WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'p') AND NOT c.relrowsecurity;
+  IF missing IS NOT NULL THEN
+    RAISE EXCEPTION 'RLS が無効の表: %（デモの書き込みを断るポリシーが効かない）', missing;
+  END IF;
+
+  -- RLS を通らない書き込み RPC（SECURITY DEFINER）は、関数の中で is_demo_member() を見る。
+  -- insurer_* は保険会社ポータル用で、書くのは呼び出した保険会社の閲覧記録だけ（デモアカウントは保険会社の利用者ではない）。
+  SELECT string_agg(p.proname, ', ' ORDER BY p.proname) INTO missing
+  FROM pg_proc p
+  WHERE p.pronamespace = 'public'::regnamespace AND p.prosecdef AND p.prokind = 'f'
+    AND p.prorettype <> 'trigger'::regtype
+    AND has_function_privilege('authenticated', p.oid, 'EXECUTE')
+    AND lower(p.prosrc) ~ '\m(insert\s+into|update\s+\S+\s+set|delete\s+from)\M'
+    AND p.prosrc NOT LIKE '%is_demo_member()%'
+    AND p.proname NOT IN ('insurer_audit_log', 'insurer_get_certificate', 'insurer_get_vehicle_certificates',
+                          'insurer_search_certificates', 'insurer_search_stores', 'insurer_search_vehicles');
+  IF missing IS NOT NULL THEN
+    RAISE EXCEPTION 'デモの所属者を断っていない書き込み RPC（SECURITY DEFINER）: %（関数の先頭で public.is_demo_member() を見る）', missing;
   END IF;
 END $$;
 

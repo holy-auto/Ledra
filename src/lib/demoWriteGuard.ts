@@ -34,6 +34,7 @@ const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export const GUARDED_PREFIXES = [
   "/admin",
   "/api/admin/",
+  "/api/announcements/",
   "/api/certificates/",
   "/api/consent/",
   "/api/identity/",

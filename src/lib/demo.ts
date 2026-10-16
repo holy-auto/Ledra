@@ -14,6 +14,9 @@
  *            RESTRICTIVE RLS ポリシーが、デモテナントの所属者の利用者権限での書き込みを
  *            public の全表と Storage で拒否する（ブラウザから PostgREST を直接叩く経路。
  *            サービスロールには効かない）。新しい表への付け忘れは scripts/replay/checks/demo_member_readonly.sql が落とす。
+ *            判定は所属なので、デモテナントに所属した人はどのテナントでも書けなくなる（公開アカウントだけを置く）。
+ *            ほかに 20260514000001 が certificates / vehicles / customers の「デモテナントの行」への
+ *            書き込みを、誰からでも拒否している。
  *   - UI 側: `DemoTenantBanner` がダッシュボード上部に「読み取り専用」表示を出す。
  */
 

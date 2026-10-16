@@ -9,24 +9,23 @@
 --
 -- 方針: 判定は「呼び出した人がデモテナントの所属者か」（proxy のガードと同じ）。行の tenant_id では見ない ——
 -- tenant_id 列の無い表（利用者ごとの設定など）も止めたいため。
+-- そのため、デモテナントに所属した人は、どのテナントでも利用者権限では何も書けなくなる（選択中のテナントは見ない）。
+-- デモテナントには公開アカウントだけを置く。シードの手入れは service role（scripts/setup-demo-tenant*.ts）で行う。
 -- public の全表と storage.objects に、INSERT・UPDATE・DELETE の RESTRICTIVE ポリシーを足す。
 -- RESTRICTIVE は既存の PERMISSIVE と AND されるので、デモの所属者だけ全部の書き込みが落ち、他の人は変わらない。
 -- SELECT には足さない（見るのは許す）。service role は RLS を素通りするので、デモのシード・サーバーの処理は変わらない。
 --
 -- ponytail: 新しい表は、このポリシーを付けないとデモから書ける。付け忘れは
 -- scripts/replay/checks/demo_member_readonly.sql が CI（npm run check:migrations）で落とす。
--- 付け方はこのファイルの DO ブロックをそのまま流す（付いている表は飛ばす）。
+-- 付け方はこのファイルの DO ブロックをそのまま流す（付いているポリシーは飛ばす）。
 -- SECURITY DEFINER で書く RPC は RLS を通らないので、関数の中で public.is_demo_member() を見る（replace_staff_shifts と同じ）。
--- 新しく足す関数を自動で見つける検査は無い（判断に依存）。
+-- 見ていない関数も同じ検査が落とす（本文の insert/update/delete を正規表現で拾う。動的 SQL の組み立て方によっては拾えない）。
 
 create or replace function public.is_demo_member()
 returns boolean
 language sql stable security definer set search_path = ''
 as $$
-  select exists (
-    select 1 from public.tenant_memberships
-    where user_id = auth.uid() and tenant_id = '00000000-0000-0000-0000-de0000000010'::uuid
-  );
+  select public.is_member_of_tenant('00000000-0000-0000-0000-de0000000010'::uuid);
 $$;
 
 comment on function public.is_demo_member() is
@@ -35,39 +34,34 @@ comment on function public.is_demo_member() is
 revoke execute on function public.is_demo_member() from public, anon;
 grant execute on function public.is_demo_member() to authenticated;
 
+-- public の全表と storage.objects（アップロード・上書き・削除）。付いているポリシーは 1 本ずつ飛ばす。
+-- (select ...) で包むと文ごとに 1 回だけ評価される（行ごとに引かない）。
+-- UPDATE は WITH CHECK を省くと USING が新しい行にも掛かる。
 DO $$
 DECLARE
   t regclass;
+  pol record;
 BEGIN
   FOR t IN
-    SELECT c.oid::regclass
-    FROM pg_class c
+    SELECT c.oid::regclass FROM pg_class c
     WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'p')
-      AND NOT EXISTS (
-        SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid AND p.polname = 'demo_member_readonly_insert'
-      )
+    UNION ALL SELECT 'storage.objects'::regclass
   LOOP
-    -- (select ...) で包むと文ごとに 1 回だけ評価される（行ごとに引かない）
-    EXECUTE format(
-      'CREATE POLICY demo_member_readonly_insert ON %s AS RESTRICTIVE FOR INSERT TO authenticated '
-      || 'WITH CHECK (NOT (SELECT public.is_demo_member()))', t);
-    EXECUTE format(
-      'CREATE POLICY demo_member_readonly_update ON %s AS RESTRICTIVE FOR UPDATE TO authenticated '
-      || 'USING (NOT (SELECT public.is_demo_member())) WITH CHECK (NOT (SELECT public.is_demo_member()))', t);
-    EXECUTE format(
-      'CREATE POLICY demo_member_readonly_delete ON %s AS RESTRICTIVE FOR DELETE TO authenticated '
-      || 'USING (NOT (SELECT public.is_demo_member()))', t);
+    FOR pol IN
+      SELECT * FROM (VALUES
+        ('demo_member_readonly_insert', 'INSERT', 'WITH CHECK'),
+        ('demo_member_readonly_update', 'UPDATE', 'USING'),
+        ('demo_member_readonly_delete', 'DELETE', 'USING')
+      ) AS v(name, cmd, clause)
+      WHERE NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = t AND p.polname = v.name)
+    LOOP
+      EXECUTE format(
+        'CREATE POLICY %I ON %s AS RESTRICTIVE FOR %s TO authenticated %s (NOT (SELECT public.is_demo_member()))',
+        pol.name, t, pol.cmd, pol.clause);
+    END LOOP;
   END LOOP;
 END
 $$;
-
--- Storage（アップロード・上書き・削除）
-create policy demo_member_readonly_insert on storage.objects as restrictive for insert to authenticated
-  with check (not (select public.is_demo_member()));
-create policy demo_member_readonly_update on storage.objects as restrictive for update to authenticated
-  using (not (select public.is_demo_member())) with check (not (select public.is_demo_member()));
-create policy demo_member_readonly_delete on storage.objects as restrictive for delete to authenticated
-  using (not (select public.is_demo_member()));
 
 -- RLS を通らない書き込み RPC。中身は本番の定義のまま、デモの所属者を先に断る 1 行だけ足す。
 CREATE OR REPLACE FUNCTION public.replace_staff_shifts(p_staff_id uuid, p_shifts jsonb)

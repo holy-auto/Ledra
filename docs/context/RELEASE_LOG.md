@@ -4,6 +4,17 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-16 公開デモアカウントは、DB・Storage を直接書いても書けないようにした（#1354）
+
+- 内容: マイグレーション `20261016132455_demo_member_readonly_all_tables.sql`（マージで本番に適用）。`public.is_demo_member()`（デモテナントの所属者か）を足し、
+  public の全表と `storage.objects` に、所属者の INSERT・UPDATE・DELETE を断る RESTRICTIVE ポリシーを付けた（SELECT は付けない）。
+  RLS を通らない `replace_staff_shifts` は関数の先頭で断る。お知らせの既読（`/api/announcements/read`）は proxy で 403 にした。
+- 以前は、公開アカウントの access_token で PostgREST・Storage を直接叩くと、3 表（certificates / vehicles / customers）以外は書けた。
+- テスト: `scripts/replay/checks/demo_member_readonly.sql`（`npm run check:migrations` の最後に走る）。付け忘れ・RLS 無効の表・デモを見ていない
+  書き込み RPC を落とし、デモの owner は書けず別テナントの owner は書けることを行で確かめる。わざと壊すと落ちるのを 4 通りで確認（表を外す・RPC の1行を外す・デモの ID を変える・RLS を切る）。
+  プレビュー DB（本物の Supabase、Storage 含む）でも同じ振る舞いを確かめた。
+- 注意: デモテナントに所属した人は、どのテナントでも利用者権限では書けなくなる（公開アカウントだけを置く）。
+
 ## 2026-10-15 公開デモアカウントからの書き込みを、proxy でまとめて断るようにした（#1341）
 
 - 内容: デモテナントの利用者が書き込みメソッド（GET・HEAD・OPTIONS 以外）で、テナントの書き込み route があるパス
