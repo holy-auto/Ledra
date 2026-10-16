@@ -6,7 +6,7 @@
 
 ## 2026-10-16 公開デモアカウントは、DB・Storage を直接書いても書けないようにした（#1354）
 
-- 内容: マイグレーション `20261016135012_demo_member_readonly_all_tables.sql`（マージで本番に適用）。`public.is_demo_member()`（デモテナントの所属者か）を足し、
+- 内容: マイグレーション `20261016135012_demo_member_readonly_all_tables.sql`（#1354、main `718959f`。2026-10-16 14:19Z に本番の台帳で適用を確認）。`public.is_demo_member()`（デモテナントの所属者か）を足し、
   public の全表と `storage.objects` に、所属者の INSERT・UPDATE・DELETE を断る RESTRICTIVE ポリシーを付けた（SELECT は付けない）。
   RLS を通らない `replace_staff_shifts` は関数の先頭で断る。お知らせの既読（`/api/announcements/read`）は proxy で 403 にした。
 - 以前は、公開アカウントの access_token で PostgREST・Storage を直接叩くと、3 表（certificates / vehicles / customers）以外は書けた。
@@ -14,6 +14,10 @@
   書き込み RPC を落とし、デモの owner は書けず別テナントの owner は書けることを行で確かめる。わざと壊すと落ちるのを 4 通りで確認（表を外す・RPC の1行を外す・デモの ID を変える・RLS を切る）。
   プレビュー DB（本物の Supabase、Storage 含む）でも同じ振る舞いを確かめた。
 - 注意: デモテナントに所属した人は、どのテナントでも利用者権限では書けなくなる（公開アカウントだけを置く）。
+- 本番での確認（適用後）: ポリシー 843 本（全 280 表に 3 本ずつ・Storage 3 本）、UPDATE は USING だけ、`replace_staff_shifts` に判定あり。
+  公開アカウントで読むと証明書 29 件が見え、`staff_members` への追加は `demo_member_readonly_insert` で 42501（トランザクションで試し、残りは 0 件）。
+  デモテナントの所属者は公開アカウント 1 人だけで、ほかのテナントには所属していない。
+- 改名後の版はプレビュー DB で確かめていない（旧い分岐を消した後、`Supabase Preview` が `skipped` のままで作り直されなかった）。
 
 ## 2026-10-15 C2PA の署名: softwareAgent を `{ name }` にし、自動サムネイルを外す
 
