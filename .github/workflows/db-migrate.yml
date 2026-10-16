@@ -87,11 +87,12 @@ jobs:
           #
           #   (a) このジョブ (supabase db push --db-url)
           #       順序に厳密。out-of-order は exit 1 で止め、Slack へ通知する。
-          #   (b) **Supabase の GitHub 連携 (Branching)**
-          #       Supabase 側に既定ブランチ `main` が本番プロジェクトへ紐づいており
-          #       (`list_branches` で is_default=true / project_ref=本番)、main への
-          #       push で `supabase/migrations/**` を本番へ適用する。
-          #       **順序を見ない。ログも Actions に出ない。**
+          #   (b) **Supabase の GitHub 連携 (Branching)** —— **2026-10-16 に切った。**
+          #       ダッシュボード → Integrations → 「本番環境にデプロイする」を OFF。
+          #       `list_branches` の既定ブランチが `git_branch: ""` になったことを確認済み
+          #       (切る前は `main`)。プレビュー分岐 (自動分岐) は ON のまま残している。
+          #       切る前は、main への push で `supabase/migrations/**` を本番へ適用していた。
+          #       **順序を見ず、ログも Actions に出ない。** 下の 22 秒差はその時代の実測である。
           #
           # (b) が (a) の失敗した直後に同じ差分を当てるため、
           #   「(a) が『未適用』と言って落ちた → 数十秒後に (b) が適用済みにする」
@@ -103,8 +104,10 @@ jobs:
           #
           # したがって: **(a) の失敗ログを根拠に改名しないこと。**
           # 失敗した後は必ず本番の台帳を引き直してから動く。
-          # 恒久対策は「書き手を1つに絞る」= Supabase ダッシュボードの
-          # Integrations で本番への自動適用を切る (未実施 → OPEN_QUESTIONS)。
+          # **この習慣は (b) を切った後も変えない。** Supabase MCP の apply_migration は
+          # 今も本番へ直接書けるので (#966 の 20260906094512 / 094735 が実例)、
+          # 台帳が main より先に進む形は残っている。
+          # 恒久対策「書き手を1つに絞る」は 2026-10-16 に実施済み (上の (b))。
           supabase db push --db-url "$SUPABASE_DB_URL"
 
       # 本番台帳の要約 (supabase/migrations.production-ledger) が古くなっていないか見る。

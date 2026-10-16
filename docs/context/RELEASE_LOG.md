@@ -4,6 +4,24 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-16 Supabase の GitHub 連携による本番への自動適用を切った（本番の書き手が1本になった）
+
+- **代表がダッシュボードで操作**（Integrations → 「本番環境にデプロイする」を OFF）。2026-09-13 の判断の実施。
+- 確認: `list_branches` の既定ブランチ（本番プロジェクト `cahybswpduchptvyvdkk`）が
+  **`git_branch: ""`** になった（切る前は `main`）。`updated_at` も操作時刻と一致。
+- **プレビュー分岐（自動分岐）は ON のまま残した。** 画面上この2つは別のトグルで、
+  OPEN_QUESTIONS に書いてあった「切るとプレビュー環境も止まる」は**誤り**だった（代表が送った設定画面で判明）。
+- これで本番の台帳に自動で書くのは `.github/workflows/db-migrate.yml`（`supabase db push`）だけになった。
+  このジョブは**順序に厳密**で、out-of-order なら exit 1 で止めて Slack へ通知する。
+  直近5回の実行はすべて成功しており、接続用の Secret も生きている。
+- **残る穴**: Supabase MCP の `apply_migration` は今も本番へ直接書ける（#966 の実例）。
+  台帳が `main` より先に進む形は消えていないので、「改名の前に本番の台帳を版番号で引く」習慣は変えない。
+- 二重書き込みを前提に書いてあった記述を5か所直した:
+  `.github/workflows/db-migrate.yml`（(b) の節と恒久対策の行）、`docs/operations/migrations.md`（2か所）、
+  `scripts/lint-migrations.js`、`.github/stale-migration-comment.md`（追い越し時に PR へ貼られる本文）。
+- 効き方の確認は**次にマイグレーションを含む PR をマージしたとき**: 本番の台帳に版が増えるのが
+  `db-migrate` の実行後であること（これまでは失敗しても22秒後に別経路が当てていた）。
+
 ## 2026-10-16 施工店が設備・資格の中身を書き換えたら「検証済み」を外すようにした
 
 - 内容: マイグレーション `20261016132923_workshop_profiles_clear_verified_on_edit.sql`。2026-10-15 のトリガー関数を差し替え、施工店（authenticated / anon）からの UPDATE で
