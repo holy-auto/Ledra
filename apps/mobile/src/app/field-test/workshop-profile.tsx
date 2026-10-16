@@ -108,6 +108,7 @@ export default function WorkshopProfileScreen() {
           <Text style={styles.verifiedText}>認証済 ({p.verified_at.slice(0, 10)})</Text>
         </View>
       )}
+      {p.verified_at && <Text style={styles.verifiedNote}>内容を変更して保存すると、認証済みは外れます。</Text>}
 
       {/* Equipment */}
       <Text style={styles.sectionTitle}>設備</Text>
@@ -207,6 +208,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   verifiedText: { ...typography.meta, color: "#166534", fontSize: 11 },
+  verifiedNote: { ...typography.meta, color: colors.textSecondary, fontSize: 11, marginTop: -spacing.sm, marginBottom: spacing.md },
   sectionTitle: { ...typography.titleSmall, color: colors.textPrimary, marginBottom: spacing.sm, marginTop: spacing.md },
   card: {
     backgroundColor: colors.surface, borderRadius: radius.card,
