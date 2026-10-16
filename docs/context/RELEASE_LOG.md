@@ -12,6 +12,23 @@
   `src/lib/anchoring` のテスト 204 件が通過。
 - 本番への影響: 本番の C2PA はまだ disabled なので、本番証明書を入れてオンにした日から効く。
 
+## 2026-10-16 #1348 をマージし、車両の同一性（代表判断 b）が本番に入った
+
+- `abc16dc` でマージ（squash）。マイグレーションは **`20261016131500_link_hearing_customer_reuse_vehicle.sql`**。
+  `main` が `20261015135417`（#1345）を先にマージしたため、`lint:migrations` の
+  `migration-version-before-base-head` に従って `20261015134700` から改名した。
+  改名前の版が**本番の台帳に無いこと**を先に確認してから改名した（手順書どおり）。
+- 本番の適用を確認（2026-10-16・`supabase_migrations.schema_migrations` を直接引いた）:
+  **532 件・最大 `20261016131500`**（マージ前は 531 件・最大 `20261015135417`）。
+- 本番の関数 `public.link_hearing_customer` の実物も確認:
+  - `prosecdef = false`（SECURITY INVOKER —— RLS が効いたまま）、`proconfig = search_path=""`
+  - 本体に **VIN の正規化キーでの照合**・**`model is not distinct from`**・**`customer_id` の一致**・
+    **全角スペースの trim（`chr(12288)`）**がすべて入っている
+  - EXECUTE は `authenticated` / `postgres` / `service_role` のみ（**`anon` は無い**）
+- マージまでに `main` が3回進み（#1345・#1350・#1351）、そのたびに取り込み直した。事業ログの衝突は毎回両方残して解決。
+- `Supabase Preview` は改名の影響で赤のまま マージした（**プレビュー DB の台帳だけ**の問題で、本番の適用には影響しない。
+  代表判断でそのまま進めた）。PR のマージでプレビュー分岐は自動削除され、赤は残っていない。
+
 ## 2026-10-15 同じ車に2回発行しても車両の行が増えないようにした（ナンバー → VIN → 顧客+メーカー+車種）
 
 - 内容: 車両の引き当てを **ナンバー → VIN → 顧客+メーカー+車種** の順にし、上から当たったところで止める。
