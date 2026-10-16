@@ -4,6 +4,42 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-15 C2PA の署名: softwareAgent を `{ name }` にし、自動サムネイルを外す
+
+- 内容: Conformulator（0.2 / Spec 2.4 rubric v1.1）の不適合3件への対応。`c2pa.orientation`・`c2pa.converted`・`c2pa.edited.metadata` の
+  softwareAgent を文字列から `{ name: "sharp" }` にした。署名の設定で claim と ingredient のサムネイルを作らない。
+- 確認: `c2paSignValidate.test.ts` に検査を追加（JPEG・PNG・WebP・HEIC の4形式）。修正前のコードで赤になることを確認。
+  `src/lib/anchoring` のテスト 204 件が通過。
+- 本番への影響: 本番の C2PA はまだ disabled なので、本番証明書を入れてオンにした日から効く。
+- マージ: 2026-10-16 13:51 UTC に #1347 として main へ（squash `ef118b85`）。CI 11 項目と Vercel プレビューが緑、`/code-review low` は指摘なし。
+
+## 2026-10-16 施工店が設備・資格の中身を書き換えたら「検証済み」を外すようにした
+
+- 内容: マイグレーション `20261016132923_workshop_profiles_clear_verified_on_edit.sql`。2026-10-15 のトリガー関数を差し替え、施工店（authenticated / anon）からの UPDATE で
+  中身（`verified_at`・`verified_by`・`updated_at`・`created_at` 以外の全列）が1つでも変わったら `verified_at`・`verified_by` を NULL にする。中身が変わらない保存では据え置き、
+  施工店が自分で付けられないこと（新規は NULL）は前のとおり。サーバー側（service role）と運営の SQL は対象外。
+- 施工店の画面（Web `/admin/field-test/workshop-profile`・モバイル `field-test/workshop-profile`）の「認証済」の下に「内容を変更して保存すると、認証済みは外れます。」を出す。
+- テスト: `scripts/replay/checks/workshop_profiles_verified_at_lock.sql` を書き直し、中身を変えない書き込み・upsert では据え置き、中身を書き換えた UPDATE・upsert では外れること、
+  新規では付けられないこと、service role は付けられることを確かめる。新しいマイグレーションを外すと「中身を書き換えても『検証済み』が残った」で落ちるのを確認済み。
+- 本番反映: 2026-10-16 に #1352 をマージ（改名後の版 `20261016132923`）。`db-migrate.yml`（run 113）が成功し、本番の台帳の最新が `20261016132923`、トリガー関数が新しい本体になったことを確認。既存のデモ施工店の「検証済み」は残っている（書き込み時にだけ働くため）。`Supabase Preview` は改名前の版でプレビュー分岐が適用済みだったため赤のまま、代表の判断でマージ。
+
+## 2026-10-16 #1348 をマージし、車両の同一性（代表判断 b）が本番に入った
+
+- `abc16dc` でマージ（squash）。マイグレーションは **`20261016131500_link_hearing_customer_reuse_vehicle.sql`**。
+  `main` が `20261015135417`（#1345）を先にマージしたため、`lint:migrations` の
+  `migration-version-before-base-head` に従って `20261015134700` から改名した。
+  改名前の版が**本番の台帳に無いこと**を先に確認してから改名した（手順書どおり）。
+- 本番の適用を確認（2026-10-16・`supabase_migrations.schema_migrations` を直接引いた）:
+  **532 件・最大 `20261016131500`**（マージ前は 531 件・最大 `20261015135417`）。
+- 本番の関数 `public.link_hearing_customer` の実物も確認:
+  - `prosecdef = false`（SECURITY INVOKER —— RLS が効いたまま）、`proconfig = search_path=""`
+  - 本体に **VIN の正規化キーでの照合**・**`model is not distinct from`**・**`customer_id` の一致**・
+    **全角スペースの trim（`chr(12288)`）**がすべて入っている
+  - EXECUTE は `authenticated` / `postgres` / `service_role` のみ（**`anon` は無い**）
+- マージまでに `main` が3回進み（#1345・#1350・#1351）、そのたびに取り込み直した。事業ログの衝突は毎回両方残して解決。
+- `Supabase Preview` は改名の影響で赤のまま マージした（**プレビュー DB の台帳だけ**の問題で、本番の適用には影響しない。
+  代表判断でそのまま進めた）。PR のマージでプレビュー分岐は自動削除され、赤は残っていない。
+
 ## 2026-10-15 同じ車に2回発行しても車両の行が増えないようにした（ナンバー → VIN → 顧客+メーカー+車種）
 
 - 内容: 車両の引き当てを **ナンバー → VIN → 顧客+メーカー+車種** の順にし、上から当たったところで止める。
