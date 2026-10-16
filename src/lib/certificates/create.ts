@@ -21,6 +21,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { makePublicId } from "@/lib/publicId";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
 import { createCustomerResolver } from "@/lib/customers/resolveCustomer";
+import { resolveExistingVehicleId } from "@/lib/vehicles/resolveExistingVehicle";
 import { recordCoatingConsumableInstallations } from "@/lib/parts/coatingIntegration";
 import { issueCaptureNonce } from "@/lib/certificates/captureNonce";
 import { parseDamageMap } from "@/lib/certificates/damageMap";
@@ -240,18 +241,15 @@ export async function createCertificate(
   // Auto-create vehicle record if not linked to existing master
   let resolvedVehicleId = vehicle_id;
   if (!resolvedVehicleId && (vehicle_maker || model || plate)) {
-    // Prefer match on plate (unique-ish per tenant) when provided
-    let existingVehicleId: string | null = null;
-    if (plate) {
-      const { data: byPlate } = await supabase
-        .from("vehicles")
-        .select("id")
-        .eq("tenant_id", tenantId)
-        .eq("plate_display", plate)
-        .limit(1)
-        .maybeSingle();
-      if (byPlate?.id) existingVehicleId = byPlate.id as string;
-    }
+    // 同一性の規則は `resolveExistingVehicleId` に1つだけ置く
+    // （ナンバー → VIN → 顧客+メーカー+車種。代表判断 2026-10-15・選択肢 b）。
+    const existingVehicleId = await resolveExistingVehicleId(supabase, tenantId, {
+      plate,
+      vinCode: vin_code,
+      maker: vehicle_maker,
+      model,
+      customerId: resolvedCustomerId,
+    });
 
     if (existingVehicleId) {
       resolvedVehicleId = existingVehicleId;
