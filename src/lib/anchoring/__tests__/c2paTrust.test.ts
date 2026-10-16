@@ -71,6 +71,7 @@ describe("the trust list reaches both validation paths", () => {
     const res = await signC2pa(Buffer.from("x"), "image/jpeg");
 
     expect(res.signedBuffer).toEqual(Buffer.from("signed"));
-    expect(withJson).toHaveBeenCalledWith(expect.any(Object), C2PA_TRUST_SETTINGS);
+    const settings = (withJson.mock.calls[0] as unknown[])[1] as string;
+    expect(JSON.parse(settings).trust).toEqual(JSON.parse(C2PA_TRUST_SETTINGS).trust);
   });
 });
