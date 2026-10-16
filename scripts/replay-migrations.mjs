@@ -527,7 +527,14 @@ function main() {
     );
 
     if (DUMP_TO) {
-      const [dbin, dargs] = pg(`pg_dump "${dsn}" --schema-only --schema=public --no-owner --no-acl`);
+      // storage も書き出す。`storage.objects` の RLS ポリシーはマイグレーションが作るので、
+      // public だけ書き出していると check-schema-drift がそれを比べられない
+      // （本番にだけあった assets_write_tenant / assets_tenant_rw が CI から見えなかった。
+      // OPEN_QUESTIONS 2026-10-08）。storage の表・関数・トリガは Supabase 側のもので、
+      // 再生 DB は bootstrap.sql の最小形しか持たないため、ドリフト比較はポリシーだけに絞っている。
+      const [dbin, dargs] = pg(
+        `pg_dump "${dsn}" --schema-only --schema=public --schema=storage --no-owner --no-acl`,
+      );
       const out = execFileSync(dbin, dargs, { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
       writeFileSync(DUMP_TO, out);
       console.log(`スキーマを書き出しました: ${DUMP_TO}`);

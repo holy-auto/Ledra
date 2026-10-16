@@ -4,6 +4,24 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-16 スキーマのドリフト検出が Storage の RLS ポリシーも見るようにした
+
+- 内容: `scripts/replay-migrations.mjs --dump` が `--schema=storage` も書き出すようにし、
+  `scripts/check-schema-drift.mjs` に `storage_policy` の軸を足した（本番にあって再生に無い側を落とし、逆向きは件数を出す）。
+  これまでは本番側を `n.nspname='public'`、再生側のダンプを `ON public.` だけで拾っていたため、
+  **本番にだけある `storage.objects` のポリシーが CI から見えなかった**（2026-10-08 に外した
+  `assets_write_tenant` / `assets_tenant_rw` が実例。OPEN_QUESTIONS 2026-10-08）。
+- 比べるのはポリシーだけ。`storage` の表・関数・トリガは Supabase 側のもので、再生 DB は
+  `bootstrap.sql` の最小形しか持たないので、全部比べると幻のドリフトが出る。
+- 併せて、トリガの読み取りを ` ON public.` まで見るように直した。ダンプに storage が入ったことで、
+  トリガ名だけで拾う正規表現が storage 側のトリガを public の集合に混ぜ、**同名の public のトリガの
+  ドリフトを隠す**形になっていた（今は storage にトリガが無いので件数は 146 件で変わらない。実測）。
+- 確認: 検出器自身の対照が陰性 21 件 / 陽性 12 件で通過（storage の分として
+  `objects.market_storage_insert` を陰性対照に追加）。`storage.objects` のポリシーは本番・再生ともに 5 本で一致
+  （#1354 のマージ後に、本番は Supabase MCP の `pg_policies`、再生は実際のダンプで確認）。
+- **この検査は週次ジョブ（Supabase Advisors、月曜 00:00 UTC）でしか走らない。** PR の CI では走らないので、
+  本番に対して実際に動くのを確かめるには workflow_dispatch で手動起動する。
+
 ## 2026-10-16 証明書の発行を webhook で知らせる・AI 下書きが作成中の写真を読む
 
 - 内容（webhook）: 購読できる8種のうち `certificate.issued`（証明書 発行）だけ、登録されているのにどこからも送っていなかった。
