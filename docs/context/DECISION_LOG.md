@@ -30,6 +30,24 @@
    動的 SQL で書く SECURITY DEFINER 関数は、検査の正規表現で拾えないことがある。
 9. 公開区分: 非公開（セキュリティ）
 
+## 2026-10-15 C2PA の署名から自動サムネイルを外し、softwareAgent を generator-info-map にする
+
+1. 日付: 2026-10-15（`date -u` で確認）
+2. 起きたこと: 再提出したサンプルを Administrator が Conformulator（0.2 / Spec 2.4 rubric v1.1）にかけ、82/85、不適合3件で差し戻した。
+   (1) actions v2 の必須項目（softwareAgent.name が空）、(2) softwareAgent に name が無い、(3) thumbnail の MIME type が未対応（Spec 2.2 §18.13.1）。
+3. 以前の考え: `softwareAgent: "sharp"` で足りる。サムネイルは c2pa-rs の既定（自動生成）のままでよい。10-02 は Conformulator を全部通っていた。
+4. 違和感・問題: actions v2 の softwareAgent は generator-info-map で、文字列だと name が空と判定される。サムネイルは形式が
+   image/jpeg・image/png・image/webp で入っているのに不合格で、rubric の判定条件をこの環境から読めない（サイトも仕様書も 403）。
+5. 決めたこと: softwareAgent を `{ name: "sharp" }` にする（本体と `scripts/verify-c2pa-cert.mjs`）。署名の設定で
+   `builder.thumbnail.enabled=false` にして、claim と ingredient のサムネイルを出さない。証拠用の c・d の入力も同じ設定で作り直す。
+   テスト（`c2paSignValidate.test.ts`）に両方の検査を足した。送る前に代表が Conformulator で確かめる。
+6. 捨てた選択肢: (a) サムネイルの形式を JPEG に固定 — 不合格の原因が形式でない可能性があり、当て推量の修正になる。
+   (b) rubric の原因が分かるまで提出を止める — 判定条件を読む手段が無く、サムネイルは任意のアサーションなので外せば確実に避けられる。
+   (c) softwareAgent を外す — 変換を誰がしたかの記録が消える。
+7. 判断理由: 審査を通すのに必要な最小の変更。サムネイルは Ledra の画面で使っておらず（画面のサムネイルは別に作って保存している）、外しても製品の挙動は変わらない。
+8. まだ答えが出ていないこと: サムネイルが不合格だった本当の原因。rubric がまた更新されたときに気づく手段（手元で Conformulator を回せない）。
+9. 公開区分: 要確認（技術の一般論としては公開可。審査のやり取りは非公開）
+
 ## 2026-10-16 施工店が設備・資格の中身を書き換えたら「検証済み」を外す
 
 1. 日付: 2026-10-16（`date -u` で確認）

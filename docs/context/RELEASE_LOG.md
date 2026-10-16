@@ -15,6 +15,14 @@
   プレビュー DB（本物の Supabase、Storage 含む）でも同じ振る舞いを確かめた。
 - 注意: デモテナントに所属した人は、どのテナントでも利用者権限では書けなくなる（公開アカウントだけを置く）。
 
+## 2026-10-15 C2PA の署名: softwareAgent を `{ name }` にし、自動サムネイルを外す
+
+- 内容: Conformulator（0.2 / Spec 2.4 rubric v1.1）の不適合3件への対応。`c2pa.orientation`・`c2pa.converted`・`c2pa.edited.metadata` の
+  softwareAgent を文字列から `{ name: "sharp" }` にした。署名の設定で claim と ingredient のサムネイルを作らない。
+- 確認: `c2paSignValidate.test.ts` に検査を追加（JPEG・PNG・WebP・HEIC の4形式）。修正前のコードで赤になることを確認。
+  `src/lib/anchoring` のテスト 204 件が通過。
+- 本番への影響: 本番の C2PA はまだ disabled なので、本番証明書を入れてオンにした日から効く。
+
 ## 2026-10-16 施工店が設備・資格の中身を書き換えたら「検証済み」を外すようにした
 
 - 内容: マイグレーション `20261016132923_workshop_profiles_clear_verified_on_edit.sql`。2026-10-15 のトリガー関数を差し替え、施工店（authenticated / anon）からの UPDATE で
@@ -23,6 +31,7 @@
 - 施工店の画面（Web `/admin/field-test/workshop-profile`・モバイル `field-test/workshop-profile`）の「認証済」の下に「内容を変更して保存すると、認証済みは外れます。」を出す。
 - テスト: `scripts/replay/checks/workshop_profiles_verified_at_lock.sql` を書き直し、中身を変えない書き込み・upsert では据え置き、中身を書き換えた UPDATE・upsert では外れること、
   新規では付けられないこと、service role は付けられることを確かめる。新しいマイグレーションを外すと「中身を書き換えても『検証済み』が残った」で落ちるのを確認済み。
+- 本番反映: 2026-10-16 に #1352 をマージ（改名後の版 `20261016132923`）。`db-migrate.yml`（run 113）が成功し、本番の台帳の最新が `20261016132923`、トリガー関数が新しい本体になったことを確認。既存のデモ施工店の「検証済み」は残っている（書き込み時にだけ働くため）。`Supabase Preview` は改名前の版でプレビュー分岐が適用済みだったため赤のまま、代表の判断でマージ。
 
 ## 2026-10-16 #1348 をマージし、車両の同一性（代表判断 b）が本番に入った
 
