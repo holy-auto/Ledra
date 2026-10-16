@@ -4,6 +4,14 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-16 運営が管理画面から施工店の設備・資格に「検証済み」を付けられるようにした
+
+- 内容: 運営専用の画面 `/admin/platform/workshop-profiles`（管理メニュー「施工店の設備・資格の検証(運営)」）と API `/api/admin/platform/workshop-profiles` を追加。
+  全施工店の設備・資格（許認可・整備士資格・設備・対応車種/エリア）を一覧し、施工店ごとに「検証済みにする／検証済みを外す」を押せる。
+  付けると `verified_at` に日時、`verified_by` に操作した運営の利用者が入り、`admin_audit_logs` に `platform.workshop_profile.verify` / `unverify` を記録する。
+- 権限: `isPlatformAdmin`（運営テナントの super_admin / owner / admin）だけ。書き込みは service role なので、施工店からの変更を止めるトリガ（2026-10-15・16）とは衝突しない。施工店が中身を書き換えると、これまでどおり自動で外れる。
+- テスト: `src/app/api/admin/platform/workshop-profiles/__tests__/route.test.ts`（7件。運営以外は 403、付与で日時と検証者が入る、解除で両方 NULL、監査ログ、不正な ID は 400、未登録は 404）。検証者を入れる処理を壊すとテストが落ちるのを確認済み。
+
 ## 2026-10-15 C2PA の署名: softwareAgent を `{ name }` にし、自動サムネイルを外す
 
 - 内容: Conformulator（0.2 / Spec 2.4 rubric v1.1）の不適合3件への対応。`c2pa.orientation`・`c2pa.converted`・`c2pa.edited.metadata` の
