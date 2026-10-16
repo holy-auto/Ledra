@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const h = vi.hoisted(() => ({ admin: null as any }));
 const completeMock = vi.hoisted(() => vi.fn(async (..._a: unknown[]) => 0));
 const sendLineMock = vi.hoisted(() => vi.fn(async (..._a: unknown[]) => true));
+const webhookMock = vi.hoisted(() => vi.fn(async (..._a: unknown[]) => {}));
 
 vi.mock("@/lib/supabase/admin", () => ({
   createTenantScopedAdmin: () => ({ admin: h.admin, tenantId: "t1" }),
@@ -16,6 +17,9 @@ vi.mock("@/lib/qstash/publish", () => ({ enqueueInsuranceCaseCreated: vi.fn(asyn
 vi.mock("@/lib/anchoring/certificateAnchorService", () => ({ enqueueCertificateAnchor: vi.fn(async () => {}) }));
 vi.mock("@/lib/parts/installationService", () => ({
   completeDraftPartInstallationsForReservation: (...a: any[]) => completeMock(...a),
+}));
+vi.mock("@/lib/outbound-webhooks", () => ({
+  emitEntityWebhook: (...a: any[]) => webhookMock(...a),
 }));
 vi.mock("@/lib/line/client", () => ({
   sendCustomerLineText: (...a: any[]) => sendLineMock(...a),
@@ -35,6 +39,22 @@ const baseParams = {
   certificateId: CERT,
   customerName: "山田太郎",
 };
+
+describe("triggerCertificateIssued — certificate.issued webhook", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("発行時に certificate.issued を車両・顧客の ID 付きで送る", async () => {
+    h.admin = makeFakeAdmin(emptyStore({ follow_up_settings: [], customers: [] }));
+    await triggerCertificateIssued({ ...baseParams, customerId: CUSTOMER, vehicleId: "veh1", serviceType: "coating" });
+    expect(webhookMock).toHaveBeenCalledWith(TENANT, "certificate.issued", CERT, {
+      id: CERT,
+      public_id: "pub1",
+      customer_id: CUSTOMER,
+      vehicle_id: "veh1",
+      service_type: "coating",
+    });
+  });
+});
 
 describe("triggerCertificateIssued — 部品交換 draft 完成", () => {
   beforeEach(() => vi.clearAllMocks());

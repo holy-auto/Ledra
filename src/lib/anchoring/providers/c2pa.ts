@@ -73,26 +73,29 @@ const PARENT_INGREDIENT_LABEL = "parent";
  * `c2pa.opened` には digitalSourceType を付けない（Conformulator `no_dst_for_opened_action`）。
  */
 const OPENED_ACTION = { action: "c2pa.opened", parameters: { ingredientIds: [PARENT_INGREDIENT_LABEL] } };
+// actions v2 の softwareAgent は文字列ではなく generator-info-map で、name が必須（Spec 2.4 §18.15.6.2、
+// Conformulator `actions_software_agent_mandatory_name`）。文字列だと name が空と判定される。
+const SOFTWARE_AGENT = { name: "sharp" };
 // c2pa.orientation は「知覚できる変換」なので digitalSourceType が必須（Conformulator
 // `mandatory_dst_for_perceptible_transformations`）。
 const ORIENTATION_ACTION = {
   action: "c2pa.orientation",
-  softwareAgent: "sharp",
+  softwareAgent: SOFTWARE_AGENT,
   digitalSourceType: DIGITAL_SOURCE_TYPE_ALGORITHMIC,
 };
-const CONVERTED_ACTION = { action: "c2pa.converted", softwareAgent: "sharp" };
+const CONVERTED_ACTION = { action: "c2pa.converted", softwareAgent: SOFTWARE_AGENT };
 // EXIF/GPS metadata removed for privacy before signing. `c2pa.edited.metadata`（メタデータのみの編集）を
 // 使う。汎用の `c2pa.edited` は「editorial な意味に影響する編集」の定義で、画素は変えていないので合わない。
 const EDITED_METADATA_ACTION = {
   action: "c2pa.edited.metadata",
-  softwareAgent: "sharp",
+  softwareAgent: SOFTWARE_AGENT,
   description: "EXIF/GPS metadata removed for privacy",
 };
 
 type ManifestAction = {
   action: string;
   digitalSourceType?: string;
-  softwareAgent?: string;
+  softwareAgent?: { name: string };
   description?: string;
   parameters?: { ingredientIds: string[] };
 };
@@ -297,6 +300,10 @@ export async function signC2pa(
     // allActionsIncluded, and claim_generator_info.specVersion matching the CPL record.
     // マニフェスト定義から作るには静的ファクトリを使う（旧 `new Builder({...})` は addAssertion 時に
     // neon downcast エラーで fail-open した）。原本の ingredient は公式 Trust List で検証する。
+    // サムネイル（claim・ingredient）は作らない。2026-10-15 の審査で Conformulator（0.2 / Spec 2.4 rubric v1.1）が
+    // c2pa-rs の自動サムネイルを `thumbnail_format_mime_type`（Spec 2.2 §18.13.1）で不合格にした。
+    // ponytail: 不合格の原因は特定できていない（形式は image/jpeg 等で入っている。rubric 側を読めない）。
+    // サムネイルは任意のアサーションなので、出さないことで避ける。戻すなら rubric の判定条件を確かめてから。
     const builder = Builder.withJson(
       {
         claim_generator_info: [
@@ -314,7 +321,7 @@ export async function signC2pa(
             : []),
         ],
       },
-      C2PA_TRUST_SETTINGS,
+      JSON.stringify({ ...JSON.parse(C2PA_TRUST_SETTINGS), builder: { thumbnail: { enabled: false } } }),
     );
     // The uploaded original is the parentOf ingredient that c2pa.opened references.
     // c2pa-rs records its hash, format and a pixel-derived thumbnail (no EXIF/GPS),

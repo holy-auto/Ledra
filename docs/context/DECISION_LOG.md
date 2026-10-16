@@ -4,6 +4,76 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-10-16 公開デモアカウントは、DB・Storage を直接書く経路も RLS でまとめて断る
+
+1. 日付: 2026-10-16（`date -u` で確認）
+2. 起きたこと: 代表から「DB 直書きもなくして」。#1341（proxy）で残っていた、公開アカウントの access_token で PostgREST・Storage を直接叩く経路を塞ぐ。
+   本番の定義を読み取りで数えると、authenticated に書き込みを許す規則がある表 180（うち `tenant_id` 列なし 48）、RLS を通らない
+   SECURITY DEFINER の書き込み RPC がテナント側に 1 本（`replace_staff_shifts`）、Storage の書き込み規則 2 本（`market`）。
+3. 以前の考え: 読み取り専用は 3 表の行ベースの RESTRICTIVE RLS（20260514000001）と proxy で守る。全表に広げるのは、閲覧中に利用者権限で
+   書く処理があると画面が壊れるので、検証環境で確かめてから（OPEN_QUESTIONS 2026-10-13）。
+4. 違和感・問題: 行の `tenant_id` で見る方式は、`tenant_id` 列の無い表（利用者ごとの設定・既読など）を止められない。
+   SECURITY DEFINER の RPC は RLS を通らないので、ポリシーを全表に足しても残る。
+5. 決めたこと: 「呼び出した人がデモテナントの所属者か」（`public.is_demo_member()`、proxy と同じ判定）で、public の全表（280）と
+   `storage.objects` の INSERT・UPDATE・DELETE を断る RESTRICTIVE ポリシーを足す（SELECT は足さない）。`replace_staff_shifts` は関数の中で断る。
+   付け忘れ・RLS 無効の表・デモを見ていない書き込み RPC は、再生の検査（`scripts/replay/checks/demo_member_readonly.sql`）で CI が落とす。
+   お知らせの既読（`/api/announcements/read`）は、DB で落ちて 500 になるので proxy で先に 403 にする（#1354）。
+6. 捨てた選択肢: (a) 行の `tenant_id` で判定 —— `tenant_id` 列の無い 48 表が残る。(b) 書き込み規則がある 180 表だけに足す —— 規則が後から
+   足されたとき漏れる。(c) デモアカウントのロールを下げる —— ロールを見ない規則（利用者自身の行など）が残る。
+   (d) event trigger で新しい表に自動で付ける —— 仕組みが重く、Supabase で使えるかを確かめていない。検査で落とす方が単純。
+7. 判断理由: 閲覧・ログイン・セッション更新で利用者権限の書き込みが走る箇所を洗い出し、自動で走るものは 0、利用者の操作で走るものは
+   お知らせの既読 1 か所だけと確かめた（サブエージェントの走査。約 350 の利用者 client の書き込みを 1 件ずつ分類）。
+   プレビュー DB（本物の Supabase）で、デモの owner は追加・RPC・Storage が 42501、更新・削除は 0 行、読み取りは可、
+   別テナントの owner は全部できることを確かめた。判定を所属にしたので、デモテナントに所属した人はどのテナントでも書けなくなる（公開アカウントだけを置く）。
+8. まだ答えが出ていないこと: #1341 の proxy は、読み取り目的の POST（AI への質問・画面ナビ・在庫の警告・表示モードの切り替え）まで
+   デモで断っている。デモで AI を試せるようにするか（費用がかかる）は代表の判断（OPEN_QUESTIONS 2026-10-13 の (5)）。
+   動的 SQL で書く SECURITY DEFINER 関数は、検査の正規表現で拾えないことがある。
+9. 公開区分: 非公開（セキュリティ）
+
+## 2026-10-16 追記型ログを含む PR は、ローカルで CI 相当を通したうえで clean の瞬間にマージする
+
+1. 日付: 2026-10-16（`date -u` で確認）
+2. 起きたこと: #1347（C2PA の softwareAgent を `{ name }` にし、自動サムネイルを外す）を出してから、
+   `main` に `docs/context/` を触るコミットが次々入り、PR が何度も `dirty` に戻った。
+   このブランチには **base 取り込みのマージコミットが7本**（PR の commits のうち親が2つのもの。うち私が push したのは2本、
+   1本はローカルで作って捨てた）。**13:23:11Z から 13:45:26Z の22分で6本**。衝突は毎回、追記型の事業ログの先頭だけだった。
+3. 以前の考え: PR は「base を取り込む → GitHub の CI を一周待つ（約10分）→ 緑でマージ」で進める。
+4. 違和感・問題: `main` に `docs/context/` を触るコミットが数分おきに入る日は、CI の一周が終わる前に次の衝突が来る。
+   待つほど終わらない。さらに、同じブランチを別セッションも進めていて、同じ base 取り込みを二重にやった
+   （`M-20261016-base-merged-a-branch-another-session-was-already-pushing`）。
+5. 決めたこと: 追記型ログを含む PR では、(a) **その SHA のまま** `scripts/ci-parallel-checks.sh`（CI と同じ11項目）をローカルで通し、
+   (b) GitHub が `mergeable=true` / `clean` になった瞬間にマージする。(a) をその SHA で通していれば、
+   GitHub 側に残った最後の1本が `in_progress` でも待たなくてよい。今回は最後の1本（Lint, Type Check & Unit Tests）も
+   マージ前に緑になったので待った —— 待たない判断は使っていない。
+   他セッションのブランチに触る前に `git fetch` して `git log --oneline -1 origin/<branch>` を見る。
+6. 捨てた選択肢: (1) GitHub の auto-merge に任せる —— このリポジトリは branch protection が無く、
+   API が `Protected branch rules not configured for this branch` で断った（実測）。
+   (2) rebase / force-push で履歴を整える —— 他セッションのブランチなので不可。
+   (3) 追記型ログの構成を今すぐ変える（1エントリ1ファイル等）—— 読む側の都合が主なので OPEN_QUESTIONS に回した。
+7. 判断理由: 「緑でマージ」の目的は、壊れたものを `main` に入れないこと。その保証は、同じ SHA で同じ11項目を通せば得られる。
+   GitHub の CI を待つ時間はそのまま衝突の窓になる。窓を閉じるのは、検査を省くこととは別。
+8. まだ答えが出ていないこと: 追記型ログの衝突を構造で減らすか（OPEN_QUESTIONS 2026-10-16）。
+   並行セッションが同じブランチを進めているときに、誰が base 取り込みをやるかの決め方。
+9. 公開区分: 公開可（技術運用の一般論。PR 番号とリポジトリ名以外の固有情報は無い）
+
+## 2026-10-15 C2PA の署名から自動サムネイルを外し、softwareAgent を generator-info-map にする
+
+1. 日付: 2026-10-15（`date -u` で確認）
+2. 起きたこと: 再提出したサンプルを Administrator が Conformulator（0.2 / Spec 2.4 rubric v1.1）にかけ、82/85、不適合3件で差し戻した。
+   (1) actions v2 の必須項目（softwareAgent.name が空）、(2) softwareAgent に name が無い、(3) thumbnail の MIME type が未対応（Spec 2.2 §18.13.1）。
+3. 以前の考え: `softwareAgent: "sharp"` で足りる。サムネイルは c2pa-rs の既定（自動生成）のままでよい。10-02 は Conformulator を全部通っていた。
+4. 違和感・問題: actions v2 の softwareAgent は generator-info-map で、文字列だと name が空と判定される。サムネイルは形式が
+   image/jpeg・image/png・image/webp で入っているのに不合格で、rubric の判定条件をこの環境から読めない（サイトも仕様書も 403）。
+5. 決めたこと: softwareAgent を `{ name: "sharp" }` にする（本体と `scripts/verify-c2pa-cert.mjs`）。署名の設定で
+   `builder.thumbnail.enabled=false` にして、claim と ingredient のサムネイルを出さない。証拠用の c・d の入力も同じ設定で作り直す。
+   テスト（`c2paSignValidate.test.ts`）に両方の検査を足した。送る前に代表が Conformulator で確かめる。
+6. 捨てた選択肢: (a) サムネイルの形式を JPEG に固定 — 不合格の原因が形式でない可能性があり、当て推量の修正になる。
+   (b) rubric の原因が分かるまで提出を止める — 判定条件を読む手段が無く、サムネイルは任意のアサーションなので外せば確実に避けられる。
+   (c) softwareAgent を外す — 変換を誰がしたかの記録が消える。
+7. 判断理由: 審査を通すのに必要な最小の変更。サムネイルは Ledra の画面で使っておらず（画面のサムネイルは別に作って保存している）、外しても製品の挙動は変わらない。
+8. まだ答えが出ていないこと: サムネイルが不合格だった本当の原因。rubric がまた更新されたときに気づく手段（手元で Conformulator を回せない）。
+9. 公開区分: 要確認（技術の一般論としては公開可。審査のやり取りは非公開）
+
 ## 2026-10-16 施工店が設備・資格の中身を書き換えたら「検証済み」を外す
 
 1. 日付: 2026-10-16（`date -u` で確認）

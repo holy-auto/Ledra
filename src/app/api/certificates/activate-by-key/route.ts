@@ -106,6 +106,7 @@ export const POST = withCaller(
         certificateId: cert.id as string,
         customerName: (cert.customer_name as string | null) ?? "",
         customerId: (cert.customer_id as string | null) ?? null,
+        vehicleId: (cert.vehicle_id as string | null) ?? null,
         vehicleModel: vinfo.model ?? null,
         vehiclePlate: vinfo.plate ?? null,
         serviceType: (cert.service_type as string | null) ?? null,

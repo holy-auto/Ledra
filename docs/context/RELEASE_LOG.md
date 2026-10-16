@@ -22,6 +22,42 @@
 - 効き方の確認は**次にマイグレーションを含む PR をマージしたとき**: 本番の台帳に版が増えるのが
   `db-migrate` の実行後であること（これまでは失敗しても22秒後に別経路が当てていた）。
 
+## 2026-10-16 証明書の発行を webhook で知らせる・AI 下書きが作成中の写真を読む
+
+- 内容（webhook）: 購読できる8種のうち `certificate.issued`（証明書 発行）だけ、登録されているのにどこからも送っていなかった。
+  発行の副作用をまとめる `triggerCertificateIssued`（`src/lib/certificates/issueHooks.ts`）から送るようにした。発行の入口4本
+  （管理画面のステータス変更・オフライン発行・モバイル発行・AI 自動発行）はすべてこの関数を通るので、1か所で全部に効く。
+  中身は `id`・`public_id`・`customer_id`・`vehicle_id`・`service_type`。購読が無ければ何もしない（既存の `emitEntityWebhook`）。
+  `work_history.created` は基幹ソフトからの取り込み（`/api/v1/ingest/work-history`）で既に送っていた（OEM 整理資料の「未発火」は誤り。MISTAKE_LEDGER）。
+- 内容（AI 下書き）: 証明書作成画面の「AI下書き生成」が、添付済みでまだアップロードしていない写真（先頭2枚）も送るようにした。
+  route（`/api/admin/certificates/ai-draft`）は multipart を受け、既存の写真解析（`draftPhotoContent`）で読み取った施工内容を
+  下書き生成の材料（`photoDescriptions`）に入れる。これまでは常に空を渡していた。写真は画面側で長辺 1568px・1.5MB 以下に縮めて送り、
+  route も 2 枚・各 2MB・JPEG/PNG/WebP/GIF に絞る。テナントの写真ソースが OFF なら写真を読まない。
+- テスト: webhook は発行時に ID 付きで送ること（変更前のコードで赤）。AI 下書きは「写真付きなら解析結果を渡す」「写真ソース OFF なら読まない」
+  「JSON（写真なし）は従来どおり」（変更前の route で2件が赤）。
+- 残り: iPhone の HEIC など、ブラウザで JPEG に変換できない小さい写真は送らない（下書きは写真なしで作る）。写真から推定した施工種別は
+  フォームの種別欄には入れていない（下書きの文面にだけ反映）。
+
+## 2026-10-16 公開デモアカウントは、DB・Storage を直接書いても書けないようにした（#1354）
+
+- 内容: マイグレーション `20261016135012_demo_member_readonly_all_tables.sql`（マージで本番に適用）。`public.is_demo_member()`（デモテナントの所属者か）を足し、
+  public の全表と `storage.objects` に、所属者の INSERT・UPDATE・DELETE を断る RESTRICTIVE ポリシーを付けた（SELECT は付けない）。
+  RLS を通らない `replace_staff_shifts` は関数の先頭で断る。お知らせの既読（`/api/announcements/read`）は proxy で 403 にした。
+- 以前は、公開アカウントの access_token で PostgREST・Storage を直接叩くと、3 表（certificates / vehicles / customers）以外は書けた。
+- テスト: `scripts/replay/checks/demo_member_readonly.sql`（`npm run check:migrations` の最後に走る）。付け忘れ・RLS 無効の表・デモを見ていない
+  書き込み RPC を落とし、デモの owner は書けず別テナントの owner は書けることを行で確かめる。わざと壊すと落ちるのを 4 通りで確認（表を外す・RPC の1行を外す・デモの ID を変える・RLS を切る）。
+  プレビュー DB（本物の Supabase、Storage 含む）でも同じ振る舞いを確かめた。
+- 注意: デモテナントに所属した人は、どのテナントでも利用者権限では書けなくなる（公開アカウントだけを置く）。
+
+## 2026-10-15 C2PA の署名: softwareAgent を `{ name }` にし、自動サムネイルを外す
+
+- 内容: Conformulator（0.2 / Spec 2.4 rubric v1.1）の不適合3件への対応。`c2pa.orientation`・`c2pa.converted`・`c2pa.edited.metadata` の
+  softwareAgent を文字列から `{ name: "sharp" }` にした。署名の設定で claim と ingredient のサムネイルを作らない。
+- 確認: `c2paSignValidate.test.ts` に検査を追加（JPEG・PNG・WebP・HEIC の4形式）。修正前のコードで赤になることを確認。
+  `src/lib/anchoring` のテスト 204 件が通過。
+- 本番への影響: 本番の C2PA はまだ disabled なので、本番証明書を入れてオンにした日から効く。
+- マージ: 2026-10-16 13:51 UTC に #1347 として main へ（squash `ef118b85`）。CI 11 項目と Vercel プレビューが緑、`/code-review low` は指摘なし。
+
 ## 2026-10-16 施工店が設備・資格の中身を書き換えたら「検証済み」を外すようにした
 
 - 内容: マイグレーション `20261016132923_workshop_profiles_clear_verified_on_edit.sql`。2026-10-15 のトリガー関数を差し替え、施工店（authenticated / anon）からの UPDATE で
@@ -30,6 +66,7 @@
 - 施工店の画面（Web `/admin/field-test/workshop-profile`・モバイル `field-test/workshop-profile`）の「認証済」の下に「内容を変更して保存すると、認証済みは外れます。」を出す。
 - テスト: `scripts/replay/checks/workshop_profiles_verified_at_lock.sql` を書き直し、中身を変えない書き込み・upsert では据え置き、中身を書き換えた UPDATE・upsert では外れること、
   新規では付けられないこと、service role は付けられることを確かめる。新しいマイグレーションを外すと「中身を書き換えても『検証済み』が残った」で落ちるのを確認済み。
+- 本番反映: 2026-10-16 に #1352 をマージ（改名後の版 `20261016132923`）。`db-migrate.yml`（run 113）が成功し、本番の台帳の最新が `20261016132923`、トリガー関数が新しい本体になったことを確認。既存のデモ施工店の「検証済み」は残っている（書き込み時にだけ働くため）。`Supabase Preview` は改名前の版でプレビュー分岐が適用済みだったため赤のまま、代表の判断でマージ。
 
 ## 2026-10-16 #1348 をマージし、車両の同一性（代表判断 b）が本番に入った
 
