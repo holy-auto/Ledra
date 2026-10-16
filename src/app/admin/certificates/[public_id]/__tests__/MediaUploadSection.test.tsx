@@ -7,6 +7,11 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
 }));
 
+const uploadToSignedUrl = vi.fn(async () => ({ data: { path: "p" }, error: null }));
+vi.mock("@/lib/supabase/client", () => ({
+  createClient: () => ({ storage: { from: () => ({ uploadToSignedUrl }) } }),
+}));
+
 const PROPS = {
   publicId: "PID-123",
   existing: [],
@@ -61,12 +66,12 @@ describe("MediaUploadSection", () => {
     expect(screen.getByText("Before 画像を選択してください。")).toBeDefined();
   });
 
-  it("posts multipart payload with media_type and file when submission is valid", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ ok: true, media: { id: "mm" } }),
-    });
+  it("動画は Storage へ直接アップロードしてから、保存パスだけを登録する（Vercel の本文上限を通さない）", async () => {
+    const path = "media/t1/c1/1700000000000_main.mp4";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, path, token: "tok" }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, media: { id: "mm" } }) });
     global.fetch = fetchMock;
 
     render(<MediaUploadSection {...PROPS} />);
@@ -78,13 +83,52 @@ describe("MediaUploadSection", () => {
       await Promise.resolve();
     });
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [url, init] = fetchMock.mock.calls[0];
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const [urlUrl, urlInit] = fetchMock.mock.calls[0];
+    expect(urlUrl).toBe("/api/certificates/PID-123/media/upload-url");
+    expect(JSON.parse(urlInit.body)).toEqual({ content_type: "video/mp4", size: 12 });
+    expect(uploadToSignedUrl).toHaveBeenCalledWith(path, "tok", expect.any(File), { contentType: "video/mp4" });
+    const [url, init] = fetchMock.mock.calls[1];
     expect(url).toBe("/api/certificates/PID-123/media");
     expect(init.method).toBe("POST");
     const body = init.body as FormData;
     expect(body.get("media_type")).toBe("video");
-    expect(body.get("file")).toBeInstanceOf(File);
+    expect(body.get("primary_path")).toBe(path);
+    expect(body.get("file")).toBeNull();
+  });
+
+  it("登録が一時的に失敗したら、同じファイルの再試行では動画を送り直さず登録だけやり直す。中身不正で消されたら送り直す", async () => {
+    const path = "media/t1/c1/1700000000000_main.mp4";
+    const urlOk = { ok: true, status: 200, json: async () => ({ ok: true, path, token: "tok" }) };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(urlOk)
+      .mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({ message: "一時的" }) })
+      .mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ message: "不正", discarded: true }) })
+      .mockResolvedValueOnce(urlOk)
+      .mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({ message: "登録済み" }) });
+    global.fetch = fetchMock;
+    uploadToSignedUrl.mockClear();
+
+    render(<MediaUploadSection {...PROPS} />);
+    const fileInputs = document.querySelectorAll("input[type='file']") as NodeListOf<HTMLInputElement>;
+    fireEvent.change(fileInputs[0], { target: { files: [tinyFile("clip.mp4", "video/mp4")] } });
+    const send = async (calls: number) => {
+      await act(async () => {
+        fireEvent.click(screen.getByText("メディアを追加"));
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(calls));
+    };
+
+    await send(2); // upload-url + 登録（503）
+    await waitFor(() => expect(screen.getByText("一時的")).toBeDefined());
+    await send(3); // 登録だけ（400 discarded）
+    expect(uploadToSignedUrl).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByText("不正")).toBeDefined());
+    await send(5); // 送り直し: upload-url + 登録（409 = 登録済みは成功扱い）
+    expect(uploadToSignedUrl).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.getByText("動画 を追加しました。")).toBeDefined());
   });
 
   it("renders a delete button per existing media row", () => {
