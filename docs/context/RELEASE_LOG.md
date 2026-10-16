@@ -4,6 +4,22 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-16 証明書の発行を webhook で知らせる・AI 下書きが作成中の写真を読む
+
+- 内容（webhook）: 購読できる8種のうち `certificate.issued`（証明書 発行）だけ、登録されているのにどこからも送っていなかった。
+  発行の副作用をまとめる `triggerCertificateIssued`（`src/lib/certificates/issueHooks.ts`）から送るようにした。発行の入口4本
+  （管理画面のステータス変更・オフライン発行・モバイル発行・AI 自動発行）はすべてこの関数を通るので、1か所で全部に効く。
+  中身は `id`・`public_id`・`customer_id`・`vehicle_id`・`service_type`。購読が無ければ何もしない（既存の `emitEntityWebhook`）。
+  `work_history.created` は基幹ソフトからの取り込み（`/api/v1/ingest/work-history`）で既に送っていた（OEM 整理資料の「未発火」は誤り。MISTAKE_LEDGER）。
+- 内容（AI 下書き）: 証明書作成画面の「AI下書き生成」が、添付済みでまだアップロードしていない写真（先頭2枚）も送るようにした。
+  route（`/api/admin/certificates/ai-draft`）は multipart を受け、既存の写真解析（`draftPhotoContent`）で読み取った施工内容を
+  下書き生成の材料（`photoDescriptions`）に入れる。これまでは常に空を渡していた。写真は画面側で長辺 1568px・1.5MB 以下に縮めて送り、
+  route も 2 枚・各 2MB・JPEG/PNG/WebP/GIF に絞る。テナントの写真ソースが OFF なら写真を読まない。
+- テスト: webhook は発行時に ID 付きで送ること（変更前のコードで赤）。AI 下書きは「写真付きなら解析結果を渡す」「写真ソース OFF なら読まない」
+  「JSON（写真なし）は従来どおり」（変更前の route で2件が赤）。
+- 残り: iPhone の HEIC など、ブラウザで JPEG に変換できない小さい写真は送らない（下書きは写真なしで作る）。写真から推定した施工種別は
+  フォームの種別欄には入れていない（下書きの文面にだけ反映）。
+
 ## 2026-10-16 公開デモアカウントは、DB・Storage を直接書いても書けないようにした（#1354）
 
 - 内容: マイグレーション `20261016135012_demo_member_readonly_all_tables.sql`（マージで本番に適用）。`public.is_demo_member()`（デモテナントの所属者か）を足し、
