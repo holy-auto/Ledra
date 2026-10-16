@@ -15,6 +15,11 @@
 - 対策候補 (b): 毎日に上げる（`0 0 * * *`）。気づくまで最大1日。CI 時間は週7回分。
 - 対策候補 (c): 現状維持。検出器を直したときは workflow_dispatch で手動起動して確かめる（今回はそうした）。
 - 判断は代表（CI 時間の費用が絡む）。
+- **このセッションからは手動起動もできない**: `POST actions/workflows/supabase-advisors.yml/dispatches` が
+  403 `Resource not accessible by integration`（2026-10-16 に GitHub MCP と `gh api` の両方で確認）。
+  つまり「検出器を直したら手動で起動して確かめる」という運用は、Claude のセッションでは成立しない。
+  **2026-10-16 の `storage_policy` 追加（#1363）は、本番に対して一度も動いていない。**
+  代表が Actions 画面で「Supabase Advisors」→ Run workflow を押すか、次の月曜 00:00 UTC を待つ。
 
 ## OEM（トヨタ等）への再連絡の前に決めること（2026-10-16）
 
