@@ -10,12 +10,11 @@ import { z } from "zod";
 import { apiOk, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateCertificateDraft } from "@/lib/ai/draftCertificate";
-import { modelForPlanTier } from "@/lib/ai/client";
+import { modelForPlanTier, visionModelForPlanTier } from "@/lib/ai/client";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { loadAiAutomationSettings, filterDraftByPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
 import { CERT_AI_COLUMNS, certAiFields } from "@/lib/certificates/aiFields";
 import { draftPhotoContent, type ImageMediaType } from "@/lib/ai/photoContentDraft";
-import { visionModelForPlanTier } from "@/lib/ai/client";
 
 import { withCaller } from "@/lib/api/withCaller";
 const aiDraftSchema = z
@@ -104,6 +103,24 @@ export const POST = withCaller(
         });
       }
 
+      // 作成中フォームの写真から施工内容を読み取り、下書きの材料に加える (写真ソース許可時のみ)。
+      // DB 参照と無関係なので先に走らせ、下書き生成の直前で待つ。
+      const usePhotos =
+        photos.length > 0 &&
+        isSourceAllowed(automation, "photos") &&
+        canUseFeature(caller.planTier, "ai_quality_vision");
+      const photoContentPromise = usePhotos
+        ? Promise.all(
+            photos.map(async (f) => ({
+              base64: Buffer.from(await f.arrayBuffer()).toString("base64"),
+              mediaType: f.type as ImageMediaType,
+            })),
+          )
+            .then((images) => draftPhotoContent(images, { model: visionModelForPlanTier(caller.planTier) }))
+            // 待つ前に DB 参照が throw しても未処理の reject を残さない。
+            .catch(() => null)
+        : Promise.resolve(null);
+
       // 車両情報取得
       let vehicle: Record<string, unknown> = {};
       if (vehicle_id) {
@@ -152,22 +169,8 @@ export const POST = withCaller(
             .limit(5)
         : { data: [] as Array<Record<string, unknown>> };
 
-      // 作成中フォームの写真から施工内容を読み取り、下書きの材料に加える (写真ソース許可時のみ)。
-      const usePhotos =
-        photos.length > 0 &&
-        isSourceAllowed(automation, "photos") &&
-        canUseFeature(caller.planTier, "ai_quality_vision");
-      const photoContent = usePhotos
-        ? await draftPhotoContent(
-            await Promise.all(
-              photos.map(async (f) => ({
-                base64: Buffer.from(await f.arrayBuffer()).toString("base64"),
-                mediaType: f.type as ImageMediaType,
-              })),
-            ),
-            { model: visionModelForPlanTier(caller.planTier) },
-          )
-        : null;
+      const photoContent = await photoContentPromise;
+      const photoText = photoContent?.contentDraft || undefined;
 
       const draft = await generateCertificateDraft(
         {
@@ -189,7 +192,7 @@ export const POST = withCaller(
           similarCertificates: (similar ?? []).map((s) => ({
             ...certAiFields(s),
           })),
-          photoDescriptions: photoContent?.contentDraft ? [photoContent.contentDraft] : undefined,
+          photoDescriptions: photoText ? [photoText] : undefined,
           templateCategory: template_category,
         },
         { model: modelForPlanTier(caller.planTier) },
@@ -202,7 +205,8 @@ export const POST = withCaller(
         policies: filtered.policies,
         source_data: {
           similar_certs_used: similar?.length ?? 0,
-          photos_analyzed: usePhotos ? photos.length : 0,
+          // 読み取れた内容が下書きに入ったときだけ数える (Vision 失敗時は 0)。
+          photos_analyzed: photoText ? photos.length : 0,
           hearing_used: !!hearing,
         },
       });

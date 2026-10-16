@@ -91,6 +91,13 @@ describe("POST ai-draft — 作成中フォームの写真", () => {
     expect(json.source_data.photos_analyzed).toBe(1);
   });
 
+  it("Vision が何も読み取れなければ写真を参照した扱いにしない", async () => {
+    mocks.draftPhotoContent.mockResolvedValue({ serviceCategory: "other", contentDraft: "", confidence: 0 });
+    const res = await POST(multipartReq());
+    expect(mocks.generateDraft.mock.calls[0][0].photoDescriptions).toBeUndefined();
+    expect((await res.json()).source_data.photos_analyzed).toBe(0);
+  });
+
   it("写真ソースが無効なら Vision を呼ばない", async () => {
     mocks.loadSettings.mockResolvedValue(settings({ photos: false }));
     const res = await POST(multipartReq());

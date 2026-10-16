@@ -61,13 +61,13 @@ export default function AiDraftPanel({ vehicleId, hearingId, templateCategory, g
     setError(null);
     setDraft(null);
     try {
-      const photos = (
-        await Promise.all(
-          (getPhotos?.() ?? [])
-            .slice(0, DRAFT_PHOTO_LIMIT)
-            .map((f) => compressToJpeg(f, { targetBytes: DRAFT_PHOTO_BYTES, maxDimension: 1568 })),
-        )
-      ).filter((f): f is File => !!f && VISION_TYPES.has(f.type) && f.size <= DRAFT_PHOTO_BYTES);
+      // 使える写真が2枚そろうまで先頭から縮める (変換できない HEIC 等は飛ばす)。
+      const photos: File[] = [];
+      for (const f of getPhotos?.() ?? []) {
+        if (photos.length >= DRAFT_PHOTO_LIMIT) break;
+        const c = await compressToJpeg(f, { targetBytes: DRAFT_PHOTO_BYTES, maxDimension: 1568 });
+        if (c && VISION_TYPES.has(c.type) && c.size <= DRAFT_PHOTO_BYTES) photos.push(c);
+      }
       let body: BodyInit;
       const headers: HeadersInit = {};
       if (photos.length > 0) {
@@ -117,7 +117,7 @@ export default function AiDraftPanel({ vehicleId, hearingId, templateCategory, g
       {open && (
         <div className="px-4 pb-4 space-y-3 border-t border-accent/20">
           <p className="text-xs text-muted mt-3">
-            車両情報・ヒアリング・過去施工履歴と、添付済みの施工写真（先頭2枚）を基に施工内容の下書きを自動生成します。
+            車両情報・ヒアリング・過去施工履歴と、添付済みの施工写真（2枚まで）を基に施工内容の下書きを自動生成します。
           </p>
 
           {/* 生成ボタン */}

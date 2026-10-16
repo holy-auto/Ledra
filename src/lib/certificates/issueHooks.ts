@@ -41,8 +41,9 @@ export interface CertificateIssuedParams {
  * 失敗しても発行 (status 更新) 自体は止めない。
  */
 export async function triggerCertificateIssued(params: CertificateIssuedParams): Promise<void> {
-  // 自社システム (基幹ソフト等) への webhook。購読が無ければ何もしない。best-effort で throw しない。
-  await emitEntityWebhook(params.tenantId, "certificate.issued", params.certificateId, {
+  // 自社システム (基幹ソフト等) への webhook。購読が無ければ何もしない。throw しない。
+  // 待たない: 後続の保険連携・アンカーの enqueue を DB 往復 2 回ぶん遅らせない。
+  void emitEntityWebhook(params.tenantId, "certificate.issued", params.certificateId, {
     id: params.certificateId,
     public_id: params.publicId,
     customer_id: params.customerId ?? null,
