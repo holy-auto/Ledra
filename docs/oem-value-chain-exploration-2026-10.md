@@ -67,7 +67,7 @@
 
 | # | 残っている手間 | 根拠（確認済み） | 打ち手 | 規模感（推定） |
 |---|---|---|---|---|
-| 1 | 写真を撮っても、作成中のフォームに何も入らない | AI 下書きは写真を渡していない（`src/app/api/admin/certificates/ai-draft/route.ts:147` が `photoDescriptions: undefined`）。写真からの下書きは、発行**後**に詳細ページへ案として出るだけ | 写真の Vision 解析を下書き API に渡し、施工種別・施工箇所・材料の候補をフォームに入れる。部品は既にある（`photoContentDraft`） | 小〜中 |
+| 1 | 写真を撮っても、作成中のフォームに何も入らない（#1353 で、AI 下書きが添付済みの写真を読むようにした） | AI 下書きは写真を渡していない（`src/app/api/admin/certificates/ai-draft/route.ts:147` が `photoDescriptions: undefined`）。写真からの下書きは、発行**後**に詳細ページへ案として出るだけ | 写真の Vision 解析を下書き API に渡し、施工種別・施工箇所・材料の候補をフォームに入れる。部品は既にある（`photoContentDraft`） | 小〜中 |
 | 2 | 前回の証明書から引き継ぐのが2項目だけ | `applyLastCert` が写すのは有効条件と保証除外のみ（`src/app/admin/certificates/new/CertNewFormWrapper.tsx:260-269`） | コーティング剤・施工箇所・メニューも写す。前回値の API は既にコーティング剤を返している | 小 |
 | 3 | 車検証が手元に無いと、車両の特定が手入力になる | ナンバー認識・VIN デコード・電子車検証の IC 読み取りは、どれも実装なし | ナンバー撮影から自テナント内の車両を検索する。VIN から車種仕様を引くのは **OEM の協力が要る**（第4節） | 中 |
 | 4 | モバイルに Web の省力化機能が載っていない | `apps/mobile/src` に音声・AI 下書き・走行距離 OCR の実装が無い（grep で確認。音声は `docs/context/LEDRA_CURRENT.md:1912` にも「未実装」）。アプリ自体が未公開 | 現場の主な端末なので、1・2 をモバイルにも載せる | 中 |
@@ -89,7 +89,7 @@ OEM・ディーラーから見えない区間にあたる（`docs/toyota-partner
 
 | つなぎ目 | 状態 | 欠けているもの |
 |---|---|---|
-| 施工店 → 自社の基幹システム（Webhook） | 実装済み。トピックは8種 | **証明書発行（`certificate.issued`）と作業履歴（`work_history.created`）の2種が、登録されているのに発火していない**。発火しているのは顧客・車両・保険ケースの6種だけ（`emitEntityWebhook` の呼び出し元を grep で確認） |
+| 施工店 → 自社の基幹システム（Webhook） | 実装済み。トピックは8種 | **証明書発行（`certificate.issued`）だけ、登録されているのに発火していなかった**（#1353 で発火させた）。作業履歴（`work_history.created`）は基幹ソフトからの取り込み（`src/lib/api/ingest.ts`）で発火している。初版では「2種が未発火」と書いたが、取り込み側がトピック名を組み立てて送っていたのを grep で見落としていた（MISTAKE_LEDGER `M-20261016-grepped-topic-literal-missed-built-topic-names`） |
 | 施工店 → 車両単位の履歴（車両パスポート） | 実装済み・**公開ゲートで閉鎖中**（`PASSPORT_PUBLIC_ENABLED` と特許出願前のロック `PASSPORT_PATENT_HOLD`、`src/lib/passport/featureGate.ts`） | 載る項目が、証明書の種別・日付・店名・tx だけ。走行距離・部品装着（GTIN・ロット・シリアル）・傷の位置は載らない |
 | 施工店 → 中古車（/market） | 業者間の在庫・商談は実装済み | `market_vehicles.chassis_number` はあるのに、パスポートとつながっていない |
 | 施工店 → 保険会社（/insurer） | 本番稼働 | 実契約の保険会社は無い |
@@ -98,8 +98,8 @@ OEM・ディーラーから見えない区間にあたる（`docs/toyota-partner
 
 ### 打ち手（小さい順）
 
-1. **`certificate.issued` と `work_history.created` を発火させる**
-   - 発行処理の後に `emitEntityWebhook` を1行足すだけ。
+1. **`certificate.issued` を発火させる**（#1353 で実装）
+   - 発行の副作用をまとめる `triggerCertificateIssued` に1か所足し、発行の入口4本すべてに効かせた。
    - 効果: ディーラー・整備システムに「この車にこの施工が入った」が届く。OEM の言う「バリューチェーン」に一番直結する。
    - 規模感: 小（推定）
 2. **/market の車台番号をパスポートにつなぐ**
