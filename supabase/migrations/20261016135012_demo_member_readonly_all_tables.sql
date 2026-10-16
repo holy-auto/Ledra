@@ -29,7 +29,7 @@ as $$
 $$;
 
 comment on function public.is_demo_member() is
-  '呼び出した人が公開デモテナントの所属者か。デモの書き込みを RLS で断るために使う（20261016132455）。';
+  '呼び出した人が公開デモテナントの所属者か。デモの書き込みを RLS で断るために使う（20261016135012）。';
 
 revoke execute on function public.is_demo_member() from public, anon;
 grant execute on function public.is_demo_member() to authenticated;

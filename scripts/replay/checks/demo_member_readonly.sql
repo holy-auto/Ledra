@@ -1,11 +1,11 @@
--- 公開デモアカウント（デモテナントの所属者）は、ブラウザから DB を直接書いても書けないことを確かめる（20261016132455）。
+-- 公開デモアカウント（デモテナントの所属者）は、ブラウザから DB を直接書いても書けないことを確かめる（20261016135012）。
 --
 -- なぜ要るか: 止めているのは表ごとの RESTRICTIVE ポリシーで、新しい表に付け忘れても構文も型も通る。
 -- 付け忘れた表は、公開のログイン情報で誰でも PostgREST から書ける。
 -- (1) public の全表と storage.objects にポリシーが付いているか、(2) 実際にデモの所属者だけが書けないか、を見る。
 -- 陽性対照として、別テナントの owner は同じ書き込みができることも確かめる。
 --
--- 落ちたら: 新しい表なら、20261016132455_demo_member_readonly_all_tables.sql の DO ブロックを
+-- 落ちたら: 新しい表なら、20261016135012_demo_member_readonly_all_tables.sql の DO ブロックを
 -- 新しいマイグレーションにそのまま写して流す（付いているポリシーは飛ばす）。
 --
 -- 最後に ROLLBACK するので DB には何も残らない。
@@ -25,7 +25,7 @@ BEGIN
          WHERE p.polrelid = c.oid AND NOT p.polpermissive
            AND p.polname IN ('demo_member_readonly_insert', 'demo_member_readonly_update', 'demo_member_readonly_delete')) <> 3;
   IF missing IS NOT NULL THEN
-    RAISE EXCEPTION 'デモの書き込みを断るポリシーが無い表: %（20261016132455 の DO ブロックを新しいマイグレーションで流す）', missing;
+    RAISE EXCEPTION 'デモの書き込みを断るポリシーが無い表: %（20261016135012 の DO ブロックを新しいマイグレーションで流す）', missing;
   END IF;
   IF (SELECT count(*) FROM pg_policy WHERE polrelid = 'storage.objects'::regclass AND NOT polpermissive
       AND polname LIKE 'demo_member_readonly_%') <> 3 THEN

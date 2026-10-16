@@ -6,7 +6,7 @@
 
 ## 2026-10-16 公開デモアカウントは、DB・Storage を直接書いても書けないようにした（#1354）
 
-- 内容: マイグレーション `20261016132455_demo_member_readonly_all_tables.sql`（マージで本番に適用）。`public.is_demo_member()`（デモテナントの所属者か）を足し、
+- 内容: マイグレーション `20261016135012_demo_member_readonly_all_tables.sql`（マージで本番に適用）。`public.is_demo_member()`（デモテナントの所属者か）を足し、
   public の全表と `storage.objects` に、所属者の INSERT・UPDATE・DELETE を断る RESTRICTIVE ポリシーを付けた（SELECT は付けない）。
   RLS を通らない `replace_staff_shifts` は関数の先頭で断る。お知らせの既読（`/api/announcements/read`）は proxy で 403 にした。
 - 以前は、公開アカウントの access_token で PostgREST・Storage を直接叩くと、3 表（certificates / vehicles / customers）以外は書けた。
