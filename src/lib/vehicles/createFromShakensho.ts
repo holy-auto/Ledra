@@ -8,6 +8,7 @@
 import type { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { extractFirstRegistrationYear, type ShakenshoData } from "@/lib/ocr/shakensho";
 import { resolveVehicleSizeClass } from "@/lib/vehicles/resolveSizeClass";
+import { resolveExistingVehicleId } from "@/lib/vehicles/resolveExistingVehicle";
 import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 import { logger } from "@/lib/logger";
 
@@ -34,6 +35,19 @@ export async function createVehicleFromShakensho(
   // 空欄のまま作らず「不明」で登録する (OCR 精度が低い車検証でも登録自体は続けられる
   // ようにし、詳細はスタッフに確認してもらう)。
   const model = data.model?.trim() || "不明";
+
+  // 既にある車なら作らない。写真を2回送れば2行できていた（代表判断 2026-10-15・選択肢 b）。
+  // 規則は発行・ヒアリング連携と同じものを使う。
+  // ponytail: 引き当てたときは**既存行を OCR の内容で上書きしない**（車検証の有効期限など）。
+  // 上書きは「どちらが新しいか」の判断が要るので、スタッフの確認に任せる。
+  const existingId = await resolveExistingVehicleId(admin, tenantId, {
+    plate: data.plate_display,
+    vinCode: data.vin,
+    maker,
+    model,
+    customerId,
+  });
+  if (existingId) return existingId;
 
   const sizeClass = await resolveVehicleSizeClass(admin, {
     maker,
