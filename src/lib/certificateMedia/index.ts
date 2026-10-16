@@ -20,6 +20,21 @@ export type MediaType = (typeof MEDIA_TYPES)[number];
 export const SUPPORTED_MEDIA_TYPES: readonly MediaType[] = ["video", "before_after"] as const;
 
 export const ALLOWED_VIDEO_MIME = ["video/mp4", "video/quicktime"] as const;
+
+/**
+ * 動画は Vercel の関数の本文上限（約 4.5MB）を超えるので、ブラウザから Storage へ直接アップロードする
+ * （`/api/certificates/[id]/media/upload-url` が署名付きアップロード URL を発行する）。
+ * その保存パスは `media/<テナント>/<証明書>/<時刻>_main.<mp4|mov>` で、登録時にこの形と持ち主を確かめる
+ * （他テナント・他の証明書のファイルを自分のメディアとして登録させない）。
+ */
+export function directVideoPath(tenantId: string, certId: string, ext: string, now = Date.now()): string {
+  return `${CERTIFICATE_MEDIA_STORAGE_PREFIX}/${tenantId}/${certId}/${now}_main.${ext}`;
+}
+
+export function isOwnDirectVideoPath(path: string, tenantId: string, certId: string): boolean {
+  const prefix = `${CERTIFICATE_MEDIA_STORAGE_PREFIX}/${tenantId}/${certId}/`;
+  return path.startsWith(prefix) && /^\d+_main\.(mp4|mov)$/.test(path.slice(prefix.length));
+}
 export const ALLOWED_IMAGE_MIME = ["image/jpeg", "image/png"] as const;
 
 /** 1 ファイルあたり上限 (動画は短尺前提、イベント参照のみ)。 */
