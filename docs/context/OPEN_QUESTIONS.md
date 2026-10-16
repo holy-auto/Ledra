@@ -3,6 +3,24 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## スキーマのドリフト検出が週1回しか走らない（2026-10-16 起票）
+
+- 状況: `check:drift` は Supabase Advisors ワークフロー（`schedule: 0 0 * * 1`、月曜 00:00 UTC と workflow_dispatch）でしか走らない。
+  PR の CI には入っていない。したがって**本番にドリフトが生まれてから最大7日間は誰も気づかない**し、
+  検出器そのものを直した PR も、その PR の CI では一度も動かない（2026-10-16 の `storage_policy` 追加がまさにそれ）。
+- なぜ PR の CI に入っていないか: 再生だけで数分かかり、本番のシークレット（`SUPABASE_ACCESS_TOKEN` /
+  `SUPABASE_PROJECT_ID`）が要る。fork の PR ではシークレットが渡らない。
+- 対策候補 (a): `supabase/migrations/**` と `scripts/{check-schema-drift,replay-migrations}.mjs` を触る PR でだけ走らせる
+  （`paths` 条件）。触らない PR の時間は増えない。fork の PR では従来どおり skip する判断が別に要る。
+- 対策候補 (b): 毎日に上げる（`0 0 * * *`）。気づくまで最大1日。CI 時間は週7回分。
+- 対策候補 (c): 現状維持。検出器を直したときは workflow_dispatch で手動起動して確かめる（今回はそうした）。
+- 判断は代表（CI 時間の費用が絡む）。
+- **このセッションからは手動起動もできない**: `POST actions/workflows/supabase-advisors.yml/dispatches` が
+  403 `Resource not accessible by integration`（2026-10-16 に GitHub MCP と `gh api` の両方で確認）。
+  つまり「検出器を直したら手動で起動して確かめる」という運用は、Claude のセッションでは成立しない。
+  **2026-10-16 の `storage_policy` 追加（#1363）は、本番に対して一度も動いていない。**
+  代表が Actions 画面で「Supabase Advisors」→ Run workflow を押すか、次の月曜 00:00 UTC を待つ。
+
 ## OEM（トヨタ等）への再連絡の前に決めること（2026-10-16）
 
 JMS Bizweek 2026 で OEM が「バリューチェーン・入力の簡略化・データ利活用」に関心を示した。整理は `docs/oem-value-chain-exploration-2026-10.md`。
@@ -252,6 +270,13 @@ JMS Bizweek 2026 で OEM が「バリューチェーン・入力の簡略化・�
 ## 「鈑金塗装」で探す人の入口ページを作るか（2026-10-08）
 
 ## `check:drift` が Storage（`storage` スキーマ）のポリシーを見ていない（2026-10-08）
+
+- **→ 2026-10-16 解決（ポリシーだけに絞って対象にした）**: `replay-migrations.mjs --dump` が `--schema=storage` も書き出すようにし、
+  `check-schema-drift.mjs` に `storage_policy` の軸を足した（本番・再生の両方向。陰性対照は `objects.market_storage_insert`）。
+  実測: `storage.objects` のポリシーは本番・再生ともに 5 本で一致（#1354 のマージ後。market 2 本と demo_member_readonly 3 本）。
+  `storage` の表・関数・トリガは比べない —— 再生 DB の storage は `bootstrap.sql` の最小形で、本番の Supabase とは形が違うため
+  （全部比べると幻のドリフトが出る）。広げるなら bootstrap を本番の形に揃えるのが先（script の ponytail 上限その5）。
+  **この検査は週次ジョブ（Supabase Advisors、月曜 00:00 UTC）でしか走らないので、PR の CI では確かめられない。**
 
 - 状況: `scripts/check-schema-drift.mjs` は、本番側のポリシーを `n.nspname='public'` だけ、マイグレーション側のダンプも `ON public.` だけで拾う。
   そのため本番にだけある `storage.objects` のポリシー（2026-10-08 に外した `assets_write_tenant` / `assets_tenant_rw`）が CI で見えなかった。

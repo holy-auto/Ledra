@@ -36,7 +36,7 @@
  *
  * 終了コード: ドリフトが1件でもあれば 1。
  *
- * ponytail: 上限その1。`pg_dump --schema=public` は**イベントトリガを含まない**
+ * ponytail: 上限その1。`pg_dump --schema=public --schema=storage` は**イベントトリガを含まない**
  *   （スキーマ単位の書き出しに、クラスタ単位のオブジェクトは入らない）。
  *   イベントトリガだけはマイグレーションの字面から拾う。数が少なく、
  *   `create event trigger` に `if not exists` が無いので必ずリテラルで書かれる。
@@ -51,6 +51,18 @@
  *   一方**一意索引は正しさの保証**で、片側に無ければその環境は、もう片側が拒否する
  *   データを受け入れる。だから一意のものだけを両方向で見る。
  *   一意でない索引の差は docs/context/OPEN_QUESTIONS.md に一覧で残してある。
+ * ponytail: 上限その5。`storage` スキーマは**ポリシーだけ**比べる。再生 DB の storage は
+ *   bootstrap.sql の最小形（buckets / objects と関数3本）で、本番の Supabase が持つ
+ *   表・関数・トリガとは形が違うため、全部を比べると幻のドリフトが大量に出る。
+ *   一方ポリシーは Supabase が既定で作らず、`storage.objects` の分はマイグレーションだけで
+ *   決まるので、両側の集合は本来一致する（#1354 のマージ（2026-10-16 14:18:57Z）後の実測で、本番・再生ともに
+ *   `market_storage_insert/delete` と `demo_member_readonly_insert/update/delete` の5本。
+ *   作業中に #1354 がマージされて2本から5本に増えた —— **件数は動くので、
+ *   この数字は「いつ測ったか」と一緒でなければ意味を持たない**）。
+ *   本番にだけあった `assets_write_tenant` / `assets_tenant_rw` がこの検査から見えず、
+ *   外したことに CI が気づけなかったのがこれを足した理由（OPEN_QUESTIONS 2026-10-08）。
+ *   storage の表そのもののドリフトまで見るなら、bootstrap.sql を本番の storage と同じ形に
+ *   揃えるのが先。
  * ponytail: 上限その3。列は**両方向**を見る。本番にあって再生に無い側（＝本番データを
  *   流し込めなくなる）と、マイグレーションにあって本番に無い側（＝本番でだけ 42703 に
  *   なる。certificates.certificate_no が実例）。テーブル・関数などは本番→再生の一方向
@@ -137,10 +149,13 @@ const dumped = (re) => new Set([...dump.matchAll(re)].map((m) => m[1].replace(/"
 // 型 Map の両方をここから導出する）。純関数として scripts/__tests__/dumpParse.test.ts で単体検査。
 const columnRows = columnRowsFromDump(dump);
 
-/** `CREATE POLICY <名前> ON public.<表>` から `表名.ポリシー名` を拾う。名前は引用符付きもある。 */
-function policiesFromDump(text) {
+/** `CREATE POLICY <名前> ON <スキーマ>.<表>` から `表名.ポリシー名` を拾う。名前は引用符付きもある。 */
+function policiesFromDump(text, schema) {
   const out = new Set();
-  const re = /^CREATE POLICY ("(?:[^"]|"")+"|\S+) ON public\.([\w"]+)/gm;
+  const re = new RegExp(
+    `^CREATE POLICY ("(?:[^"]|"")+"|\\S+) ON ${schema}\\.([\\w"]+)`,
+    "gm",
+  );
   for (const m of text.matchAll(re)) out.add(`${bare(m[2])}.${bare(m[1])}`);
   return out;
 }
@@ -151,12 +166,20 @@ const replayed = {
   // `pg_proc` を prokind で絞らずに引くので、ここで拾い漏らすと**永久に消えない
   // 幻のドリフト**になる。3種とも拾う。
   function: dumped(/^CREATE (?:FUNCTION|PROCEDURE|AGGREGATE) public\.([\w"]+)\s*\(/gm),
-  trigger: dumped(/^CREATE (?:OR REPLACE )?(?:CONSTRAINT )?TRIGGER ([\w"]+)/gm),
+  // **`ON public.` までを見る。** ダンプには storage スキーマも入っている（ポリシーを
+  // 比べるため）。トリガ名だけで拾うと、storage 側のトリガが public の集合に混ざり、
+  // 同名の public のトリガが本番にだけ在るときに**ドリフトを隠す**。今は storage に
+  // トリガが無いので件数は変わらない（146 件、実測）が、増えた日に黙って壊れる形だった。
+  trigger: dumped(/^CREATE (?:OR REPLACE )?(?:CONSTRAINT )?TRIGGER ([\w"]+)[^\n]* ON public\./gm),
   enum: dumped(/^CREATE TYPE public\.([\w"]+) AS ENUM/gm),
   // 列とポリシーは `表名.名前` で持つ。名前だけだと `id` のように表を跨いで
   // 同名のものが大量にあり、比較が意味を失う。
   column: new Set(columnRows.map((r) => r.name)),
-  policy: policiesFromDump(dump),
+  policy: policiesFromDump(dump, "public"),
+  // storage スキーマのポリシーは別の軸で持つ。`表名.ポリシー名` の形は public と同じなので、
+  // 1つの集合に混ぜると「表ごと無いときは黙らせる」判定（tableOf）が public の表名と
+  // storage の表名を区別できない。
+  storage_policy: policiesFromDump(dump, "storage"),
   // 一意制約は pg_dump が2つの書き方で出す。**両方拾わないと幻のドリフトになる。**
   //   - 制約として持つもの: `ALTER TABLE ONLY public.t\n    ADD CONSTRAINT c UNIQUE (...)`
   //   - 索引として持つもの: `CREATE UNIQUE INDEX c ON public.t ...`
@@ -219,6 +242,10 @@ const NEGATIVE = {
   // （vehicle_size_master）からも1件取る。
   column: ["certificates.public_id", "tenants.plan_tier", "vehicle_size_master.id"],
   policy: ["certificates.certificates_select_v2", "tenants.tenants_select_v2"],
+  // storage 側も**既知の1件で当たりを取る**。ダンプに `--schema=storage` が無くなったり、
+  // `ON storage.` の読み取りが壊れたら、本番との比較が常に空振りする（0 件で緑）。
+  // その壊れ方を陰性対照で止める。
+  storage_policy: ["objects.market_storage_insert"],
   // 2つの書き方それぞれから1件ずつ取る（片方の正規表現が壊れても対照が落ちるように）。
   //   tenants_slug_key            … ADD CONSTRAINT ... UNIQUE 由来
   //   idx_documents_public_id     … CREATE UNIQUE INDEX 由来
@@ -315,6 +342,16 @@ const prod = {
         " where n.nspname='public' order by 1",
     ),
   ),
+  // storage スキーマのポリシー。本番の `storage.objects` に在る 5 本はすべてマイグレーションが
+  // 作る（#1354 のマージ後に pg_policies で確認。同じ時点の再生 DB も同じ 5 本）。
+  // Supabase は既定でここにポリシーを作らないので、両側の集合は本来一致する。
+  storage_policy: names(
+    await query(
+      "select c.relname||'.'||p.polname from pg_policy p" +
+        " join pg_class c on c.oid=p.polrelid join pg_namespace n on n.oid=c.relnamespace" +
+        " where n.nspname='storage' order by 1",
+    ),
+  ),
   // 一意制約。主キーは別軸（表があれば必ず付いてくる）なので除く。
   // 制約由来か索引由来かは問わない —— 名前で突き合わせる。
   //
@@ -393,6 +430,7 @@ const LABEL = {
   event_trigger: "イベントトリガ",
   column: "列",
   policy: "RLS ポリシー",
+  storage_policy: "Storage の RLS ポリシー",
   unique_index: "一意制約",
   fk_constraint: "外部キー",
   check_constraint: "CHECK 制約",
@@ -438,6 +476,10 @@ const notInProd = (kind) => {
 };
 const extraColumns = notInProd("column");
 const extraPolicies = notInProd("policy");
+// storage のポリシーの逆向きも件数だけ出す（public のポリシーと同じ基準。「本番のほうが緩い」
+// は別の判断軸）。ただしこちらは **0 でないこと自体が珍しい** —— Supabase は既定で
+// storage.objects にポリシーを作らないので、両側はマイグレーションだけで決まる。
+const extraStoragePolicies = notInProd("storage_policy");
 // 一意制約の逆向きも落とす。**これを見ないと、本番だけ一意性が消えた状態に気づけない。**
 // 実例: `idx_payments_idempotency`（決済の冪等キー）は 2026-09-18 に remote_schema が
 // 本番だけで落としており、マイグレーション側には在った。列を両方向で見ていた
@@ -457,7 +499,8 @@ const extraCheck = notInProd("check_constraint");
 console.log(
   `[drift] 逆向き: マイグレーションが作るのに本番に無い 列 ${extraColumns.length} 件 /` +
     ` 一意制約 ${extraUnique.length} 件 / 外部キー ${extraFk.length} 件 /` +
-    ` CHECK ${extraCheck.length} 件（落とさない）/ ポリシー ${extraPolicies.length} 件`,
+    ` CHECK ${extraCheck.length} 件（落とさない）/ ポリシー ${extraPolicies.length} 件 /` +
+    ` Storage のポリシー ${extraStoragePolicies.length} 件`,
 );
 for (const n of extraCheck) console.log(`         - ${n}（CHECK・落とさない）`);
 for (const n of extraColumns) console.log(`         - ${n}`);
