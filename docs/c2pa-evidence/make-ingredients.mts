@@ -21,23 +21,27 @@ copyFileSync(libJpg, join(out, "a-ingredient1.jpg"));
 copyFileSync(join(lib, "sample-X-ingredientN.png"), join(out, "b-ingredient1.png"));
 
 async function transcodeAndSign(bytes: Buffer, mime: string, file: string) {
-  const b = Builder.withJson({
-    claim_generator_info: [{ name: "Ledra evidence ingredient maker", version: "1.0", specVersion: "2.4" }],
-    title: file,
-    assertions: [
-      {
-        label: "c2pa.actions",
-        created: true,
-        data: {
-          allActionsIncluded: true,
-          actions: [
-            { action: "c2pa.opened", parameters: { ingredientIds: ["library"] } },
-            { action: "c2pa.transcoded" },
-          ],
+  const b = Builder.withJson(
+    {
+      claim_generator_info: [{ name: "Ledra evidence ingredient maker", version: "1.0", specVersion: "2.4" }],
+      title: file,
+      assertions: [
+        {
+          label: "c2pa.actions",
+          created: true,
+          data: {
+            allActionsIncluded: true,
+            actions: [
+              { action: "c2pa.opened", parameters: { ingredientIds: ["library"] } },
+              { action: "c2pa.transcoded" },
+            ],
+          },
         },
-      },
-    ],
-  } as never);
+      ],
+      // No thumbnails, like the product's own manifests (Conformulator thumbnail_format_mime_type, 2026-10-15).
+    } as never,
+    JSON.stringify({ builder: { thumbnail: { enabled: false } } }) as never,
+  );
   await b.addIngredient(
     JSON.stringify({ title: "sample-X-ingredientN.jpg", relationship: "parentOf", label: "library" }),
     { buffer: readFileSync(libJpg), mimeType: "image/jpeg" },
