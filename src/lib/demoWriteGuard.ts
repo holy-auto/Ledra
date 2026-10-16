@@ -1,5 +1,6 @@
 /**
  * 公開デモアカウントからの書き込みを、入口（proxy）でまとめて断る。
+ * ブラウザから DB・Storage を直接書く経路は RLS で断る（20261016135012）。
  *
  * デモテナントの読み取り専用は RLS（20260514000001）だけで守っていたが、サーバーが
  * サービスロールで書く API（証明書作成など）は RLS を素通りする。書き込みの入口は
@@ -33,6 +34,7 @@ const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export const GUARDED_PREFIXES = [
   "/admin",
   "/api/admin/",
+  "/api/announcements/",
   "/api/certificates/",
   "/api/consent/",
   "/api/identity/",
