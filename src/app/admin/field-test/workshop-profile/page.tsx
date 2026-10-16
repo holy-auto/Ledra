@@ -106,6 +106,9 @@ export default function WorkshopProfilePage() {
           </span>
         )}
       </div>
+      {profile.verified_at && (
+        <p className="-mt-4 mb-6 text-xs text-muted">内容を変更して保存すると、認証済みは外れます。</p>
+      )}
 
       {/* Equipment */}
       <Section title="設備">
