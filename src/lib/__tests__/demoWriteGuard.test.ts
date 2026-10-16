@@ -58,6 +58,8 @@ describe("demoWriteGuard", () => {
     expect((await demoWriteGuard(req("POST", "/admin/settings", { ...cookie, "next-action": "abc" })))?.status).toBe(
       403,
     );
+    // お知らせの既読は利用者の client で書く（DB の RLS でも落ちるが、500 にせず入口で断る）
+    expect((await demoWriteGuard(req("POST", "/api/announcements/read", cookie)))?.status).toBe(403);
     // 読めない Bearer を付けても、cookie 側でデモ利用者と分かれば断る
     expect(
       (await demoWriteGuard(req("DELETE", "/api/admin/x", { ...cookie, authorization: "Bearer not-a-jwt" })))?.status,
