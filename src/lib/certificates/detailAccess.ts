@@ -31,16 +31,15 @@ export type DetailAccessCert = {
   created_at: string | null;
 };
 
-type PortalSession = { customer_id: string | null; phone_last4_hash: string | null };
+type PortalSession = { customer_id: string };
 
 /**
  * 顧客ポータルのセッションがこの証明書の所有者か。listCertificatesForCustomer と同じ範囲:
- * customer_id が焼き込まれていればそれで、無ければ電話下4桁ハッシュで照合。移転済み（旧オーナー）は除く。
+ * customer_id で照合する（下4桁ハッシュでは照合しない — 同じ下4桁の他人になる）。移転済み（旧オーナー）は除く。
  */
 export function isOwnerSession(session: PortalSession | null, cert: DetailAccessCert): boolean {
   if (!session || cert.hidden_from_owner_portal_at) return false;
-  if (session.customer_id) return session.customer_id === cert.customer_id;
-  return !!session.phone_last4_hash && session.phone_last4_hash === cert.customer_phone_last4_hash;
+  return session.customer_id === cert.customer_id;
 }
 
 async function isIssuingShopStaff(tenantId: string): Promise<boolean> {

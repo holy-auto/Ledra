@@ -7,7 +7,7 @@ import {
   getTenantIdBySlug,
   normalizeEmail,
   phoneLast4Hash,
-  tenantHasPhoneHash,
+  resolveUniqueCustomerId,
   OTP_TTL_MIN,
 } from "@/lib/customerPortalServer";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
@@ -102,9 +102,11 @@ export async function POST(req: Request) {
       return apiValidationError("hash_failed");
     }
 
-    const ok = await tenantHasPhoneHash(tenantId, phoneHash);
-    if (!ok) {
-      logger.info("customer/request-code: no matching certificate (silently noop)", { tenantId });
+    // 下4桁とメールの両方が登録済みの顧客に一致するときだけ送る。以前は下4桁の一致だけで
+    // 入力されたメール（攻撃者のものでも）へ送っていた（resolveUniqueCustomerId 参照）。
+    const customerId = await resolveUniqueCustomerId(tenantId, phoneHash, email);
+    if (!customerId) {
+      logger.info("customer/request-code: no matching customer (silently noop)", { tenantId });
       return genericOk;
     }
 

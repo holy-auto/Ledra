@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getTenantIdBySlugMock: vi.fn(),
-  tenantHasPhoneHashMock: vi.fn(),
+  resolveUniqueCustomerIdMock: vi.fn(),
   createLoginCodeMock: vi.fn().mockResolvedValue(undefined),
   phoneLast4HashMock: vi.fn().mockReturnValue("hashed-phone"),
 }));
@@ -17,11 +17,11 @@ vi.mock("@/lib/customerPortalServer", () => ({
   getTenantIdBySlug: mocks.getTenantIdBySlugMock,
   normalizeEmail: (e: string) => e.trim().toLowerCase(),
   phoneLast4Hash: mocks.phoneLast4HashMock,
-  tenantHasPhoneHash: mocks.tenantHasPhoneHashMock,
+  resolveUniqueCustomerId: mocks.resolveUniqueCustomerIdMock,
   OTP_TTL_MIN: 5,
 }));
 
-const { getTenantIdBySlugMock, tenantHasPhoneHashMock, createLoginCodeMock } = mocks;
+const { getTenantIdBySlugMock, resolveUniqueCustomerIdMock, createLoginCodeMock } = mocks;
 
 vi.mock("@/lib/logger", () => ({
   logger: {
@@ -58,7 +58,7 @@ describe("POST /api/customer/request-code", () => {
     process.env.RESEND_API_KEY = "test-key";
     process.env.RESEND_FROM = "support@example.com";
     getTenantIdBySlugMock.mockReset();
-    tenantHasPhoneHashMock.mockReset();
+    resolveUniqueCustomerIdMock.mockReset();
     createLoginCodeMock.mockClear();
     fetchMock.mockReset();
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ id: "1" }), { status: 200 }));
@@ -84,9 +84,9 @@ describe("POST /api/customer/request-code", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("returns 200 (silently noop) when no certificate matches — anti-enumeration", async () => {
+  it("returns 200 (silently noop) when no customer matches — anti-enumeration", async () => {
     getTenantIdBySlugMock.mockResolvedValueOnce("tenant-1");
-    tenantHasPhoneHashMock.mockResolvedValueOnce(false);
+    resolveUniqueCustomerIdMock.mockResolvedValueOnce(null);
     const res = await POST(jsonReq({ tenant_slug: "demo", email: "a@b.com", phone_last4: "1234" }));
     expect(res.status).toBe(200);
     expect(createLoginCodeMock).not.toHaveBeenCalled();
@@ -95,11 +95,13 @@ describe("POST /api/customer/request-code", () => {
 
   it("creates a login code and sends email when input is valid", async () => {
     getTenantIdBySlugMock.mockResolvedValueOnce("tenant-1");
-    tenantHasPhoneHashMock.mockResolvedValueOnce(true);
+    resolveUniqueCustomerIdMock.mockResolvedValueOnce("cust-1");
 
     const res = await POST(jsonReq({ tenant_slug: "demo", email: "a@b.com", phone_last4: "1234" }));
 
     expect(res.status).toBe(200);
+    // 下4桁だけでなく、入力メールでも顧客を確定してから送る（攻撃者のメールへは送らない）
+    expect(resolveUniqueCustomerIdMock).toHaveBeenCalledWith("tenant-1", "hashed-phone", "a@b.com");
     expect(createLoginCodeMock).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledOnce();
 

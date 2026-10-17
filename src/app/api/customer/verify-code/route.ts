@@ -112,6 +112,8 @@ export async function POST(req: Request) {
     await markCodeUsed(row.id);
 
     const sess = await createSession(tenantId, email, phoneHash);
+    // コード発行後に顧客のメールが変わった等で本人を確定できなくなった場合。
+    if (!sess) return invalidCodeResponse;
 
     const res = apiJson({ ok: true });
 

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const h = vi.hoisted(() => ({
   cookies: {} as Record<string, string>,
-  session: null as { customer_id: string | null; phone_last4_hash: string | null } | null,
+  session: null as { customer_id: string } | null,
   userId: null as string | null,
   member: false,
   vin: null as string | null,
@@ -79,23 +79,13 @@ beforeEach(() => {
 });
 
 describe("isOwnerSession [公開証明書の所有者判定]", () => {
-  it("customer_id が焼き込まれたセッションは customer_id で照合する（電話ハッシュが合っても別人は不可）", () => {
-    expect(isOwnerSession({ customer_id: "c1", phone_last4_hash: null }, cert)).toBe(true);
-    expect(isOwnerSession({ customer_id: "c2", phone_last4_hash: "ph1" }, cert)).toBe(false);
-  });
-  it("customer_id の無い旧セッションは電話下4桁ハッシュで照合する", () => {
-    expect(isOwnerSession({ customer_id: null, phone_last4_hash: "ph1" }, cert)).toBe(true);
-    expect(
-      isOwnerSession({ customer_id: null, phone_last4_hash: null }, { ...cert, customer_phone_last4_hash: null }),
-    ).toBe(false);
+  it("customer_id で照合する（電話下4桁ハッシュが同じ別人は所有者にしない）", () => {
+    expect(isOwnerSession({ customer_id: "c1" }, cert)).toBe(true);
+    expect(isOwnerSession({ customer_id: "c2" }, cert)).toBe(false);
+    expect(isOwnerSession({ customer_id: "c2" }, { ...cert, customer_id: null })).toBe(false);
   });
   it("所有権移転で旧オーナーから隠した証明書は所有者扱いしない", () => {
-    expect(
-      isOwnerSession(
-        { customer_id: "c1", phone_last4_hash: null },
-        { ...cert, hidden_from_owner_portal_at: "2026-07-01" },
-      ),
-    ).toBe(false);
+    expect(isOwnerSession({ customer_id: "c1" }, { ...cert, hidden_from_owner_portal_at: "2026-07-01" })).toBe(false);
   });
 });
 
@@ -105,7 +95,7 @@ describe("canViewCertificateDetails [写真・個人情報を見せる閲覧者]
   });
   it("所有者（ポータルにログイン中）は見せる", async () => {
     h.cookies = { hc_cs: "tok" };
-    h.session = { customer_id: "c1", phone_last4_hash: null };
+    h.session = { customer_id: "c1" };
     expect(await canViewCertificateDetails(cert)).toBe(true);
   });
   it("発行テナントのスタッフは見せ、他テナントのスタッフ（所属なし）は見せない", async () => {
