@@ -23,42 +23,28 @@ async function resolveSession(tenantSlug: string) {
   const tenantToken = c.get(CUSTOMER_COOKIE)?.value ?? "";
   const globalToken = c.get(GLOBAL_PORTAL_COOKIE)?.value ?? "";
 
+  // 範囲は本人と確定した customer_id だけで決める。以前は phone_last4_hash との OR で
+  // 引いていて、下4桁が同じ他人の問い合わせ本文と店の返信まで見えた。
   let phoneHash = "";
-  let email: string | undefined;
-  // LINE ログインのセッションは phone hash / email を持たず customer_id だけで scope される。
   let customerId: string | null = null;
 
   if (tenantToken) {
     const sess = await validateSession(tenantId, tenantToken);
     if (sess) {
       phoneHash = sess.phone_last4_hash ?? "";
-      email = sess.email ?? undefined;
       customerId = sess.customer_id;
     }
   }
-  if (!phoneHash && !customerId && globalToken) {
+  if (!customerId && globalToken) {
     const access = await resolvePortalTenantAccessByGlobalToken(tenantSlug, globalToken);
     if (access) {
       phoneHash = access.phone_last4_hash;
-      if ("email" in access && typeof access.email === "string") email = access.email;
+      customerId = access.customer_id;
     }
   }
 
-  if (!phoneHash && !customerId) return null;
-  return { tenantId, phoneHash, email, customerId };
-}
-
-/**
- * 問い合わせ一覧の絞り込み条件。
- *
- * 両方あるセッション (OTP ログインで customer_id が baked 済み) では OR で引く。
- * customer_id だけで引くと、customer_id 列が無かった時代の行を取りこぼすため。
- */
-function inquiryScopeFilter(sess: { phoneHash: string; customerId: string | null }): string | null {
-  const conds: string[] = [];
-  if (sess.customerId) conds.push(`customer_id.eq.${sess.customerId}`);
-  if (sess.phoneHash) conds.push(`phone_last4_hash.eq.${sess.phoneHash}`);
-  return conds.length > 0 ? conds.join(",") : null;
+  if (!customerId) return null;
+  return { tenantId, phoneHash, customerId };
 }
 
 /** GET /api/customer/inquiry?tenant=xxx — 顧客の問い合わせ一覧 */
@@ -71,15 +57,12 @@ export async function GET(req: Request) {
     const sess = await resolveSession(tenantSlug);
     if (!sess) return apiUnauthorized();
 
-    const scope = inquiryScopeFilter(sess);
-    if (!scope) return apiUnauthorized();
-
     const { admin } = createTenantScopedAdmin(sess.tenantId);
     const { data, error } = await admin
       .from("customer_inquiries")
       .select("id, subject, message, status, admin_reply, replied_at, created_at")
       .eq("tenant_id", sess.tenantId)
-      .or(scope)
+      .eq("customer_id", sess.customerId)
       .order("created_at", { ascending: false })
       .limit(50);
 
@@ -110,9 +93,7 @@ export async function POST(req: NextRequest) {
     if (!sess) return apiUnauthorized();
 
     // 顧客名を取得（ベストエフォート）
-    const profile = await getCustomerProfile(sess.tenantId, sess.phoneHash, sess.email, sess.customerId).catch(
-      (): null => null,
-    );
+    const profile = await getCustomerProfile(sess.tenantId, sess.customerId).catch((): null => null);
     const customerName = profile?.name ?? null;
 
     const { admin } = createTenantScopedAdmin(sess.tenantId);

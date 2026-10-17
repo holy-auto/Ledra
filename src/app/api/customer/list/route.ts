@@ -26,52 +26,43 @@ export async function GET(req: Request) {
     const tenantToken = c.get(CUSTOMER_COOKIE)?.value ?? "";
     const globalToken = c.get(GLOBAL_PORTAL_COOKIE)?.value ?? "";
 
-    let phoneHash = "";
-    let sessionEmail: string | undefined;
-    // Phase 2: session に bake された customer_id があれば collision-proof path
-    let sessionCustomerId: string | null = null;
+    // データの範囲は本人と確定した customer_id だけで決める（下4桁ハッシュでは引かない）。
+    let customerId: string | null = null;
+    // 連絡先の自己登録 (/api/customer/profile) はテナントのセッションでしか通らない。
+    let canEditContact = false;
 
     if (tenantToken) {
       const tenantSession = await validateSession(tenantId, tenantToken);
       if (tenantSession) {
-        phoneHash = tenantSession.phone_last4_hash ?? "";
-        sessionEmail = tenantSession.email ?? undefined;
-        sessionCustomerId = tenantSession.customer_id;
+        customerId = tenantSession.customer_id;
+        canEditContact = true;
       }
     }
 
-    if (!phoneHash && !sessionCustomerId && globalToken) {
+    if (!customerId && globalToken) {
       const portalAccess = await resolvePortalTenantAccessByGlobalToken(tenant_slug, globalToken);
-      if (portalAccess) {
-        phoneHash = portalAccess.phone_last4_hash;
-        if ("email" in portalAccess && typeof portalAccess.email === "string") {
-          sessionEmail = portalAccess.email;
-        }
-      }
+      if (portalAccess) customerId = portalAccess.customer_id;
     }
 
-    // LINE ログインのセッションは phone hash を持たず customer_id だけで scope される。
-    // どちらも無ければ本当に未認証。
-    if (!phoneHash && !sessionCustomerId) return apiUnauthorized();
+    if (!customerId) return apiUnauthorized();
 
     if (action === "history") {
-      const history = await listHistoryForCustomer(tenantId, phoneHash, sessionEmail, sessionCustomerId);
+      const history = await listHistoryForCustomer(tenantId, customerId);
       return apiJson({ ok: true, history });
     }
 
     if (action === "reservations") {
-      const reservations = await listReservationsForCustomer(tenantId, phoneHash, sessionEmail, sessionCustomerId);
+      const reservations = await listReservationsForCustomer(tenantId, customerId);
       return apiJson({ ok: true, reservations });
     }
 
     if (action === "profile") {
-      const profile = await getCustomerProfile(tenantId, phoneHash, sessionEmail, sessionCustomerId);
-      // 連絡先の自己登録は customer_id 付きセッションでしか通らない (更新対象の行を
-      // 一意に決められないため)。フォームを出してから 401 にしないよう、UI に伝える。
-      return apiJson({ ok: true, profile: profile ? { ...profile, canEditContact: !!sessionCustomerId } : null });
+      const profile = await getCustomerProfile(tenantId, customerId);
+      // フォームを出してから 401 にしないよう、UI に伝える。
+      return apiJson({ ok: true, profile: profile ? { ...profile, canEditContact } : null });
     }
 
-    const rows = await listCertificatesForCustomer(tenantId, phoneHash, sessionEmail, sessionCustomerId);
+    const rows = await listCertificatesForCustomer(tenantId, customerId);
 
     return apiJson({ ok: true, rows });
   } catch (e: unknown) {

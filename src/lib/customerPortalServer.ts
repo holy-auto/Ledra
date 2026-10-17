@@ -1,6 +1,7 @@
 ﻿import crypto from "crypto";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { OUTWARD_VISIBLE_TYPES } from "@/lib/audit/certificateLog";
+import { escapeIlike } from "@/lib/sanitize";
 
 const PEPPER = process.env.CUSTOMER_AUTH_PEPPER!;
 
@@ -73,20 +74,6 @@ export async function getTenantIdBySlug(slug: string): Promise<string | null> {
   return data?.id ?? null;
 }
 
-export async function tenantHasPhoneHash(tenantId: string, phoneHash: string): Promise<boolean> {
-  const db = admin();
-  // ハッシュのみで検索。旧データは backfill-certificate-phone-hash スクリプトで
-  // ハッシュ済みのため、平文 (customer_phone_last4) フォールバックは廃止。
-  const { data } = await db
-    .from("certificates")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .neq("status", "void")
-    .eq("customer_phone_last4_hash", phoneHash)
-    .limit(1);
-  return Array.isArray(data) && data.length > 0;
-}
-
 export async function createLoginCode(
   tenantId: string,
   email: string,
@@ -134,52 +121,44 @@ export async function markCodeUsed(id: string) {
 }
 
 /**
- * Resolve the unique customer_id that (tenant, phone_hash, email) maps to.
+ * (tenant, 電話下4桁ハッシュ, メール) から顧客を1人に確定する。確定できなければ null。
  *
- * Returns the id only when the matching certificates all share the same
- * customer_id. If the result is ambiguous (multiple customer_ids) or if
- * no matched cert has a customer_id, returns null — the caller should
- * fall back to the legacy phone_hash + email scope.
+ * **顧客ポータルの本人確認はここだけで行う。** null のときはコードを送らず
+ * (request-code)、セッションも作らない (createSession)。以前は null でもセッションを
+ * 作り、データ取得が「下4桁ハッシュだけで絞る」旧経路に落ちていたため、
+ * 自分のメールと下4桁 (10⁴ 通り) を入れるだけで、その下4桁の他人の証明書・
+ * 氏名・メール・電話 (全桁)・問い合わせが読めた (監査 2026-10-17 Critical)。
+ *
+ * 下4桁は衝突するので「下4桁の一致する顧客が1人」は求めない。登録メールの一致する顧客を
+ * 先に引き、その中で下4桁の一致する証明書を持つ者がちょうど1人のときに確定する。
+ * 2人以上なら確定しない（fail-closed）。同じメールを家族で共有し下4桁も同じなら、
+ * 2人のログイン要素は完全に同じで区別できない —— 片方を選ぶと、もう片方のデータを渡す。
+ * 同じ人の重複登録もここで締め出されるが、それは店側で顧客を統合して解く（LINE ログインは使える）。
+ * メール未登録の顧客はここでは確定できない (LINE ログインの経路は別にある)。
  */
-async function resolveUniqueCustomerId(tenantId: string, phoneHash: string, email: string): Promise<string | null> {
+export async function resolveUniqueCustomerId(
+  tenantId: string,
+  phoneHash: string,
+  email: string,
+): Promise<string | null> {
   const db = admin();
-  const query = db
+  const { data: customers } = await db
+    .from("customers")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .ilike("email", escapeIlike(normalizeEmail(email)));
+  const ids = (customers ?? []).map((c) => c.id as string);
+  if (ids.length === 0) return null;
+
+  const { data: certs } = await db
     .from("certificates")
     .select("customer_id")
     .eq("tenant_id", tenantId)
+    .in("customer_id", ids)
     .neq("status", "void")
-    .not("customer_id", "is", null)
     .eq("customer_phone_last4_hash", phoneHash);
-
-  const { data } = await query;
-  if (!data || data.length === 0) return null;
-
-  const uniqueIds = new Set(data.map((r) => r.customer_id as string).filter(Boolean));
-  if (uniqueIds.size !== 1) return null;
-  const candidateId = [...uniqueIds][0];
-
-  // **ここでメールを突き合わせるのが要**。
-  // ログインコードは「入力されたメール宛」に送られ、電話下4桁が一致する顧客が
-  // テナントに1人いれば発行される。ここで確定した customer_id は、その顧客の
-  // 全証明書（別の電話番号のものを含む）へ範囲を広げるため、メールの一致を
-  // 確かめずに bake すると、下4桁を知っているだけの相手が他人の履歴を開ける。
-  //
-  // 以前は certificates.customer_email を見ていたが**その列は存在せず**、
-  // クエリごと失敗して常に null を返していた（＝この経路が死んでいたので
-  // 問題が表面化していなかった）。実在する customers.email で照合する。
-  const { data: customer } = await db
-    .from("customers")
-    .select("email")
-    .eq("id", candidateId)
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-
-  const customerEmail = customer?.email ? normalizeEmail(customer.email as string) : null;
-  // メール未登録の顧客は突き合わせようがないので bake しない
-  // （電話ハッシュだけのフォールバック経路で扱う）
-  if (!customerEmail || customerEmail !== normalizeEmail(email)) return null;
-
-  return candidateId;
+  const matched = new Set((certs ?? []).map((c) => c.customer_id as string));
+  return matched.size === 1 ? [...matched][0] : null;
 }
 
 export async function createSession(tenantId: string, email: string, phoneHash: string) {
@@ -187,9 +166,9 @@ export async function createSession(tenantId: string, email: string, phoneHash: 
   const sHash = sessionHash(token);
   const expires = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-  // Bake the resolved customer_id when unambiguous. Null is acceptable;
-  // callers will fall back to phone_hash + email scoping.
+  // 顧客を確定できないセッションは作らない（resolveUniqueCustomerId のコメント参照）。
   const customerId = await resolveUniqueCustomerId(tenantId, phoneHash, email);
+  if (!customerId) return null;
 
   // phone_last4 (平文) はセッションに保存しない。証明書検索はハッシュ一本化済み。
   const { error } = await admin()
@@ -255,73 +234,39 @@ export async function validateSession(tenantId: string, token: string) {
   if (!data) return null;
   if (data.revoked_at) return null;
   if (new Date(data.expires_at).getTime() < Date.now()) return null;
+  // customer_id の無いセッションは、顧客を確定せずに作られていた旧セッション。
+  // 下4桁ハッシュだけで他人のデータに届くので受け付けない（再ログインで customer_id 付きになる）。
+  if (!data.customer_id) return null;
   // email / phone_last4_hash は LINE ログインのセッションでは null。
-  // その場合 customer_id が必ず入る (DB 側の CHECK 制約で担保)。
   return data as {
     email: string | null;
     phone_last4_hash: string | null;
-    customer_id: string | null;
+    customer_id: string;
   };
 }
 
-export async function listCertificatesForCustomer(
-  tenantId: string,
-  phoneHash: string,
-  /**
-   * セッションから取得した email。渡された場合、certificates.customer_email
-   * との一致で絞り込む (同一テナントで末尾4桁が衝突した別顧客のデータを
-   * 返さないための防御層)。Phase 2: customerId が session に紐付いていれば
-   * そちらが優先され、email filter は冗長な防御層になる。
-   */
-  email?: string,
-  /** Phase 2: セッションに bake された customer_id。あれば最優先で scope */
-  customerId?: string | null,
-) {
-  const selectCols = "public_id, customer_name, vehicle_info_json, created_at, status";
-  const db = admin();
-
-  let query = db
+/**
+ * 顧客の証明書一覧。範囲は customer_id だけで決める。
+ * 電話下4桁ハッシュで絞る旧経路は、下4桁が同じ他人の証明書を返すため廃止した
+ * （resolveUniqueCustomerId のコメント参照）。
+ */
+export async function listCertificatesForCustomer(tenantId: string, customerId: string) {
+  const { data } = await admin()
     .from("certificates")
-    .select(selectCols)
+    .select("public_id, customer_name, vehicle_info_json, created_at, status")
     .eq("tenant_id", tenantId)
+    .eq("customer_id", customerId)
     .neq("status", "void")
     // 所有権移転が受諾された車両の証明書は旧オーナーに出さない（acceptTransferByToken が印を付ける）。
-    // 履歴・件数・予約の旧経路・加盟店一覧はすべてこの関数を通る。
+    // 履歴・件数・加盟店一覧はすべてこの関数を通る。
     .is("hidden_from_owner_portal_at", null)
     .order("created_at", { ascending: false });
-
-  if (customerId) {
-    // Phase 2 path: session is bound to a specific customer. This is the
-    // correct, collision-proof scope.
-    query = query.eq("customer_id", customerId);
-    const { data } = await query;
-    return data ?? [];
-  }
-
-  // Legacy / fallback path: scope by phone_last4_hash. Applied when the
-  // session predates the customer_id binding or when the customer could
-  // not be uniquely resolved at login time. 平文 (customer_phone_last4)
-  // フォールバックは廃止 — 旧データは backfill 済みでハッシュ一致する。
-  query = query.eq("customer_phone_last4_hash", phoneHash);
-
-  const { data } = await query;
-  if (!data) return [];
-
-  // certificates に customer_email 列は無いので、この経路でメールによる
-  // 追加の絞り込みはできない（以前のフィルタは列が無く常に素通りしていた上、
-  // その列を SELECT していたためクエリごと 400 になっていた）。
-  // メールの突き合わせはログイン時（resolveUniqueCustomerId）で行う。
-  return data;
+  return data ?? [];
 }
 
 /** 顧客の施工履歴（vehicle_histories）を取得 */
-export async function listHistoryForCustomer(
-  tenantId: string,
-  phoneHash: string,
-  email?: string,
-  customerId?: string | null,
-) {
-  const certs = await listCertificatesForCustomer(tenantId, phoneHash, email, customerId);
+export async function listHistoryForCustomer(tenantId: string, customerId: string) {
+  const certs = await listCertificatesForCustomer(tenantId, customerId);
   if (!certs || certs.length === 0) return [];
 
   const certPublicIds = certs.map((c: { public_id: string }) => c.public_id);
@@ -355,44 +300,15 @@ export async function listHistoryForCustomer(
 }
 
 /** 顧客の今後の予約を取得 */
-export async function listReservationsForCustomer(
-  tenantId: string,
-  phoneHash: string,
-  email?: string,
-  sessionCustomerId?: string | null,
-) {
+export async function listReservationsForCustomer(tenantId: string, customerId: string) {
   const db = admin();
-
-  // Phase 2: session has a bound customer_id → use it directly for reservations.
-  let resolvedCustomerId = sessionCustomerId ?? null;
-
-  if (!resolvedCustomerId) {
-    // Legacy path: derive customer_id via cert lookup.
-    const certs = await listCertificatesForCustomer(tenantId, phoneHash, email);
-    if (!certs || certs.length === 0) return [];
-
-    const customerNames = [
-      ...new Set(certs.map((c: { customer_name: string | null }) => c.customer_name).filter(Boolean)),
-    ];
-    if (customerNames.length === 0) return [];
-
-    const { data: customers } = await db
-      .from("customers")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("name", customerNames[0])
-      .limit(1);
-    if (!customers || customers.length === 0) return [];
-
-    resolvedCustomerId = customers[0].id;
-  }
 
   const today = new Date().toISOString().slice(0, 10);
   const { data: reservations } = await db
     .from("reservations")
     .select("id, scheduled_date, start_time, title, menu_items_json, status, note")
     .eq("tenant_id", tenantId)
-    .eq("customer_id", resolvedCustomerId)
+    .eq("customer_id", customerId)
     .gte("scheduled_date", today)
     .neq("status", "cancelled")
     .order("scheduled_date", { ascending: true })
@@ -409,64 +325,29 @@ export async function listReservationsForCustomer(
 }
 
 /** 顧客プロフィール情報を取得 */
-export async function getCustomerProfile(
-  tenantId: string,
-  phoneHash: string,
-  email?: string,
-  sessionCustomerId?: string | null,
-) {
+export async function getCustomerProfile(tenantId: string, customerId: string) {
   const db = admin();
-
-  // Phase 2 fast path: session is bound to a customer_id, go direct.
-  if (sessionCustomerId) {
-    const { data: customer } = await db
-      .from("customers")
-      .select("id, name, email, phone")
-      .eq("tenant_id", tenantId)
-      .eq("id", sessionCustomerId)
-      .limit(1)
-      .maybeSingle();
-
-    const { count: certificateCount } = await db
-      .from("certificates")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenantId)
-      .eq("customer_id", sessionCustomerId)
-      .neq("status", "void")
-      .is("hidden_from_owner_portal_at", null);
-
-    if (!customer) return null;
-    return {
-      name: customer.name,
-      email: customer.email ?? null,
-      phone: customer.phone ?? null,
-      certificateCount: certificateCount ?? 0,
-    };
-  }
-
-  // Legacy path: name-based lookup via certs.
-  const certs = await listCertificatesForCustomer(tenantId, phoneHash, email);
-  if (!certs || certs.length === 0) return null;
-
-  const customerNames = [
-    ...new Set(certs.map((c: { customer_name: string | null }) => c.customer_name).filter(Boolean)),
-  ];
-  if (customerNames.length === 0) return null;
-
-  const { data: customers } = await db
+  const { data: customer } = await db
     .from("customers")
     .select("id, name, email, phone")
     .eq("tenant_id", tenantId)
-    .eq("name", customerNames[0])
-    .limit(1);
-  if (!customers || customers.length === 0) {
-    return { name: customerNames[0], email: null, phone: null, certificateCount: certs.length };
-  }
+    .eq("id", customerId)
+    .limit(1)
+    .maybeSingle();
 
+  const { count: certificateCount } = await db
+    .from("certificates")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("customer_id", customerId)
+    .neq("status", "void")
+    .is("hidden_from_owner_portal_at", null);
+
+  if (!customer) return null;
   return {
-    name: customers[0].name,
-    email: customers[0].email ?? null,
-    phone: customers[0].phone ?? null,
-    certificateCount: certs.length,
+    name: customer.name,
+    email: customer.email ?? null,
+    phone: customer.phone ?? null,
+    certificateCount: certificateCount ?? 0,
   };
 }

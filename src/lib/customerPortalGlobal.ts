@@ -1,4 +1,5 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { escapeIlike } from "@/lib/sanitize";
 import {
   SESSION_TTL_DAYS,
   getTenantIdBySlug,
@@ -27,6 +28,8 @@ export type PortalMembership = {
   line_linked: boolean;
   last_activity_at: string | null;
   phone_last4_hash: string;
+  /** このテナントで本人と確定した顧客。ポータルのデータ取得はこれで範囲を決める。 */
+  customer_id: string;
   is_recent?: boolean;
 };
 
@@ -172,7 +175,8 @@ export async function listPortalMemberships(email: string, last4: string, prefer
   const { data: customers, error: customerError } = await db
     .from("customers")
     .select("id, tenant_id, name, email, phone, line_user_id, line_link_status, updated_at")
-    .ilike("email", emailNorm);
+    // エスケープしないと `_` が任意の1文字になり、ta_o@ で taro@ の顧客を引ける。
+    .ilike("email", escapeIlike(emailNorm));
 
   if (customerError) throw new Error(`listPortalMemberships customers failed: ${customerError.message}`);
   if (!customers || customers.length === 0) return [] as PortalMembership[];
@@ -194,21 +198,36 @@ export async function listPortalMemberships(email: string, last4: string, prefer
       const tenantCustomers = (customers ?? []).filter(
         (c: { tenant_id: string }) => String(c.tenant_id) === String(tenantId),
       );
-      const customer =
-        tenantCustomers.find((c: { phone: string | null }) => customerPhoneMatchesLast4(c?.phone, last4Norm)) ??
-        tenantCustomers[0] ??
-        null;
+      // 証明書は必ず customer_id で引く。下4桁ハッシュだけで引くと、同じ下4桁の他人
+      // （10⁴ 通りしかない）の証明書が出る。メール（OTP 済み）で引いた顧客のうち、
+      // 電話の下4桁が一致する者、または下4桁の一致する証明書を持つ者が**ちょうど1人**のときだけ
+      // 本人とする。2人以上（家族でメールを共有し下4桁も同じ等）は区別できないので、この店は出さない。
       const phoneHash = phoneLast4Hash(String(tenantId), last4Norm);
-      // 証明書検索はハッシュ一本化 (平文 last4 フォールバック廃止)。
-      const certs = await listCertificatesForCustomer(String(tenantId), phoneHash);
-      const phoneMatched = tenantCustomers.some((c: { phone: string | null }) =>
-        customerPhoneMatchesLast4(c?.phone, last4Norm),
-      );
-      if (!phoneMatched && certs.length === 0) return null;
+      const { data: hashCerts, error: hashCertsError } = await db
+        .from("certificates")
+        .select("customer_id")
+        .eq("tenant_id", tenantId)
+        .neq("status", "void")
+        .eq("customer_phone_last4_hash", phoneHash)
+        .in(
+          "customer_id",
+          tenantCustomers.map((c: { id: string }) => c.id),
+        );
+      // 照会に失敗したまま進むと、証明書側の候補だけが消えて「1人」に見えてしまう。
+      if (hashCertsError) throw new Error(`listPortalMemberships certificates failed: ${hashCertsError.message}`);
+      const matchedIds = new Set<string>([
+        ...tenantCustomers
+          .filter((c: { phone: string | null }) => customerPhoneMatchesLast4(c?.phone, last4Norm))
+          .map((c: { id: string }) => String(c.id)),
+        ...(hashCerts ?? []).map((r) => String(r.customer_id)),
+      ]);
+      if (matchedIds.size !== 1) return null;
+      const [matchedId] = [...matchedIds];
+      const customer = tenantCustomers.find((c: { id: string }) => String(c.id) === matchedId);
+      if (!customer) return null;
+      const certs = await listCertificatesForCustomer(String(tenantId), String(customer.id));
 
-      const reservations = customer?.id
-        ? await listFutureReservationsByCustomer(String(tenantId), String(customer.id))
-        : [];
+      const reservations = await listFutureReservationsByCustomer(String(tenantId), String(customer.id));
 
       const nextReservationAt =
         reservations.length > 0
@@ -227,6 +246,7 @@ export async function listPortalMemberships(email: string, last4: string, prefer
         line_linked: !!customer?.line_user_id || String(customer?.line_link_status ?? "") === "linked",
         last_activity_at: lastActivityAt,
         phone_last4_hash: phoneHash,
+        customer_id: String(customer.id),
       } satisfies PortalMembership;
     }),
   );
@@ -263,6 +283,7 @@ export async function resolvePortalTenantAccessByGlobalToken(tenantSlug: string,
     email: sess.email,
     phone_last4: sess.phone_last4,
     phone_last4_hash: membership.phone_last4_hash,
+    customer_id: membership.customer_id,
     membership,
   };
 }

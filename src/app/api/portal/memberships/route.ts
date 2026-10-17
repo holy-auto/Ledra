@@ -16,7 +16,8 @@ export async function GET(req: Request) {
     if (!sess) return apiUnauthorized();
 
     const shops = await listPortalMemberships(sess.email, sess.phone_last4, preferredTenantSlug);
-    return apiJson({ ok: true, shops });
+    // customer_id / phone_last4_hash はサーバ側で範囲を決めるための内部値。画面では使わない。
+    return apiJson({ ok: true, shops: shops.map(({ customer_id: _c, phone_last4_hash: _h, ...shop }) => shop) });
   } catch (e: unknown) {
     return apiInternalError(e, "portal/memberships");
   }
