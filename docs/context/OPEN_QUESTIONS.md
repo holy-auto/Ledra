@@ -168,13 +168,20 @@ Version: viem@2.57.2
 ここの名前解決は許可リストで、実在する `docs.github.com` や `polygon-rpc.com` も引けない（実測）。
 言えるのは「**Vercel のランタイムがこのホスト名を解決できない**」まで。
 
-**コードの経路から演繹できる本番の設定**（`src/app/api/cron/polygon-signer/route.ts` / `providers/polygonBatch.ts`）:
+**コードの経路から言えること**（`src/app/api/cron/polygon-signer/route.ts`）。
 `POLYGON_ANCHOR_ENABLED !== "true"` の判定は RPC に触る前にあり、そこで `skipped` を返す。
-RPC エラーが記録されている以上、
+RPC エラーが記録されている以上:
 - `POLYGON_ANCHOR_ENABLED` は `"true"`
 - `POLYGON_PRIVATE_KEY` は設定済みかつ `0x`+64桁に正規化できる（できなければ手前で skip）
-- `POLYGON_NETWORK` は `amoy`（エラーの URL が amoy の既定値）→ **2026-10-09 の【要確認】はこれで確定**
-- `POLYGON_RPC_URL_AMOY` も `POLYGON_RPC_URL` も未設定（ハードコードの既定値 `DEFAULT_RPC.amoy` に落ちている）
+- 実際に使われた RPC は `https://rpc-amoy.polygon.technology/`（エラーに出ている URL そのもの）
+
+**ここから先は演繹できない**（Codex の指摘で訂正。2026-10-17）。route 自身の `getConfig()`（62-68行）は
+`process.env.POLYGON_RPC_URL || DEFAULT_RPC[network]` なので、**`POLYGON_RPC_URL` に amoy の URL が
+明示設定されていれば、`POLYGON_NETWORK` が `polygon` でも同じ URL が出る**。したがって
+- `POLYGON_NETWORK` の値は**不明**（2026-10-09 の【要確認】は未解決のまま。テストネット/メインネットの判断を
+  この推測の上でしないこと）
+- `POLYGON_RPC_URL` が未設定かどうかも**不明**
+どちらも Vercel の環境変数を見るまで確定しない。
 
 **新しく分かったこと: 呼び出しが毎時2回ある（1回は出所不明で、有効な cron シークレットを持っている）。**
 `vercel.json` の cron は `0 * * * *` の**毎時1回**。一方、行の作成 2026-07-01 07:34:43 から
@@ -183,14 +190,21 @@ RPC エラーが記録されている以上、
 `recordCronFailure` の呼び出しも1か所だけなので、**1回の実行＝1増**。したがって呼び出しが複数ある。
 さらに `verifyCronRequest` が失敗した呼び出しは記録前に return するので、**2つ目の呼び出しは認証を通っている**。
 2026-10-09 の記録（4305 件）との差分でも +366 件 / 183 時間 = 2.0 件/時 になるが、4305 は自分で測った数字ではない。
-- 161 行で触れた「`www.ledra.co.jp` 宛ての POST」では**この経路は動かない**（`GET` しか export していないので 405）。
-  つまりその記述が誤りか、あるいは別の GET の呼び出し元がある。**出所は未確認。**
-- 探し方: Vercel のランタイムログで `/api/cron/polygon-signer` を1時間分見て、2件の user-agent と送信元 IP を比べる。
+- **2つ目は、既に記録されている「`www.ledra.co.jp` 宛ての毎時 POST」が最も有力**（Codex の指摘で訂正。2026-10-17）。
+  route は `export const POST = GET`（265行）で、ヘッダにも「POST で叩く外部スケジューラ・監視ツール用」と
+  書いてある。**POST でもこの経路は動く**（当初「GET しか export していないので 405」と書いたのは誤り。
+  `M-20261017-grepped-one-export-form-and-read-a-same-named-function-from-another-module`）。
+- 残っている疑問は「その POST を出しているのは何か」。**出所は未確認。**
+- 探し方: Vercel のランタイムログで `/api/cron/polygon-signer` を1時間分見て、2件のメソッド・user-agent・送信元 IP を比べる。
 
 **代表に決めてもらうこと（どちらもレバーはコードで確認済み）**:
-- (a) **アンカリングを続けるなら**: Vercel の環境変数 `POLYGON_RPC_URL_AMOY`（または `POLYGON_RPC_URL`）に、
-  Vercel から名前解決できる RPC を設定する。**どのエンドポイントが生きているかはこの環境から確認できないので、
-  候補をここに書かない**（確認せずに書けば、同じ形の失敗を1つ増やすだけになる）。
+- (a) **アンカリングを続けるなら**: Vercel の環境変数 **`POLYGON_RPC_URL`** に、Vercel から名前解決できる RPC を設定する。
+  **`POLYGON_RPC_URL_AMOY` では直らない** —— この cron の `getConfig()`（route.ts:62-68）は `POLYGON_RPC_URL` だけを読み、
+  ネットワーク別の `_AMOY` / `_POLYGON` に対応しているのはアンカー側の `providers/polygonBatch.ts` の方
+  （`perNetworkEnv`）。2つは別の関数で、名前が似ている（Codex の P1 指摘で訂正。2026-10-17）。
+  `POLYGON_RPC_URL` を設定すれば両方に効く。
+  **どのエンドポイントが生きているかはこの環境から確認できないので、候補をここに書かない**
+  （確認せずに書けば、同じ形の失敗を1つ増やすだけになる）。
 - (b) **アンカリングを止めるなら**: `POLYGON_ANCHOR_ENABLED` を `"true"` 以外にする（削除でもよい）。
   route はその判定で `skipped` を返すので、**RPC に触らず、失敗の連鎖も止まる**。
 - 併せて: 本番のアンカーを **amoy（テストネット）** に打つ運用のままで良いのかは、2026-10-09 から未決のまま。
