@@ -12,6 +12,24 @@
 - 権限: `isPlatformAdmin`（運営テナントの super_admin / owner / admin）だけ。書き込みは service role なので、施工店からの変更を止めるトリガ（2026-10-15・16）とは衝突しない。施工店が中身を書き換えると、これまでどおり自動で外れる。
 - テスト: `src/app/api/admin/platform/workshop-profiles/__tests__/route.test.ts`（7件。運営以外は 403、付与で日時と検証者が入る、解除で両方 NULL、監査ログ、不正な ID は 400、未登録は 404）。検証者を入れる処理を壊すとテストが落ちるのを確認済み。
 
+## 2026-10-16 Supabase の GitHub 連携による本番への自動適用を切った（本番の書き手が1本になった）
+
+- **代表がダッシュボードで操作**（Integrations → 「本番環境にデプロイする」を OFF）。2026-09-13 の判断の実施。
+- 確認: `list_branches` の既定ブランチ（本番プロジェクト `cahybswpduchptvyvdkk`）が
+  **`git_branch: ""`** になった（切る前は `main`）。`updated_at` も操作時刻と一致。
+- **プレビュー分岐（自動分岐）は ON のまま残した。** 画面上この2つは別のトグルで、
+  OPEN_QUESTIONS に書いてあった「切るとプレビュー環境も止まる」は**誤り**だった（代表が送った設定画面で判明）。
+- これで本番の台帳に自動で書くのは `.github/workflows/db-migrate.yml`（`supabase db push`）だけになった。
+  このジョブは**順序に厳密**で、out-of-order なら exit 1 で止めて Slack へ通知する。
+  直近5回の実行はすべて成功しており、接続用の Secret も生きている。
+- **残る穴**: Supabase MCP の `apply_migration` は今も本番へ直接書ける（#966 の実例）。
+  台帳が `main` より先に進む形は消えていないので、「改名の前に本番の台帳を版番号で引く」習慣は変えない。
+- 二重書き込みを前提に書いてあった記述を5か所直した:
+  `.github/workflows/db-migrate.yml`（(b) の節と恒久対策の行）、`docs/operations/migrations.md`（2か所）、
+  `scripts/lint-migrations.js`、`.github/stale-migration-comment.md`（追い越し時に PR へ貼られる本文）。
+- 効き方の確認は**次にマイグレーションを含む PR をマージしたとき**: 本番の台帳に版が増えるのが
+  `db-migrate` の実行後であること（これまでは失敗しても22秒後に別経路が当てていた）。
+
 ## 2026-10-16 スキーマのドリフト検出が Storage の RLS ポリシーも見るようにした
 
 - 内容: `scripts/replay-migrations.mjs --dump` が `--schema=storage` も書き出すようにし、
