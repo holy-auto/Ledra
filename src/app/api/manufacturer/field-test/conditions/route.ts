@@ -3,7 +3,14 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+} from "@/lib/api/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,6 +78,16 @@ export async function POST(req: NextRequest) {
   try {
     const admin = createServiceRoleAdmin("ft conditions create — admin caller");
     const manufacturerId = caller.manufacturerId;
+
+    // Verify the project belongs to this manufacturer
+    const { data: project, error: projErr } = await admin
+      .from("ft_projects")
+      .select("id")
+      .eq("id", parsed.data.project_id)
+      .eq("manufacturer_id", manufacturerId)
+      .maybeSingle();
+    if (projErr) return apiInternalError(projErr, "ft conditions POST project lookup");
+    if (!project) return apiNotFound("指定されたプロジェクトが見つかりません。");
 
     const { data, error } = await admin
       .from("ft_conditions")

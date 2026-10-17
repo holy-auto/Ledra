@@ -3,7 +3,14 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+} from "@/lib/api/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,7 +19,12 @@ const createSchema = z.object({
   project_id: z.string().uuid(),
   title: z.string().trim().min(1).max(500),
   description: z.string().max(5000).optional(),
-  content_url: z.string().url().max(2048).optional(),
+  // javascript: / data: 等は z.string().url() を通るため、施工店側の <a href> に出る前に http(s) に限る。
+  content_url: z
+    .string()
+    .url({ protocol: /^https?$/ })
+    .max(2048)
+    .optional(),
   sort_order: z.number().int().min(0).optional(),
   is_required: z.boolean().optional(),
 });
@@ -69,6 +81,16 @@ export async function POST(req: NextRequest) {
   try {
     const admin = createServiceRoleAdmin("ft training module create — admin caller");
     const manufacturerId = caller.manufacturerId;
+
+    // Verify the project belongs to this manufacturer
+    const { data: project, error: projErr } = await admin
+      .from("ft_projects")
+      .select("id")
+      .eq("id", parsed.data.project_id)
+      .eq("manufacturer_id", manufacturerId)
+      .maybeSingle();
+    if (projErr) return apiInternalError(projErr, "ft training module POST project lookup");
+    if (!project) return apiNotFound("指定されたプロジェクトが見つかりません。");
 
     const { data, error } = await admin
       .from("ft_training_modules")

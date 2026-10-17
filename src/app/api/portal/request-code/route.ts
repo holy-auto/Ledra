@@ -4,7 +4,7 @@ import { escapeHtml } from "@/lib/sanitize";
 import { resolveBaseUrl } from "@/lib/url";
 import { GLOBAL_OTP_TTL_MIN, createGlobalLoginCode, listPortalMemberships } from "@/lib/customerPortalGlobal";
 import { normalizeEmail, normalizeLast4 } from "@/lib/customerPortalServer";
-import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { sendEmail } from "@/lib/email/sendEmail";
 import { portalRequestCodeSchema } from "@/lib/validations/portal";
 
@@ -39,10 +39,11 @@ export async function POST(req: Request) {
     const from = parsed.data.from ?? "";
     const publicId = parsed.data.public_id ?? parsed.data.pid ?? "";
 
+    // 該当の有無を応答で区別しない（店ごとの customer/request-code の genericOk と同じ）。
+    // 以前は該当なし 404・ありで 200+memberships_count を返し、メールが Ledra の顧客かが分かった。
+    const genericOk = apiJson({ ok: true });
     const memberships = await listPortalMemberships(email, last4, preferredTenantSlug);
-    if (memberships.length === 0) {
-      return apiNotFound("ご利用情報が見つかりませんでした。");
-    }
+    if (memberships.length === 0) return genericOk;
 
     const code = genCode6();
     const expires = new Date(Date.now() + GLOBAL_OTP_TTL_MIN * 60 * 1000).toISOString();
@@ -78,7 +79,7 @@ export async function POST(req: Request) {
       );
     }
 
-    return apiJson({ ok: true, memberships_count: memberships.length });
+    return genericOk;
   } catch (e: unknown) {
     return apiInternalError(e, "portal/request-code");
   }
