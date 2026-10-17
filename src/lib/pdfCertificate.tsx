@@ -3,6 +3,7 @@ import { Document, Page, Text, View, Image, StyleSheet, Font, Svg, Path, Circle,
 import { renderToBuffer } from "@react-pdf/renderer";
 import { notoSansJpDataUrl } from "@/lib/marketing/pdfFonts";
 import { buildServiceStatement } from "@/lib/certificates/serviceStatement";
+import { anchorCounts, type VerifiableAnchor } from "@/lib/certificates/anchorSummary";
 
 // バンドル済み Noto Sans JP (public/fonts) を data URL として登録する。
 // 外部 CDN (@latest) への実行時フェッチを排し、供給元の改変・停止リスクを断つ。
@@ -512,21 +513,14 @@ function buildExplorerUrl(txHash: string, network: "polygon" | "amoy"): string {
 
 /**
  * 施工画像ごとの anchor 情報から、PDF に埋め込む QR のセットを生成する。
- * anchored & tx_hash が揃っているものだけを対象とし、上限は MAX_ANCHOR_QR。
+ * 入力は `anchorCounts` が返した `verifiable` を `shown` 件に切ったもの
+ * —— 上限の適用はそこ1箇所なので、`anchorQrs.length === shown` が構造的に保たれる。
  */
 async function buildAnchorQrs(
-  anchors: AnchorInfo[] | undefined,
+  shownAnchors: VerifiableAnchor[],
 ): Promise<Array<{ qrDataUrl: string; txHash: string; network: "polygon" | "amoy"; sha256: string | null }>> {
-  if (!anchors || anchors.length === 0) return [];
-  const valid = anchors.filter(
-    (a): a is AnchorInfo & { polygon_tx_hash: string; polygon_network: "polygon" | "amoy" } =>
-      typeof a.polygon_tx_hash === "string" &&
-      a.polygon_tx_hash.length > 0 &&
-      (a.polygon_network === "polygon" || a.polygon_network === "amoy"),
-  );
-  const capped = valid.slice(0, MAX_ANCHOR_QR);
   return Promise.all(
-    capped.map(async (a) => {
+    shownAnchors.map(async (a) => {
       const explorerUrl = buildExplorerUrl(a.polygon_tx_hash, a.polygon_network);
       const qrDataUrl = await QRCode.toDataURL(explorerUrl, {
         errorCorrectionLevel: "M",
@@ -705,12 +699,10 @@ export async function renderCertificatePdf(
   }
 
   const qrDataUrl = await QRCode.toDataURL(publicUrl, { margin: 1, width: 220 });
-  const anchorQrs = await buildAnchorQrs(anchors);
+  // 件数も QR も、同じ「根拠を示せるアンカー」の集合から出す（`anchorSummary.ts`）。
+  const { verifiable, total: totalAnchored, shown, more: moreAnchorCount } = anchorCounts(anchors, MAX_ANCHOR_QR);
+  const anchorQrs = await buildAnchorQrs(verifiable.slice(0, shown));
   const pdfMedia = await buildPdfMedia(media, publicUrl);
-  const totalAnchored = (anchors ?? []).filter(
-    (a) => typeof a.polygon_tx_hash === "string" && a.polygon_tx_hash.length > 0,
-  ).length;
-  const moreAnchorCount = Math.max(0, totalAnchored - anchorQrs.length);
   const certTitle = isPpf
     ? "PPF施工証明書"
     : isMaintenance
