@@ -130,7 +130,9 @@ export async function markCodeUsed(id: string) {
  * 氏名・メール・電話 (全桁)・問い合わせが読めた (監査 2026-10-17 Critical)。
  *
  * 下4桁は衝突するので「下4桁の一致する顧客が1人」は求めない。登録メールの一致する顧客を
- * 先に引き、その中で下4桁の一致する証明書を持つ者がちょうど1人のときに確定する。
+ * 先に引き、その中で下4桁が一致する者 —— 顧客台帳の電話の下4桁、または下4桁ハッシュの
+ * 入った証明書を持つ者 —— がちょうど1人のときに確定する。証明書の下4桁ハッシュは作成経路の
+ * 一部でしか入らず、本番では1件も入っていなかったので、台帳の電話を正とする（2026-10-17）。
  * 2人以上なら確定しない（fail-closed）。同じメールを家族で共有し下4桁も同じなら、
  * 2人のログイン要素は完全に同じで区別できない —— 片方を選ぶと、もう片方のデータを渡す。
  * 同じ人の重複登録もここで締め出されるが、それは店側で顧客を統合して解く（LINE ログインは使える）。
@@ -142,22 +144,31 @@ export async function resolveUniqueCustomerId(
   email: string,
 ): Promise<string | null> {
   const db = admin();
-  const { data: customers } = await db
+  const { data: customers, error: customersError } = await db
     .from("customers")
-    .select("id")
+    .select("id, phone")
     .eq("tenant_id", tenantId)
     .ilike("email", escapeIlike(normalizeEmail(email)));
-  const ids = (customers ?? []).map((c) => c.id as string);
-  if (ids.length === 0) return null;
+  if (customersError || !customers || customers.length === 0) return null;
 
-  const { data: certs } = await db
+  const { data: certs, error: certsError } = await db
     .from("certificates")
     .select("customer_id")
     .eq("tenant_id", tenantId)
-    .in("customer_id", ids)
+    .in(
+      "customer_id",
+      customers.map((c) => c.id as string),
+    )
     .neq("status", "void")
     .eq("customer_phone_last4_hash", phoneHash);
-  const matched = new Set((certs ?? []).map((c) => c.customer_id as string));
+  // 照会に失敗したまま進むと候補が欠け、曖昧な本人が「1人」に見える。
+  if (certsError) return null;
+
+  const matched = new Set<string>((certs ?? []).map((c) => c.customer_id as string));
+  for (const c of customers) {
+    const digits = String(c.phone ?? "").replace(/\D/g, "");
+    if (digits.length >= 4 && phoneLast4Hash(tenantId, digits.slice(-4)) === phoneHash) matched.add(c.id as string);
+  }
   return matched.size === 1 ? [...matched][0] : null;
 }
 

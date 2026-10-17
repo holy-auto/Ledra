@@ -97,6 +97,11 @@ describe("resolveUniqueCustomerId", () => {
   it("メールの `_` はワイルドカードにならない（ta_o@ で taro@ を引かない）", async () => {
     expect(await portal.resolveUniqueCustomerId(T, H, "victi_@example.com")).toBeNull();
   });
+  it("証明書に下4桁ハッシュが無くても、顧客台帳の電話の下4桁で確定する（本番の証明書はこの形）", async () => {
+    for (const c of db.certificates) c.customer_phone_last4_hash = null;
+    expect(await portal.resolveUniqueCustomerId(T, H, "victim@example.com")).toBe("victim");
+    expect(await portal.resolveUniqueCustomerId(T, H, "attacker@evil.example")).toBeNull();
+  });
   it("メールが合っても下4桁が違えば確定しない", async () => {
     expect(await portal.resolveUniqueCustomerId(T, portal.phoneLast4Hash(T, "9999"), "victim@example.com")).toBeNull();
   });
