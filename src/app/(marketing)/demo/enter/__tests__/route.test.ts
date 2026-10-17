@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // デモの入口はパスワードを使わない（公開パスワードを変えられると入口が止まるため）。
-// 要点: magic link のトークンを発行して verify する／同時アクセスで負けたら1回だけ取り直す。
+// 要点: magic link のトークンを発行して verify する／同時アクセスで負けたら2回まで取り直す。
 
 const mocks = vi.hoisted(() => ({
   generateLink: vi.fn(),
@@ -44,7 +44,7 @@ describe("GET /demo/enter", () => {
     expect(mocks.cookieSet).toHaveBeenCalledWith("active_context", "shop", expect.any(Object));
   });
 
-  it("verify に負けたら1回だけ取り直す", async () => {
+  it("verify に負けたら取り直す", async () => {
     mocks.generateLink.mockResolvedValueOnce(link("h1")).mockResolvedValueOnce(link("h2"));
     mocks.verifyOtp.mockResolvedValueOnce({ error: new Error("expired") }).mockResolvedValueOnce({ error: null });
 
@@ -54,14 +54,25 @@ describe("GET /demo/enter", () => {
     expect(mocks.verifyOtp).toHaveBeenLastCalledWith({ type: "magiclink", token_hash: "h2" });
   });
 
-  it("2回とも失敗したら /demo?e=1 に戻す", async () => {
+  it("3回とも失敗したら /demo?e=1 に戻す", async () => {
     mocks.generateLink.mockResolvedValue(link("h"));
     mocks.verifyOtp.mockResolvedValue({ error: new Error("expired") });
 
     const res = await GET(req());
 
     expect(res.headers.get("location")).toBe("https://ledra.test/demo?e=1");
-    expect(mocks.verifyOtp).toHaveBeenCalledTimes(2);
+    expect(mocks.verifyOtp).toHaveBeenCalledTimes(3);
+    expect(mocks.cookieSet).not.toHaveBeenCalled();
+  });
+
+  it("トークンを発行できなければ verify せず /demo?e=1 に戻す（デモのメールが変えられた等）", async () => {
+    mocks.generateLink.mockResolvedValue({ data: null, error: new Error("User not found") });
+
+    const res = await GET(req());
+
+    expect(res.headers.get("location")).toBe("https://ledra.test/demo?e=1");
+    expect(mocks.generateLink).toHaveBeenCalledTimes(3);
+    expect(mocks.verifyOtp).not.toHaveBeenCalled();
     expect(mocks.cookieSet).not.toHaveBeenCalled();
   });
 });

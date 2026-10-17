@@ -25,7 +25,9 @@
  * 以前は固定パスワードをソースと /demo ページに出していた。それだと誰でも Auth API から
  * デモの JWT を取り、パスワードを変えて /demo/enter を止められた。既存ユーザーに対して
  * 再実行すると、パスワードを新しいランダム値に付け替える（＝公開済みのパスワードを無効にする）。
- * 付け替えると、そのユーザーの既存セッションは切れる。
+ * あわせて表示名を戻し、MFA の要素を消す（デモの利用者は Auth API で自分のアカウントを
+ * 変えられる。表示名を書き換えたり MFA を登録したりされても、再実行で元に戻る）。
+ * 既存セッションは切らない。デモは /demo/enter で誰でもセッションを取れるので、切っても守るものが無い。
  */
 
 import { randomBytes } from "node:crypto";
@@ -75,24 +77,42 @@ async function ensureTenantExists(): Promise<void> {
 }
 
 async function findOrCreateAuthUser(): Promise<string> {
-  // listUsers でページング（1000ユーザーを超える環境では追加考慮が必要）
-  const { data: listed, error: listErr } = await admin.auth.admin.listUsers({
-    page: 1,
-    perPage: 1000,
-  });
-  if (listErr) {
-    console.error("❌ Auth ユーザー一覧取得に失敗しました:", listErr.message);
-    process.exit(1);
+  // 1000 件ずつ最後のページまで探す
+  let existing: { id: string } | undefined;
+  for (let page = 1; !existing; page++) {
+    const { data: listed, error: listErr } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (listErr) {
+      console.error("❌ Auth ユーザー一覧取得に失敗しました:", listErr.message);
+      process.exit(1);
+    }
+    existing = listed.users.find((u) => u.email?.toLowerCase() === DEMO_EMAIL.toLowerCase());
+    if (listed.users.length < 1000) break;
   }
 
-  const existing = listed?.users?.find((u) => u.email?.toLowerCase() === DEMO_EMAIL.toLowerCase());
   if (existing) {
-    const { error: pwErr } = await admin.auth.admin.updateUserById(existing.id, { password: DEMO_PASSWORD });
+    const { error: pwErr } = await admin.auth.admin.updateUserById(existing.id, {
+      password: DEMO_PASSWORD,
+      user_metadata: { display_name: DEMO_DISPLAY_NAME, source: "demo-tenant" },
+    });
     if (pwErr) {
       console.error("❌ パスワードの付け替えに失敗しました:", pwErr.message);
       process.exit(1);
     }
-    console.log(`✅ 既存の Auth ユーザーを再利用（パスワードをランダム値に付け替え）: ${DEMO_EMAIL} (${existing.id})`);
+    const { data: mfa, error: mfaErr } = await admin.auth.admin.mfa.listFactors({ userId: existing.id });
+    if (mfaErr) {
+      console.error("❌ MFA 要素の確認に失敗しました:", mfaErr.message);
+      process.exit(1);
+    }
+    for (const f of mfa.factors) {
+      const { error: delErr } = await admin.auth.admin.mfa.deleteFactor({ id: f.id, userId: existing.id });
+      if (delErr) {
+        console.error("❌ MFA 要素の削除に失敗しました:", delErr.message);
+        process.exit(1);
+      }
+    }
+    console.log(
+      `✅ 既存の Auth ユーザーを再利用（パスワードをランダム値に付け替え、表示名を戻し、MFA 要素 ${mfa.factors.length} 件を削除）: ${DEMO_EMAIL} (${existing.id})`,
+    );
     return existing.id;
   }
 

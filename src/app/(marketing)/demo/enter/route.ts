@@ -30,10 +30,11 @@ export async function GET(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
 
   // ponytail: generateLink はユーザーに1つしかトークンを持たせない（発行で前のを上書き）。
-  // 同時に2人が入ると先の人の verify が失敗するので、1回だけ取り直す。
+  // 同時に入ると先の人の verify が失敗するので、ばらけた待ち時間を置いて2回まで取り直す。
   // それでも負けるほど同時アクセスが増えたら、入口を待ち行列にするかセッションを使い回す。
   let lastError: unknown = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 50 + Math.random() * 200 * attempt));
     const { data: link, error: linkErr } = await admin.auth.admin.generateLink({
       type: "magiclink",
       email: DEMO_EMAIL,
