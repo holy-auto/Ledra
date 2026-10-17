@@ -203,7 +203,7 @@ export async function listPortalMemberships(email: string, last4: string, prefer
       // 電話の下4桁が一致する者、または下4桁の一致する証明書を持つ者が**ちょうど1人**のときだけ
       // 本人とする。2人以上（家族でメールを共有し下4桁も同じ等）は区別できないので、この店は出さない。
       const phoneHash = phoneLast4Hash(String(tenantId), last4Norm);
-      const { data: hashCerts } = await db
+      const { data: hashCerts, error: hashCertsError } = await db
         .from("certificates")
         .select("customer_id")
         .eq("tenant_id", tenantId)
@@ -213,6 +213,8 @@ export async function listPortalMemberships(email: string, last4: string, prefer
           "customer_id",
           tenantCustomers.map((c: { id: string }) => c.id),
         );
+      // 照会に失敗したまま進むと、証明書側の候補だけが消えて「1人」に見えてしまう。
+      if (hashCertsError) throw new Error(`listPortalMemberships certificates failed: ${hashCertsError.message}`);
       const matchedIds = new Set<string>([
         ...tenantCustomers
           .filter((c: { phone: string | null }) => customerPhoneMatchesLast4(c?.phone, last4Norm))
