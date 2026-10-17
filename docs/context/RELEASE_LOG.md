@@ -8,28 +8,36 @@
 
 - 内容: 標準デザインの PDF の冒頭（DECLARATION）は、刻印の有無にかかわらず
   「Polygon ブロックチェーンに刻印された改ざん不可能な記録として証明する」と出ていた。
-  `buildServiceStatement(serviceType, anchored)` を切り出し、**根拠の節だけ**を切り替えるようにした
+  `buildServiceStatement(serviceType, anchored)` を `src/lib/certificates/serviceStatement.ts` に
+  切り出し、**根拠の節だけ**を切り替えるようにした
   （刻印あり=従来の文／刻印なし=「施工時に記録された写真と作業内容に基づいて」）。
   主語（PPF・整備・鈑金塗装・用品取付・汎用の5通り）は従来どおり。
-  分岐に使う値は描画関数が既に持っていた `totalAnchored`（tx hash が入ったアンカーの件数）。
+  判定は **`anchorQrs.length > 0`** —— 「PDF が根拠として載せられるアンカーがあるか」。
+  `@react-pdf` も 4.7MB のフォント登録も要らない純関数なので別モジュールにした（テストが速くなる）。
 - なぜ: 本番の実測（2026-10-17）で、証明書 70 件に対し刻印は 11 件、しかも**その 11 件はすべて
   撮影用デモテナント**のもの（tx はチェーン未送信）。**実テナントの証明書は1件も刻印されていないのに、
   全件にこの文が載っていた。** 顧客の手元に残る文書に、検証できない主張を書いている状態だった。
-- 併せて直したこと: **署名用の PDF 生成経路だけ `anchors` を渡していなかった**
-  （`src/lib/signature/pdfUtils.ts`）。そのままだと**刻印済みの証明書の署名版に弱い文が載る**側のバグになる。
-  他の経路と同じ select（`certificate_images` の `sha256` / `polygon_tx_hash` / `polygon_network`）を足した。
-  呼び出し元は5件で、残り4件は元から渡していた（`admin/certificates/pdf-one`・`pdf-selected`・
-  `api/certificate/pdf`（2か所）・`api/qstash/batch-pdf`）。
+- 呼び出し箇所は **6 箇所（5 ファイル）**で、`anchors` を渡しているのは 5 箇所（`wc -l` で確認）。
+  渡していないのは署名用経路（`src/lib/signature/pdfUtils.ts`）だけで、**そのままにした**。
+  一度は他経路と同じ select を足したが、`/code-review` の指摘で取り下げた ——
+  この経路の PDF は `document_hash` の計算元（`api/signature/request` → `lib/signature/session.ts` の
+  `computeDocumentHash`）で、アンカーは QStash の backfill が**署名セッション作成後に非同期で書く**。
+  渡すと「ハッシュを取った PDF」と「署名後に作り直して保存する PDF」が**アンカーの状態で食い違う**。
+  渡さなければ常に刻印なしの文で決定的になる。代償は刻印済み証明書の署名版が実態より弱い文になることだが、
+  偽ではない。署名版の役割はハッシュの対象で、検証の窓口は `cert-verify` / `public/verify` 側。
 - 刻印なしの文でハッシュを根拠に挙げない理由: PDF がハッシュを載せるのは刻印済みの QR ブロックだけなので、
   ハッシュに言及すると文書自身が裏付けを持たない主張になる。刻印なしでもハッシュを表に出す設計にするなら、
   その時点でここも広げられる（コードにコメントで残した）。
-- テスト: `src/lib/__tests__/pdfCertificate.statement.test.ts`（3件）。刻印なしで**どの施工種別でも**
+- テスト: `src/lib/certificates/__tests__/serviceStatement.test.ts`（3件）。刻印なしで**どの施工種別でも**
   「ブロックチェーンに刻印」を含まないこと、刻印ありでは含むこと、主語が種別ごとに変わること。
   未知の `service_type` と `null` も通す。
 - 本番: DB の変更は無く、マージで Vercel の main デプロイに乗る。**既に発行済みの PDF は作り直さない**
   （PDF はダウンロード時に生成するので、次回のダウンロードから新しい文になる）。
 - 残り: 刻印なしの文言は私の判断で、代表の確認待ち。製品紹介側の4か所（保険会社向け・セキュリティ・
   機能一覧・資料 PDF）は手を付けていない（OPEN_QUESTIONS の「残り2」）。
+  **撮影用デモの 11 件はこの変更後も刻印の文と QR が載る**（存在しない tx を指す QR。
+  `--filming-cleanup` で戻す話）。**`moreAnchorCount` は `totalAnchored` から引いているので
+  同じズレが残る**（この変更の前からある。別 PR）。
 
 ## 2026-10-16 運営が管理画面から施工店の設備・資格に「検証済み」を付けられるようにした（#1359、2026-10-17 マージ）
 

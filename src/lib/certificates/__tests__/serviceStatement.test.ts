@@ -5,9 +5,12 @@
  * これが壊れると、刻印されていない証明書に事実と違う文が載ったまま顧客の手元に残る。
  * 本番の実測（2026-10-17）では証明書 70 件に対し刻印は 11 件で、その 11 件はすべて
  * 撮影用のデモテナントのものだった（実テナントは1件も刻印されていない）。
+ *
+ * 呼び出し側（`pdfCertificate.tsx`）が渡す `anchored` は `anchorQrs.length > 0`
+ * ——「PDF に QR を載せられるアンカーがあるか」。その式自体は一行なのでテストを置いていない。
  */
 import { describe, it, expect } from "vitest";
-import { buildServiceStatement } from "../pdfCertificate";
+import { buildServiceStatement } from "../serviceStatement";
 
 const ANCHOR_CLAIM = "ブロックチェーンに刻印";
 const SERVICE_TYPES = [null, undefined, "ppf", "maintenance", "body_repair", "accessory", "unknown_kind"];

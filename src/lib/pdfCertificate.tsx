@@ -2,6 +2,7 @@
 import { Document, Page, Text, View, Image, StyleSheet, Font, Svg, Path, Circle, G } from "@react-pdf/renderer";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { notoSansJpDataUrl } from "@/lib/marketing/pdfFonts";
+import { buildServiceStatement } from "@/lib/certificates/serviceStatement";
 
 // バンドル済み Noto Sans JP (public/fonts) を data URL として登録する。
 // 外部 CDN (@latest) への実行時フェッチを排し、供給元の改変・停止リスクを断つ。
@@ -653,36 +654,6 @@ function buildPresetLines(schema: TemplateSchema | null, values: Record<string, 
   return lines;
 }
 
-/**
- * DECLARATION（冒頭文）を組み立てる。**根拠の節だけ** `anchored` で切り替える。
- *
- * 刻印が無い証明書に「Polygon ブロックチェーンに刻印された改ざん不可能な記録」と書くと、
- * 事実と違う文がそのまま顧客の手元に残る。本番の実測（2026-10-17）では証明書 70 件に対し
- * 刻印は 11 件で、その 11 件はすべて撮影用のデモテナント（`ledra-motors-demo`）のものだった。
- * つまり実テナントの証明書は1件も刻印されていないのに、全件にこの文が載っていた。
- *
- * ponytail: 刻印が無いときの根拠は「写真と作業内容」までに留める。ハッシュを根拠に挙げない
- * のは、PDF がハッシュを載せるのは刻印済みの QR ブロック（`anchorQrs.length > 0`）だけなので、
- * ハッシュに言及すると文書自身が裏付けを持たない主張になるため。刻印が無くてもハッシュを
- * 表に出す設計にするなら、その時点でここも「写真とそのハッシュ」に広げられる。
- */
-export function buildServiceStatement(serviceType: string | null | undefined, anchored: boolean): string {
-  const subject =
-    serviceType === "ppf"
-      ? "ペイントプロテクションフィルム (PPF) の施工が完了した事実"
-      : serviceType === "maintenance"
-        ? "整備作業が実施された事実"
-        : serviceType === "body_repair"
-          ? "鈑金塗装作業が実施された事実"
-          : serviceType === "accessory"
-            ? "用品取付作業が実施された事実"
-            : "施工作業が完了した事実";
-  const basis = anchored
-    ? "Polygon ブロックチェーンに刻印された改ざん不可能な記録として"
-    : "施工時に記録された写真と作業内容に基づいて";
-  return `本証明書は、下記車両に対して${subject}を、${basis}証明するものです。`;
-}
-
 export async function renderCertificatePdf(
   row: CertRow,
   publicUrl: string,
@@ -759,7 +730,10 @@ export async function renderCertificatePdf(
     timeZone: "Asia/Tokyo",
   });
 
-  const serviceStatement = buildServiceStatement(row.service_type, totalAnchored > 0);
+  // 刻印の主張は、PDF が根拠として載せられるもの（QR を出せるアンカー）に合わせる。tx hash の
+  // 有無（totalAnchored）で判定すると、ネットワーク不明で QR を出せない行でも刻印を主張して
+  // しまう（`/code-review` の指摘。2026-10-17）。
+  const serviceStatement = buildServiceStatement(row.service_type, anchorQrs.length > 0);
 
   const networkLabel = (network: "polygon" | "amoy") =>
     network === "amoy" ? "Polygon Amoy testnet" : "Polygon mainnet";
