@@ -24,6 +24,9 @@
   あわせて、申請時の既存ユーザー検索（`auth.admin.listUsers()`）が最初の1ページしか見ていない。
 - Low: 横断マイページの request-code / verify-code には、1アカウントあたりの回数制限が無い（IP ごとだけ。店ごとの版にはある）。
   request-code は、顧客のときだけメール送信を待つので、応答時間で顧客かどうかが分かりうる（店ごとの版も同じ）。
+- Low: 外部 API の月間クォータ（`checkPassportMonthlyQuota`。verify・marketplace-info・accident-match が共用）は、ログの件数を数えてから通す。
+  上限の直前に同時に来たリクエストは全部通るので、上限を少し超えうる（分あたりの制限の範囲まで）。直すには原子的に数える関数（マイグレーション）が要る。
+  課金の上限として厳密にしたくなった時点で直す（#1374 の Codex の指摘。2026-10-17）。
 - Low: 一般のレート制限は、`RATE_LIMIT_FAIL_CLOSED` が未設定なら Redis 障害時に fail-open になる。本番の値は【要確認】。
 - Low: `customer_inquiries` の `public_insert WITH CHECK (true)` がマイグレーションに残っている（本番には無い）。新しい環境では穴が復活する。
 - Low: `*` の API キーは、将来 read 系のエンドポイントを足すと自動でその権限を持つ。（発行時の AAL2 は proxy で必須になっていた。指摘は誤り。#1374 でテストに固定）

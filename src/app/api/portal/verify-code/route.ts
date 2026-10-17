@@ -46,20 +46,20 @@ export async function POST(req: Request) {
     const row = await getLatestGlobalCodeRow(email, last4);
     if (!row || row.used_at || new Date(row.expires_at).getTime() < Date.now()) return invalidCodeResponse;
 
+    // 照合の前に試行を1回分予約する。同時の試行に負けた・上限に達した行は照合しない。
+    const prevAttempts = row.attempts ?? 0;
+    if (prevAttempts >= OTP_MAX_ATTEMPTS) return invalidCodeResponse;
+    if (!(await markGlobalCodeAttempt(row.id, prevAttempts))) return invalidCodeResponse;
+
     const expected = globalOtpCodeHash(email, last4, code);
     // 定数時間比較でタイミング攻撃を防止
     const expectedBuf = Buffer.from(expected);
     const actualBuf = Buffer.from(row.code_hash ?? "");
     const codeMatches = expectedBuf.length === actualBuf.length && timingSafeEqual(expectedBuf, actualBuf);
     if (!codeMatches) {
-      const nextAttempts = (row.attempts ?? 0) + 1;
-      await markGlobalCodeAttempt(row.id, nextAttempts);
-      // 数えるだけでは総当たりを止めない。上限で使用済みにする（店ごとの verify-code と同じ）。
-      if (nextAttempts >= OTP_MAX_ATTEMPTS) {
-        await markGlobalCodeUsed(row.id);
-        // 上限でも応答は他の失敗と同じにする。429 を返すと「コードが実在する＝顧客である」と分かる。
-        return invalidCodeResponse;
-      }
+      // 数えるだけでは総当たりを止めない。上限で使用済みにする。
+      // 上限でも応答は他の失敗と同じにする。429 を返すと「コードが実在する＝顧客である」と分かる。
+      if (prevAttempts + 1 >= OTP_MAX_ATTEMPTS) await markGlobalCodeUsed(row.id);
       return invalidCodeResponse;
     }
 

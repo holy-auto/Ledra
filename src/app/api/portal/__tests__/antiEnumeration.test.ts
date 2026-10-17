@@ -44,6 +44,7 @@ const future = new Date(Date.now() + 60_000).toISOString();
 beforeEach(() => {
   Object.values(m).forEach((f) => f.mockReset());
   m.sendEmail.mockResolvedValue({ ok: true });
+  m.markGlobalCodeAttempt.mockResolvedValue(true);
 });
 
 describe("POST /api/portal/request-code", () => {
@@ -56,6 +57,16 @@ describe("POST /api/portal/request-code", () => {
     expect([none.status, hit.status]).toEqual([200, 200]);
     expect(await none.json()).toEqual(await hit.json());
     expect(m.sendEmail).toHaveBeenCalledTimes(1); // 送るのは該当ありのときだけ
+  });
+
+  it("該当ありでメール送信に失敗しても、該当なしと同じ応答にする", async () => {
+    m.listPortalMemberships.mockResolvedValueOnce([]);
+    const none = await requestCode(req(who));
+    m.listPortalMemberships.mockResolvedValueOnce([{ tenant_slug: "a" }]);
+    m.sendEmail.mockResolvedValueOnce({ ok: false, status: 422, error: "rejected" });
+    const failed = await requestCode(req(who));
+
+    expect([failed.status, await failed.json()]).toEqual([none.status, await none.json()]);
   });
 });
 
@@ -92,7 +103,22 @@ describe("POST /api/portal/verify-code", () => {
     m.getLatestGlobalCodeRow.mockResolvedValueOnce(null);
     const none = await verifyCode(req(wrong));
     expect([res.status, await res.json()]).toEqual([none.status, await none.json()]);
-    expect(m.markGlobalCodeAttempt).toHaveBeenCalledWith("r", 3);
+    expect(m.markGlobalCodeAttempt).toHaveBeenCalledWith("r", 2);
     expect(m.markGlobalCodeUsed).toHaveBeenCalledWith("r");
+  });
+
+  it("試行を予約できなければ（同時の試行に負けた）、正しいコードでも照合しない", async () => {
+    m.getLatestGlobalCodeRow.mockResolvedValueOnce({
+      id: "r",
+      code_hash: "h:123456",
+      expires_at: future,
+      used_at: null,
+      attempts: 0,
+    });
+    m.markGlobalCodeAttempt.mockResolvedValueOnce(false);
+    const res = await verifyCode(req({ ...who, code: "123456" }));
+
+    expect(res.status).toBe(400);
+    expect(m.markGlobalCodeUsed).not.toHaveBeenCalled();
   });
 });
