@@ -107,27 +107,41 @@ async function demoSessionCookies(): Promise<{ name: string; value: string }[]> 
     throw new Error("NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY are required");
   }
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data, error } = await admin.auth.admin.generateLink({ type: "magiclink", email: DEMO_EMAIL });
-  const tokenHash = data?.properties?.hashed_token;
-  if (error || !tokenHash) throw new Error(`generateLink failed: ${error?.message ?? "no hashed_token"}`);
 
-  let jar: { name: string; value: string }[] = [];
-  const ssr = createServerClient(url, anonKey, {
-    cookies: {
-      getAll: () => jar,
-      setAll: (cookies) => {
-        for (const c of cookies) {
-          jar = jar.filter((j) => j.name !== c.name);
-          if (c.value) jar.push({ name: c.name, value: c.value });
-        }
+  // generateLink replaces the user's previous token, so a concurrent capture job or a live /demo/enter
+  // visitor can invalidate ours before we verify it. Retry like /demo/enter does.
+  let lastError = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 200 + Math.random() * 800 * attempt));
+    const { data, error } = await admin.auth.admin.generateLink({ type: "magiclink", email: DEMO_EMAIL });
+    const tokenHash = data?.properties?.hashed_token;
+    if (error || !tokenHash) {
+      lastError = `generateLink failed: ${error?.message ?? "no hashed_token"}`;
+      continue;
+    }
+
+    let jar: { name: string; value: string }[] = [];
+    const ssr = createServerClient(url, anonKey, {
+      cookies: {
+        getAll: () => jar,
+        setAll: (cookies) => {
+          for (const c of cookies) {
+            jar = jar.filter((j) => j.name !== c.name);
+            if (c.value) jar.push({ name: c.name, value: c.value });
+          }
+        },
       },
-    },
-  });
-  const { error: verifyErr } = await ssr.auth.verifyOtp({ type: "magiclink", token_hash: tokenHash });
-  if (verifyErr) throw new Error(`verifyOtp failed: ${verifyErr.message}`);
-  if (jar.length === 0) throw new Error("verifyOtp succeeded but no session cookie was written");
-  // /demo/enter also lands on the shop dashboard
-  return [...jar, { name: "active_context", value: "shop" }];
+    });
+    const { error: verifyErr } = await ssr.auth.verifyOtp({ type: "magiclink", token_hash: tokenHash });
+    if (verifyErr) {
+      lastError = `verifyOtp failed: ${verifyErr.message}`;
+      continue;
+    }
+    if (jar.length === 0) throw new Error("verifyOtp succeeded but no session cookie was written");
+    // /demo/enter also lands on the shop dashboard
+    return [...jar, { name: "active_context", value: "shop" }];
+  }
+  throw new Error(`demo sign-in failed after 3 attempts: ${lastError}`);
 }
 
 async function captureAdmin(browser: ReturnType<typeof chromium.launch> extends Promise<infer T> ? T : never) {
