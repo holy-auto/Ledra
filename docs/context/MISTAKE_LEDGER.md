@@ -78,12 +78,153 @@
 | **K. 新しいコード経路を、それが実際に呼ばれる文脈で動かして試していない** | 単体の変更としては正しいのに、それが実際に発火する呼び出し元・エラー経路まで通して動かしていない。ユニットテストがあっても「起こりうる呼び出し順」を再現していなければ検出できない | **M-067**, **M-20260908-401-handler-infinite-loop**, **M-20260916-codex-found-8-in-own-untested-pr**, **M-20260923-draft-autosave-baseline-before-prefill**, **M-20261005-fail-closed-flag-read-blocked-non-opt-in-tenants**, **M-20261006-breakdown-ids-wiped-by-draft-edit**, **M-20261009-added-consent-request-below-a-one-click-shop-record-button**, **M-20261009-keyset-cursor-started-with-empty-string-on-uuid**, **M-20261012-moved-signed-at-inside-a-fire-and-forget-call** |
 | **L. 既定を開いたまま守る（除外リスト）** | 「見せないもの」を並べて塞ぐ。塞いだ時点では実データと一致していても、**既定が公開**なので、値が増えるたびに漏れる。**母集団を数えていない**のが根（「今あるもの」を実測して、「入りうるもの」を数えていない）。外向けの経路では許可リストにして、知らないものを既定で落とす | **M-077**, **M-20260911-denylist-default-public** |
 | **E. 手元とCIの差を忘れる** | 手元では通るのに CI だけ落ちる構成を作る。書いた本人には見えない。**リポジトリが用意した「CIと同じ検査」を走らせず、思い出せる検査だけ個別に走らせる**のも同じ | M-009, **M-030**, **M-084**, **M-089**, **M-094**, **M-20260913-ci-test-timeout**, **M-20260914-verified-without-installing**, **M-20260915-ran-known-checks-not-ci**, **M-20260922-pushed-without-ci-parallel-checks**, **M-20260923-schema-snapshot-missed-again**, **M-20260929-build-oom-cause-guessed-three-times**, **M-20260929-merged-main-without-migration-order-lint**, **M-20261008-bisected-a-flaky-oom-as-deterministic**, **M-20261008-test-wrote-env-local-into-the-repo-root**, **M-20261009-extended-three-test-timeouts-and-missed-the-first-caller**, **M-20261009-new-public-route-ran-only-nearby-tests**, **M-20261015-route-scan-test-hit-5s-timeout-in-ci**, **M-20261015-wrote-only-finding-without-running-the-reviewers-checker** |
-| **F. 確認できる事実を確認しない** | 環境から1コマンドで確かめられる事実（今日の日付・件数・バージョン・設定ファイルの中身・**2つの出来事の時刻差**・**CI が実際に走ったか**・**同じ問題を直している PR が既に開いていないか**）を、確かめずに書く。**自分がこれから追記しようとしているログファイル自身に、既に矛盾する記述が無いか確認しない**のも同じ。**本番の実データをそのまま調査ログ・事業ログに転記する**のも同じ（PIIのマスクを確認事実として扱わない） | M-011, M-014, M-015, M-016, **M-018**, **M-021**, **M-026**, **M-027**, M-034, M-037, **M-045**, **M-049**, **M-053**, **M-059**, **M-070**, **M-071**, **M-073**, **M-080**, **M-081**, **M-082**, **M-086**, **M-088**, **M-090**, **M-20260904-push-did-not-rerun-ci**, **M-20260904-unverified-direct-call**, **M-20260906-merged-45s-after-review**, **M-20260907-stale-snapshot-ci-claim**, **M-20260909-fixed-red-without-checking-others**, **M-20260909-contradicted-own-log**, **M-20260909-pushed-real-customer-email**, **M-20260910-estimated-what-grep-answers**, **M-20260911-plugin-docs-unread**, **M-20260911-merged-20s-after-review**, **M-20260911-uncounted-24-types**, **M-20260913-counted-two-populations**, **M-20260914-hunk-count-subtraction**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-called-it-untraceable-without-checking-open-prs**, **M-20260919-said-no-open-pr-has-it-again**, **M-20260919-hand-applied-ahead-of-a-pending-migration**, **M-20260919-skipped-the-check-i-had-just-written**, **M-20260919-green-ci-read-as-production-applied**, **M-20260919-credited-my-own-dirty-tree-to-another-session**, **M-20260919-wrote-a-replay-count-i-never-read**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-counted-12-as-11-again**, **M-20260921-reported-a-subtraction-as-a-measurement**, **M-20260921-two-samples-read-as-all**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-said-typegen-red-on-every-merge**, **M-20260922-said-ten-checks-without-listing-them**, **M-20260923-git-add-all-swept-a-formatted-generated-file**, **M-20260925-migration-timestamp-collided-with-parallel-pr**, **M-20260927-anon-customer-names-read-as-by-design**, **M-20261001-cited-sources-i-never-opened-in-decision-log**, **M-20261001-wrote-not-observed-over-my-own-vercel-font-record**, **M-20261001-said-fix-reaches-production-before-deploy-checked**, **M-20261001-reported-applied-migrations-as-not-applied**, **M-20261002-asserted-conformance-impact-from-our-own-gpsa**, **M-20261002-said-no-mechanism-without-reading-the-workflow-that-exists**, **M-20261001-acted-on-dependabot-pr-without-checking-it-was-closed**, **M-20261001-duplicated-an-open-pr-for-four-days**, **M-20260929-logged-the-wrong-zip-as-sent**, **M-20261003-fixed-the-pr-body-and-left-the-business-logs-wrong**, **M-20261005-called-ci-green-from-check-runs-only**, **M-20261005-blamed-migrations-for-a-stale-clone**, **M-20261005-handed-user-cli-commands-i-never-ran**, **M-20261005-diagnosed-device-from-origin-not-users-checkout**, **M-20261005-took-sharps-limit-as-the-limit-of-what-i-could-verify**, **M-20261006-built-on-a-not-null-premise-from-my-own-log**, **M-20261007-read-elastic-build-machine-as-fixed-16gb**, **M-20261007-claimed-env-vars-apply-only-to-new-session**, **M-20261007-posted-rerun-done-before-result**, **M-20261007-claimed-single-source-without-grepping-the-siblings**, **M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing**, **M-20261007-read-an-empty-tool-result-as-no-problem-found**, **M-20261008-bisected-a-flaky-oom-as-deterministic**, **M-20261008-claimed-terms-absent-without-grep**, **M-20261009-read-one-codex-limit-message-as-an-ongoing-state**, **M-20261009-used-an-arrow-the-pdf-font-lacks**, **M-20261009-wrote-an-interval-without-subtracting-two-timestamps**, **M-20261009-diagnosed-double-count-from-code-without-reading-prod**, **M-20261010-read-tails-exit-code-as-the-pushs-exit-code**, **M-20261012-said-prod-unverifiable-while-supabase-mcp-was-loadable**, **M-20261012-planned-to-look-for-a-file-tracing-never-copies**, **M-20261012-wrote-1078-from-a-wider-find-than-the-script-counts**, **M-20261012-wrote-rerun-done-before-the-rerun-returned**, **M-20261013-wrote-identifiers-before-reading-the-output**, **M-20261015-documented-an-npm-script-that-does-not-exist**, **M-20261016-reported-logs-in-pr-without-reading-diffstat**, **M-20261016-said-cutting-branching-stops-previews-from-an-old-note**, **M-20261016-base-merged-a-branch-another-session-was-already-pushing**, **M-20261016-subscribed-pr-by-guessed-number**, **M-20261016-promised-a-workflow-dispatch-i-cannot-send** |
+| **F. 確認できる事実を確認しない** | 環境から1コマンドで確かめられる事実（今日の日付・件数・バージョン・設定ファイルの中身・**2つの出来事の時刻差**・**CI が実際に走ったか**・**同じ問題を直している PR が既に開いていないか**）を、確かめずに書く。**自分がこれから追記しようとしているログファイル自身に、既に矛盾する記述が無いか確認しない**のも同じ。**本番の実データをそのまま調査ログ・事業ログに転記する**のも同じ（PIIのマスクを確認事実として扱わない） | M-011, M-014, M-015, M-016, **M-018**, **M-021**, **M-026**, **M-027**, M-034, M-037, **M-045**, **M-049**, **M-053**, **M-059**, **M-070**, **M-071**, **M-073**, **M-080**, **M-081**, **M-082**, **M-086**, **M-088**, **M-090**, **M-20260904-push-did-not-rerun-ci**, **M-20260904-unverified-direct-call**, **M-20260906-merged-45s-after-review**, **M-20260907-stale-snapshot-ci-claim**, **M-20260909-fixed-red-without-checking-others**, **M-20260909-contradicted-own-log**, **M-20260909-pushed-real-customer-email**, **M-20260910-estimated-what-grep-answers**, **M-20260911-plugin-docs-unread**, **M-20260911-merged-20s-after-review**, **M-20260911-uncounted-24-types**, **M-20260913-counted-two-populations**, **M-20260914-hunk-count-subtraction**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-called-it-untraceable-without-checking-open-prs**, **M-20260919-said-no-open-pr-has-it-again**, **M-20260919-hand-applied-ahead-of-a-pending-migration**, **M-20260919-skipped-the-check-i-had-just-written**, **M-20260919-green-ci-read-as-production-applied**, **M-20260919-credited-my-own-dirty-tree-to-another-session**, **M-20260919-wrote-a-replay-count-i-never-read**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-counted-12-as-11-again**, **M-20260921-reported-a-subtraction-as-a-measurement**, **M-20260921-two-samples-read-as-all**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-said-typegen-red-on-every-merge**, **M-20260922-said-ten-checks-without-listing-them**, **M-20260923-git-add-all-swept-a-formatted-generated-file**, **M-20260925-migration-timestamp-collided-with-parallel-pr**, **M-20260927-anon-customer-names-read-as-by-design**, **M-20261001-cited-sources-i-never-opened-in-decision-log**, **M-20261001-wrote-not-observed-over-my-own-vercel-font-record**, **M-20261001-said-fix-reaches-production-before-deploy-checked**, **M-20261001-reported-applied-migrations-as-not-applied**, **M-20261002-asserted-conformance-impact-from-our-own-gpsa**, **M-20261002-said-no-mechanism-without-reading-the-workflow-that-exists**, **M-20261001-acted-on-dependabot-pr-without-checking-it-was-closed**, **M-20261001-duplicated-an-open-pr-for-four-days**, **M-20260929-logged-the-wrong-zip-as-sent**, **M-20261003-fixed-the-pr-body-and-left-the-business-logs-wrong**, **M-20261005-called-ci-green-from-check-runs-only**, **M-20261005-blamed-migrations-for-a-stale-clone**, **M-20261005-handed-user-cli-commands-i-never-ran**, **M-20261005-diagnosed-device-from-origin-not-users-checkout**, **M-20261005-took-sharps-limit-as-the-limit-of-what-i-could-verify**, **M-20261006-built-on-a-not-null-premise-from-my-own-log**, **M-20261007-read-elastic-build-machine-as-fixed-16gb**, **M-20261007-claimed-env-vars-apply-only-to-new-session**, **M-20261007-posted-rerun-done-before-result**, **M-20261007-claimed-single-source-without-grepping-the-siblings**, **M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing**, **M-20261007-read-an-empty-tool-result-as-no-problem-found**, **M-20261008-bisected-a-flaky-oom-as-deterministic**, **M-20261008-claimed-terms-absent-without-grep**, **M-20261009-read-one-codex-limit-message-as-an-ongoing-state**, **M-20261009-used-an-arrow-the-pdf-font-lacks**, **M-20261009-wrote-an-interval-without-subtracting-two-timestamps**, **M-20261009-diagnosed-double-count-from-code-without-reading-prod**, **M-20261010-read-tails-exit-code-as-the-pushs-exit-code**, **M-20261012-said-prod-unverifiable-while-supabase-mcp-was-loadable**, **M-20261012-planned-to-look-for-a-file-tracing-never-copies**, **M-20261012-wrote-1078-from-a-wider-find-than-the-script-counts**, **M-20261012-wrote-rerun-done-before-the-rerun-returned**, **M-20261013-wrote-identifiers-before-reading-the-output**, **M-20261015-documented-an-npm-script-that-does-not-exist**, **M-20261016-reported-logs-in-pr-without-reading-diffstat**, **M-20261016-said-cutting-branching-stops-previews-from-an-old-note**, **M-20261016-base-merged-a-branch-another-session-was-already-pushing**, **M-20261016-subscribed-pr-by-guessed-number**, **M-20261016-promised-a-workflow-dispatch-i-cannot-send**, **M-20261017-proposed-a-paths-filter-that-would-redden-every-migration-pr**, **M-20261017-widened-where-a-check-runs-without-checking-it-ever-passed**, **M-20261017-read-a-migration-version-as-a-date**, **M-20261017-wrote-absolutes-about-mechanisms-i-had-not-traced** |
 | **G. 構造テストを振る舞いの証明として扱う** | ソースを grep して「その語が書かれている」を確かめただけで、**値が通るか**を確かめていない。テストは緑、機能は壊れている。**ファイルに在ること**を、**その経路が実際に動く/覆われている**ことの証拠として扱うのも同じ | **M-033**, **M-20260921-file-content-read-as-behavior**, **M-20261002-closed-open-question-on-settings-screen-not-build-log**, **M-20261002-checked-one-side-effect-and-called-it-no-orphans**, **M-20261008-called-the-build-successful-from-a-file-mtime** |
 | **H. 未確定の前提の上に作る** | 依頼者しか決められない前提を確認しないまま、その前提が変われば丸ごと消える実装を先に作る | **M-043** |
 | **I. 前提が途中で変わったのに読み直さない** | 判断したときは正しかった観察が、その後の `main` 取り込みなどで無効になっているのに、変更を見直さない。**衝突しなかったファイルにこそ潜む**。**自分が書いた実測値が、自分のマージで古くなる**のも同じ | **M-047**, **M-051**, **M-20260925-my-own-merge-staled-the-replay-count**, **M-20260929-merged-main-without-migration-order-lint**, **M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing**, **M-20261009-carried-a-mutation-count-past-the-change-that-invalidated-it**, **M-20261010-wrote-row-counts-then-added-an-entry-in-the-same-pr** |
 
 ---
+
+## M-20261017-wrote-absolutes-about-mechanisms-i-had-not-traced 追跡していない仕組みについて「必ず」「例外なく」「競走も起きない」「変更は不要」と書き、6巡で4回つぶされた（2026-10-17・型 F）
+
+**Before**: 取り下げた設計と保留中の方針を事業ログに書くとき、**否定・絶対の形で断定した** ——
+「本番が**必ず**マイグレーションより遅れている」「列を足す PR は**例外なく**赤になる」
+「ワークフローの**変更は不要**」「（定期実行なら）**競走も起きない**」。
+どれも説明としては通りが良く、読み手が迷わない書き方だった。
+
+**After**: Codex のレビュー6巡で、**この形の断定が4つとも偽**だと分かった。
+- 「必ず遅れている」→ Supabase MCP の `apply_migration` で先に本番へ当てた版があり、先に進む形が残る
+  （`db-migrate.yml` のコメントが実例2件）。
+- 「変更は不要」→ `workflow_dispatch` はブランチの最新コミットを見るので、SHA を固定する仕組みが要る。
+- 「競走も起きない」→ `db-migrate.yml`（push）と `supabase-advisors.yml`（schedule）に依存関係は無く、
+  定期実行の直前にマイグレーションが入れば同じ偽の赤が出る。どの間隔でも残る。
+6巡で出た指摘は計15件、**すべて私の説明文**で、コードの指摘は0件だった。
+
+**なぜ気づけなかったか**: **絶対語を、主張ではなく文体として使っていた。**
+「赤になることがある」で足りる結論に「例外なく」を付け、「競走は減る」で足りるところに
+「起きない」と書いた。**強い言葉は読み手が迷わないので、説明として得**に見える。
+だが絶対語は**全称命題**で、反例1つで倒れる。1つの反例を探す作業をしていない。
+しかも方向が一定だった —— **自分の判断を正当化する側に強めている**（除外を正当化したいときは「必ず」、
+簡単な案を勧めたいときは「不要」「起きない」）。§10 パターン8（権威口調による代用）の、
+「明らかに」ではなく「必ず」「〜しない」で出る形。
+
+**再発防止**: 仕組み無し（判断に依存）。
+- 習慣: **「必ず」「例外なく」「常に」「〜しない」「不要」を書いたら、その場で反例を1つ探す。**
+  探して見つからなければ、どう探したかを書く。探さないなら絶対語を外し、
+  「〜の場合は」「〜することがある」に落とす。**弱い言葉で足りる結論に強い言葉を足さない。**
+- 習慣: とくに**自分の案を勧める文**と**自分の判断を正当化する文**の絶対語を疑う。方向が一定なら、
+  それは観察ではなく願望。
+
+## M-20261017-read-a-migration-version-as-a-date マイグレーションの版番号を日付として読み、事業ログ4か所に 09-29 と書いた（2026-10-17・型 F）
+
+**Before**: 「2026-09-14 以降、ずれは誰も見ていない」という自分の言い過ぎを訂正するため、
+手で突き合わせた記録を探した。`RELEASE_LOG.md` の該当箇所を `sed -n '1967,1974p'` で読み、本文に
+`20260929150200` / `20260929150300` が出ていたので、その照合を **09-29** のものとして4か所に書いた
+（LEDRA_CURRENT・OPEN_QUESTIONS・DECISION_LOG・MISTAKE_LEDGER）。
+
+**After**: 実際は **09-27**。`20260929150200` は**マイグレーションの版番号**で、照合した日付ではない。
+エントリ自身の見出しは `## 2026-09-27 列属性のドリフトを全表で洗い出し…`（RELEASE_LOG:1958）で、
+DECISION_LOG の対応エントリも「1. 日付: 2026-09-27（`date -u` で確認）」と書いている。
+**2日分の「人が見ていた期間」を捏造していた** —— それは検出の空白の長さを論じるための年表そのもの。
+
+**なぜ気づけなかったか**: **範囲指定で本文だけを読み、その節の見出しを見ていない。**
+`sed -n '1967,1974p'` は見出し（1958行）を含まない窓で、窓の中にあった14桁の数字が
+`2026 09 29` と読めたので、それを日付として採った。**日付が欲しいときに、日付の形をしたものを
+拾ってしまった**（§10 パターン2「もっともらしい数値」。導出の痕跡が無い数字）。
+CLAUDE.md は「日付を書く前に `date -u` を打つ」と定めているが、これは**今日の日付**の話で、
+**過去の出来事の日付**には対応する習慣が無かった。版番号は日付そっくりの識別子で、
+このリポジトリには 534 個ある。
+
+**再発防止**: 仕組み無し（判断に依存）。
+- 習慣: **過去の出来事の日付は、その記録の「見出し」か「1. 日付:」から採る。** 本文に出てくる
+  14桁の数字（`20260929150200`）はマイグレーションの版番号で、日付ではない。
+  本文を範囲指定で読むときは、**直前の見出しまで含める**（`grep -n '^## ' file | awk -F: '$1<N' | tail -1`）。
+- 習慣: 年表を書いたら、各日付について「どのエントリの見出しから採ったか」を言えるか確かめる。
+  言えないものは版番号・ファイル名・コミット日時のどれかから来ている。
+
+## M-20261017-widened-where-a-check-runs-without-checking-it-ever-passed 検査を走らせる場所を増やす前に、その検査がどこかで成功しているかを見ていなかった（2026-10-17・型 F）
+
+**Before**: 「ドリフト検出が週1回しか走らない」を直すと決め、検出器自身のファイルを触る PR で
+`schema-drift` ジョブを走らせる変更を実装した。YAML を PyYAML で解析し、本番のマイグレーション適用状況を
+Supabase MCP で照合し（534 本・最新が main と一致）、`ci-parallel-checks.sh` 11 項目を通し、
+PR 本文に「この PR で走る `Schema drift` は緑になる**はず**」と書いて #1366 を出した。
+
+**After**: その `Schema drift` は **1秒未満で failure**（`02:13:23→02:13:23`）。再生だけで 3〜5 分かかるので、
+再生にも本番の照会にも到達していない。**2つのシークレット（`SUPABASE_ACCESS_TOKEN` /
+`SUPABASE_PROJECT_ID`）の少なくとも一方が空**だった（ガードは `!token || !ref` なので、実測では
+どちらが欠けたかまでは分からない。`actions/secrets` も proxy が 403。両方未登録としているのは 2026-09-19 の記録）。
+週次の定期実行も 2026-09-21 以降4回連続で failure（最後の success は 09-14）。
+つまり**この検査は1か月前から死んでいて、トリガーを足しても本番には一切届かない**。
+届かないどころか、`REQUIRE_SCHEMA_DRIFT=1` で必ず exit 1 するので、paths に当たる PR に
+**作者が緑にできない赤**を足す変更だった（#974 で「今より悪い」と却下済みの形）。変更は取り下げた。
+
+**なぜ気づけなかったか**: **「どこで走らせるか」を考えるのに夢中で、「いま走っているか」を一度も見ていない。**
+`actions/workflows/.../runs` を1回叩けば4連続の赤が出た。しかも前日、同じワークフローを
+`dispatches` で起動しようとして 403 を受けている —— **その時点で Actions の API は目の前にあったのに、
+実行履歴を見なかった**。さらに悪いのは、原因が `LEDRA_CURRENT.md:663` に 2026-09-19 から
+「未登録なので週次ジョブが赤くなる。登録は代表の操作が要る」と書いてあったこと。
+**自分が更新を怠ったファイルに、自分の前提を崩す事実が置いてあった**（CLAUDE.md は「現状が変わった場合は
+LEDRA_CURRENT」と定めている。今回それを更新していなかったので、読む機会も作っていない）。
+そして「緑になるはず」と書いた —— CLAUDE.md §10 パターン5 の「コードの隣にある『はず』」が、
+検査の隣で同じ形で出た。実行していないものを実行したかのように書いている。
+
+**再発防止**: 仕組み無し（判断に依存）。
+- 習慣: **検査の走らせ方を変える前に、その検査の直近の実行結果を見る。**
+  **ただし run の `conclusion` だけでは足りない**（Codex の指摘。2026-10-17）。このワークフローは `advisors` と
+  `schema-drift` の2ジョブなので、赤でもどちらが落ちたか分からず、**緑でも「0 秒で skip」が混ざりうる**
+  （2026-09-18 まで実際そうだった）。見るのは**ジョブのステップの結果と所要時間**:
+  `gh api "repos/<o>/<r>/actions/runs/<run_id>/jobs" --jq '.jobs[]|select(.name=="Schema drift")|.steps[]|"\(.conclusion) \(.name) \(.started_at)→\(.completed_at)"'`。
+  **本来数分かかる処理が1秒で終わっていないか**を、結論と一緒に見る。今回それで分かった。
+  「頻度が足りない」と「そもそも動いていない」は見た目が同じで、直し方が正反対（前者は実装、後者は設定）。
+- 習慣: 事業ログを**書く前に読む**。とくに `LEDRA_CURRENT.md` の該当節。CLAUDE.md が更新を求めている節は、
+  同時に**その話題の最新の事実が置いてある節**でもある。更新しないことは、読まないことと同じ。
+- 習慣: 「緑になるはず」と書きそうになったら、書く代わりに叩く。叩けないなら「叩けない」と書く。
+
+**同じ PR で Codex が見つけた、この記録自身の言い過ぎ（2026-10-17）**:
+- 「2026-09-14 以降、ずれは誰も見ていない」は**言い過ぎ**だった。手で突き合わせた記録が
+  09-18・09-20・09-27 にある（LEDRA_CURRENT / RELEASE_LOG）。正しくは「**自動の継続的な**見張りが効いていない」。
+  **自分が見つけた穴を、大きく言う方向にズレた** —— §10 パターン6（要約のズレ）が、自分の失敗の記録で出た。
+  失敗を書くときは謙遜の方向に倒れると思い込んでいたが、逆に倒れる。
+- 「シークレットが未登録」も、実測では「少なくとも一方が空」までしか言えない（`!token || !ref`）。
+- 取り下げた設計の `environment: production` は、**既存の共有ジョブに付けると週次の定期実行まで
+  承認待ちになる**（Environment の保護規則はトリガーに関係なくジョブ全体に掛かる）。PR 専用の別ジョブが要る。
+- さらに `environment` は **PR に対する境界にならない**（`pull_request` では定義も PR 側から来るので、
+  PR が `environment:` の行を消せる）。保留中の本線を「PR では本番と比べない」に差し替えた。
+- **同じ結論を2か所で直し、3か所目を直し忘れた**（型 C の「同じ事実を2箇所に書いて片方だけ直す」）。
+  「シークレットだけでは見張りは戻らない」を OPEN_QUESTIONS と DECISION_LOG で直したのに、
+  **LEDRA_CURRENT は「要るのは登録だけ」のまま**だった。代表が読むのはそこ。
+  訂正を複数ファイルに散らすときは、**直した結論を `grep` で全文検索して残りを数える**。
+
+## M-20261017-proposed-a-paths-filter-that-would-redden-every-migration-pr 対策候補として出した `paths` 条件は、採用すれば列を足す PR を全部赤にするものだった（2026-10-17・型 F）
+
+**Before**: 「ドリフト検出が週1回しか走らない」の対策候補 (a) として、
+「`supabase/migrations/**` と `scripts/{check-schema-drift,replay-migrations}.mjs` を触る PR でだけ走らせる」
+と書いた。OPEN_QUESTIONS に残し、代表への報告にも「PR で条件付きに走らせる」と並べて、判断を仰いだ。
+
+**After**: 実装しようとして気づいた。この検出器は**逆向き**（マイグレーションにあって本番に無い
+列・一意制約・外部キー）でも `exit 1` する。本番への適用は `db-migrate.yml` が **main への push** で
+行うので、**その PR のマイグレーションが本番にまだ当たっていなければ、列や表を足す PR は赤になる**
+—— 検出ではなく、適用順のずれを赤にするだけ。採用範囲を検出器自身のファイルだけに絞った。
+
+**2026-10-17 訂正（Codex の指摘）**: 当初ここに「本番が**必ず**遅れている」「**例外なく**赤」と書いたが、
+**偽の不変条件**だった。Supabase MCP の `apply_migration` は今も本番へ直接書けるので、
+**ファイルがマージされる前に本番へ当たっている版**があり、その場合は逆向きの比較が通る
+（`db-migrate.yml` のコメントが実例2件を挙げている: #966 の `20260906094512` / `094735`）。
+paths から外す理由は残るが、「必ず」ではなく「**まだ本番に届いていないマイグレーションでは**」が正しい。
+**自分が除外を正当化したい方向に、条件を『必ず』へ強めていた。**
+
+**なぜ気づけなかったか**: **対策候補を書くとき、その候補を採用したら何が起きるかを一度も辿っていない。**
+しかも逆向きが致命的であることは、その数十分前に自分が読んで PR 本文に引用した同じファイルに書いてある
+（`if (total > 0 || extraColumns.length > 0 || ...) process.exit(1)`）。
+「検出器を PR で走らせたい」という**目的**から paths を逆算して、「走らせたら赤になるか」を見ていない。
+選択肢を並べる作業を、実装より軽い作業だと扱った。実際には逆で、**代表が選んだ瞬間に仕様になる**ので、
+候補のほうが先に正しくなければならない（CLAUDE.md「誤った数字は自分の中で止まらず、そのまま依頼の仕様になる」と同じ形）。
+
+**再発防止**: 仕組み無し（判断に依存）。
+- 習慣: **対策候補を書いたら、各候補について「採用した直後に何が赤くなるか／何が壊れるか」を1行書く。**
+  書けない候補は、まだ候補ではない。
+- 習慣: 検査を新しい経路で走らせる提案をするときは、その検査の**落とす条件**を先に読む。
+  「どこで走らせるか」は「何で落ちるか」と対で決まる。
 
 ## M-20261016-promised-a-workflow-dispatch-i-cannot-send 「手動起動して確かめる」と書いて出したが、起動の権限が無かった（2026-10-16・型 F）
 
