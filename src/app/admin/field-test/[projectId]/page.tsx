@@ -285,7 +285,8 @@ function TrainingTab({
                 )}
               </div>
             </div>
-            {m.content_url && (
+            {/* 保存時にも http(s) に限っているが、それ以前の行が残りうるので表示側でも絞る */}
+            {m.content_url && /^https?:\/\//i.test(m.content_url) && (
               <div className="mt-2">
                 <a
                   href={m.content_url}

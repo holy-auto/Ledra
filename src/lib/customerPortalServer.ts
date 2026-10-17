@@ -44,6 +44,18 @@ export function normalizeLast4(last4: string) {
   return s;
 }
 
+/**
+ * 顧客台帳の電話番号から下4桁を取り出す。全角数字は半角に揃えてから数字だけを残す
+ * （店の入力フォームは数字を正規化しない）。4桁に満たなければ null。
+ * ponytail: 「03-1234-5678 内線12」のような内線付きは末尾の内線を拾う。台帳の入力ルールで防ぐ。
+ */
+export function phoneLast4(phone: string | null | undefined): string | null {
+  const digits = String(phone ?? "")
+    .normalize("NFKC")
+    .replace(/\D/g, "");
+  return digits.length >= 4 ? digits.slice(-4) : null;
+}
+
 // 重要：certificates.customer_phone_last4_hash と同じ方法で作る
 export function phoneLast4Hash(tenantId: string, last4: string) {
   assertEnv();
@@ -107,9 +119,21 @@ export async function getLatestValidCodeRow(tenantId: string, email: string, pho
   return data ?? null;
 }
 
-export async function markCodeAttempt(id: string, attempts: number) {
-  const { error } = await admin().from("customer_login_codes").update({ attempts }).eq("id", id);
+/**
+ * 試行を1回分予約する（照合の前に呼ぶ）。読んだ回数 `prevAttempts` のままで未使用の行だけを +1 する。
+ * 同時に来たリクエストは同じ回数を読むが、更新できるのは1つだけなので、上限を超えて照合されない。
+ * false なら予約できなかった（別の試行に負けた・使用済み）。照合せずに失敗として返す。
+ */
+export async function markCodeAttempt(id: string, prevAttempts: number): Promise<boolean> {
+  const { data, error } = await admin()
+    .from("customer_login_codes")
+    .update({ attempts: prevAttempts + 1 })
+    .eq("id", id)
+    .eq("attempts", prevAttempts)
+    .is("used_at", null)
+    .select("id");
   if (error) throw new Error(`markCodeAttempt failed: ${error.message}`);
+  return (data ?? []).length === 1;
 }
 
 export async function markCodeUsed(id: string) {
@@ -130,7 +154,9 @@ export async function markCodeUsed(id: string) {
  * 氏名・メール・電話 (全桁)・問い合わせが読めた (監査 2026-10-17 Critical)。
  *
  * 下4桁は衝突するので「下4桁の一致する顧客が1人」は求めない。登録メールの一致する顧客を
- * 先に引き、その中で下4桁の一致する証明書を持つ者がちょうど1人のときに確定する。
+ * 先に引き、その中で**顧客台帳の電話の下4桁**が一致する者がちょうど1人のときに確定する。
+ * 証明書の下4桁ハッシュ（写し）は見ない。作成経路の一部でしか入らず本番では1件も無かったうえ、
+ * 台帳の電話を直しても古い下4桁で入れてしまうため（2026-10-17）。
  * 2人以上なら確定しない（fail-closed）。同じメールを家族で共有し下4桁も同じなら、
  * 2人のログイン要素は完全に同じで区別できない —— 片方を選ぶと、もう片方のデータを渡す。
  * 同じ人の重複登録もここで締め出されるが、それは店側で顧客を統合して解く（LINE ログインは使える）。
@@ -142,23 +168,18 @@ export async function resolveUniqueCustomerId(
   email: string,
 ): Promise<string | null> {
   const db = admin();
-  const { data: customers } = await db
+  const { data: customers, error } = await db
     .from("customers")
-    .select("id")
+    .select("id, phone")
     .eq("tenant_id", tenantId)
     .ilike("email", escapeIlike(normalizeEmail(email)));
-  const ids = (customers ?? []).map((c) => c.id as string);
-  if (ids.length === 0) return null;
+  if (error || !customers) return null;
 
-  const { data: certs } = await db
-    .from("certificates")
-    .select("customer_id")
-    .eq("tenant_id", tenantId)
-    .in("customer_id", ids)
-    .neq("status", "void")
-    .eq("customer_phone_last4_hash", phoneHash);
-  const matched = new Set((certs ?? []).map((c) => c.customer_id as string));
-  return matched.size === 1 ? [...matched][0] : null;
+  const matched = customers.filter((c) => {
+    const l4 = phoneLast4(c.phone as string | null);
+    return l4 !== null && phoneLast4Hash(tenantId, l4) === phoneHash;
+  });
+  return matched.length === 1 ? (matched[0].id as string) : null;
 }
 
 export async function createSession(tenantId: string, email: string, phoneHash: string) {

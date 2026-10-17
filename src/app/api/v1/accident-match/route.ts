@@ -23,7 +23,13 @@ import {
 } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { extractBearer, hasPassportScope, logPassportApiCall, resolvePassportApiKey } from "@/lib/passport/api/keys";
+import {
+  checkPassportMonthlyQuota,
+  extractBearer,
+  hasPassportScope,
+  logPassportApiCall,
+  resolvePassportApiKey,
+} from "@/lib/passport/api/keys";
 import { normalizeVin } from "@/lib/passport/normalizeVin";
 import { matchShopsForAccident } from "@/lib/accident-match/match";
 import { getClientIp } from "@/lib/rateLimit";
@@ -56,6 +62,28 @@ export async function GET(req: NextRequest) {
     auth.ctx.rateLimitPerMinute,
   );
   if (consumerLimited) return consumerLimited;
+
+  // Monthly quota: verify / marketplace-info と同じ（0 = 無制限）。
+  const quota = await checkPassportMonthlyQuota(admin, auth.ctx.consumerId, auth.ctx.monthlyQuota);
+  if (!quota.allowed) {
+    void logPassportApiCall({
+      admin,
+      apiKeyId: auth.ctx.keyId,
+      consumerId: auth.ctx.consumerId,
+      endpoint: ENDPOINT,
+      vinQueried: null,
+      responseStatus: 429,
+      responseTimeMs: Date.now() - startedAt,
+      ip: getClientIp(req),
+      userAgent: req.headers.get("user-agent"),
+    });
+    return apiError({
+      code: "plan_limit",
+      message: "今月のリクエスト上限に達しました。来月までお待ちいただくか、上限の引き上げをご相談ください。",
+      status: 429,
+      data: { used: quota.used, limit: quota.limit },
+    });
+  }
 
   const url = new URL(req.url);
   const vinRaw = (url.searchParams.get("vin") ?? "").trim();

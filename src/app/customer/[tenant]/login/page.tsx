@@ -96,9 +96,15 @@ export default function CustomerLoginPage() {
             コード送信
           </button>
         ) : (
-          <button disabled={busy} onClick={verifyCode} className={btnCls}>
-            ログイン
-          </button>
+          <>
+            <button disabled={busy} onClick={verifyCode} className={btnCls}>
+              ログイン
+            </button>
+            {/* 3回間違えるとコードは無効になるが、応答は他の誤りと同じ。ここから新しいコードを取り直す */}
+            <button disabled={busy} onClick={requestCode} className={btnCls}>
+              コードを再送
+            </button>
+          </>
         )}
       </div>
 

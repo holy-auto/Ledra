@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mocks = vi.hoisted(() => ({
   getTenantIdBySlugMock: vi.fn(),
   getLatestValidCodeRowMock: vi.fn(),
-  markCodeAttemptMock: vi.fn().mockResolvedValue(undefined),
+  markCodeAttemptMock: vi.fn().mockResolvedValue(true),
   markCodeUsedMock: vi.fn().mockResolvedValue(undefined),
   createSessionMock: vi.fn(),
   phoneLast4HashMock: vi.fn().mockReturnValue("hashed-phone"),
@@ -131,10 +131,29 @@ describe("POST /api/customer/verify-code", () => {
     otpCodeHashMock.mockReturnValueOnce("wrong-hash");
 
     const res = await POST(jsonReq(validBody));
-    expect(res.status).toBe(429);
-    // markCodeAttempt called with attempts=3, then markCodeUsed to lock the row
-    expect(markCodeAttemptMock).toHaveBeenCalledWith("row-1", 3);
+    // 上限でも応答は他の失敗と同じ 400（429 だと「コードが実在する＝顧客」と分かる）
+    expect(res.status).toBe(400);
+    // 読んだ回数 2 で予約（2→3）し、上限なので使用済みにする
+    expect(markCodeAttemptMock).toHaveBeenCalledWith("row-1", 2);
     expect(markCodeUsedMock).toHaveBeenCalledWith("row-1");
+  });
+
+  it("試行を予約できなければ（同時の試行に負けた）、正しいコードでもセッションを作らない", async () => {
+    getTenantIdBySlugMock.mockResolvedValueOnce("tenant-1");
+    getLatestValidCodeRowMock.mockResolvedValueOnce({
+      id: "row-1",
+      code_hash: "real-hash",
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      used_at: null,
+      attempts: 0,
+    });
+    otpCodeHashMock.mockReturnValueOnce("real-hash");
+    markCodeAttemptMock.mockResolvedValueOnce(false);
+
+    const res = await POST(jsonReq(validBody));
+    expect(res.status).toBe(400);
+    expect(createSessionMock).not.toHaveBeenCalled();
+    expect(markCodeUsedMock).not.toHaveBeenCalled();
   });
 
   it("issues a session cookie when the code matches", async () => {

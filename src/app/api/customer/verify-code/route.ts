@@ -91,21 +91,20 @@ export async function POST(req: Request) {
     if (row.used_at) return invalidCodeResponse;
     if (new Date(row.expires_at).getTime() < Date.now()) return invalidCodeResponse;
 
+    // 照合の前に試行を1回分予約する。同時の試行に負けた・上限に達した行は照合しない。
+    const prevAttempts = row.attempts ?? 0;
+    if (prevAttempts >= OTP_MAX_ATTEMPTS) return invalidCodeResponse;
+    if (!(await markCodeAttempt(row.id, prevAttempts))) return invalidCodeResponse;
+
     const expected = otpCodeHash(tenantId, email, phoneHash, code);
     // 定数時間比較。長さが違えば即不一致 (timingSafeEqual は等長バッファ必須)。
     const expectedBuf = Buffer.from(expected);
     const actualBuf = Buffer.from(row.code_hash ?? "");
     const codeMatches = expectedBuf.length === actualBuf.length && timingSafeEqual(expectedBuf, actualBuf);
     if (!codeMatches) {
-      const nextAttempts = (row.attempts ?? 0) + 1;
-      await markCodeAttempt(row.id, nextAttempts);
-      if (nextAttempts >= OTP_MAX_ATTEMPTS) {
-        await markCodeUsed(row.id);
-        return apiJson(
-          { error: "too_many_attempts", message: "試行回数の上限に達しました。再度コードを送信してください。" },
-          { status: 429 },
-        );
-      }
+      // 数えるだけでは総当たりを止めない。上限で使用済みにする。
+      // 上限でも応答は他の失敗と同じにする。429 を返すと「コードが実在する＝顧客である」と分かる。
+      if (prevAttempts + 1 >= OTP_MAX_ATTEMPTS) await markCodeUsed(row.id);
       return invalidCodeResponse;
     }
 
