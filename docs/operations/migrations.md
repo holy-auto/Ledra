@@ -222,6 +222,11 @@ MISTAKE_LEDGER `M-20260922-renamed-a-migration-the-preview-db-had-applied`。
 `is_default: true` は絶対に消さない）。消えた分岐は次の push で作り直され、空の DB に
 リポジトリのファイルを頭から流すので、改名前の版は残らない。
 
+**ただし、作り直されないことがある。** 2026-10-16 / PR #1354 では、API（`delete_branch`）で分岐を消した後に4回 push しても
+分岐は作り直されず、`Supabase Preview` は `skipped` のままだった（改名後の版を本物の Supabase で確かめられないままマージした）。
+消す前に、作り直されなかったときの代わり（マージ後に本番で読み取りと「書けずに落ちる」を確かめる等）を決めておく。
+リセットを先に試さずに消すのは、この節の順序から外れる（MISTAKE_LEDGER `M-20261016-deleted-preview-branch-trusting-it-would-be-recreated`）。
+
 実例: 2026-09-29 / PR #1172。`main` が `20260927142855` をマージしたため
 `20260927114500` を `20260929132849` へ改名し、上の手順でリセットしたところ、
 全テーブルの削除と auth の truncate を終えた直後にこのエラーで落ちた。
