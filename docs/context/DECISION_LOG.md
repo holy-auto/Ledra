@@ -4,7 +4,7 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
-## 2026-10-17 polygon-signer の原因は DNS。RPC を当てずに代表へ渡す
+## 2026-10-17 polygon-signer の最新の失敗の原因は DNS。RPC を当てずに代表へ渡す
 
 1. 日付: 2026-10-17（`date -u` で確認）
 2. 起きたこと: OPEN_QUESTIONS 2026-10-09 の「`polygon-signer` は一度も成功していない」（当時の表現。
@@ -12,6 +12,9 @@
    原因候補は (i) TLS 1.3 限定 (ii) 公開 RPC の遮断・不調 (iii) DNS の3つで、
    「デプロイ後の `last_error` の `[cause: ...]` で決まる」と書かれていた。本番を見たら入っていた:
    `ENOTFOUND: getaddrinfo ENOTFOUND rpc-amoy.polygon.technology`。**(iii) DNS。**
+   **ただし言えるのは最新の1件についてだけ**（Codex の指摘。2026-10-17）—— `recordCronFailure()` は
+   `last_error` を毎回上書きする（`failureTracker.ts:102-114`）ので履歴が残らない。読めるのは最後の1件で、
+   **3か月半の失敗すべてが DNS だったとは言えない**。
    TLS 握手より前で落ちているので (i) は**この失敗の原因ではない**。
    **ただし (i) の制約は残る**（Codex の指摘。2026-10-17）—— 差し替える RPC が TLS 1.3 を話せなければ、
    DNS エラーが TLS 握手エラーに替わるだけ。
@@ -45,7 +48,7 @@
    **`POLYGON_NETWORK` の値も未確定** —— 当初「エラーの URL から amoy と確定」と書いたが、
    `getConfig()` は `POLYGON_RPC_URL || DEFAULT_RPC[network]` なので、`POLYGON_RPC_URL` に amoy の URL が
    明示設定されていれば `polygon` でも同じ URL が出る（Codex の指摘で訂正）。Vercel の環境変数を見るまで不明。
-9. 公開区分: 要確認（認証を通る出所不明の呼び出しに触れる。原因が DNS だったことと、
+9. 公開区分: 要確認（認証を通る出所不明の呼び出しに触れる。最新の失敗の原因が DNS だったことと、
    調査の進め方は公開可。ウォレットアドレス・シークレットの話は出さない）
 
 **併せて見つけたこと（新規）**: `polygon-signer` は**毎時1回より多く叩かれている**。`vercel.json` の cron は
