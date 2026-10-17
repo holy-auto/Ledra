@@ -118,7 +118,25 @@ export async function generateCertificatePdfBytes(certificateId: string): Promis
     current_version: cert.current_version ?? null,
   };
 
-  const buffer = await renderCertificatePdf(row, publicUrl);
+  // アンカー済み画像を渡す。渡さないと PDF の冒頭文が「刻印されていない」側の文言になり、
+  // 刻印済みの証明書に実態より弱い文が載る（`buildServiceStatement`）。QR ブロックも出ない。
+  // 他の PDF 経路（admin/certificates/pdf-one 等）と同じ select を使う。
+  const { data: images } = await supabase
+    .from("certificate_images")
+    .select("sha256, polygon_tx_hash, polygon_network")
+    .eq("certificate_id", certificateId)
+    .not("polygon_tx_hash", "is", null)
+    .order("sort_order", { ascending: true });
+  const anchors = (images ?? []).map((i) => ({
+    sha256: (i.sha256 as string | null) ?? null,
+    polygon_tx_hash: (i.polygon_tx_hash as string | null) ?? null,
+    polygon_network:
+      i.polygon_network === "polygon" || i.polygon_network === "amoy"
+        ? (i.polygon_network as "polygon" | "amoy")
+        : null,
+  }));
+
+  const buffer = await renderCertificatePdf(row, publicUrl, anchors);
   return new Uint8Array(buffer);
 }
 

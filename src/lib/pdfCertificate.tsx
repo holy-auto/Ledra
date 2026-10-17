@@ -653,6 +653,36 @@ function buildPresetLines(schema: TemplateSchema | null, values: Record<string, 
   return lines;
 }
 
+/**
+ * DECLARATION（冒頭文）を組み立てる。**根拠の節だけ** `anchored` で切り替える。
+ *
+ * 刻印が無い証明書に「Polygon ブロックチェーンに刻印された改ざん不可能な記録」と書くと、
+ * 事実と違う文がそのまま顧客の手元に残る。本番の実測（2026-10-17）では証明書 70 件に対し
+ * 刻印は 11 件で、その 11 件はすべて撮影用のデモテナント（`ledra-motors-demo`）のものだった。
+ * つまり実テナントの証明書は1件も刻印されていないのに、全件にこの文が載っていた。
+ *
+ * ponytail: 刻印が無いときの根拠は「写真と作業内容」までに留める。ハッシュを根拠に挙げない
+ * のは、PDF がハッシュを載せるのは刻印済みの QR ブロック（`anchorQrs.length > 0`）だけなので、
+ * ハッシュに言及すると文書自身が裏付けを持たない主張になるため。刻印が無くてもハッシュを
+ * 表に出す設計にするなら、その時点でここも「写真とそのハッシュ」に広げられる。
+ */
+export function buildServiceStatement(serviceType: string | null | undefined, anchored: boolean): string {
+  const subject =
+    serviceType === "ppf"
+      ? "ペイントプロテクションフィルム (PPF) の施工が完了した事実"
+      : serviceType === "maintenance"
+        ? "整備作業が実施された事実"
+        : serviceType === "body_repair"
+          ? "鈑金塗装作業が実施された事実"
+          : serviceType === "accessory"
+            ? "用品取付作業が実施された事実"
+            : "施工作業が完了した事実";
+  const basis = anchored
+    ? "Polygon ブロックチェーンに刻印された改ざん不可能な記録として"
+    : "施工時に記録された写真と作業内容に基づいて";
+  return `本証明書は、下記車両に対して${subject}を、${basis}証明するものです。`;
+}
+
 export async function renderCertificatePdf(
   row: CertRow,
   publicUrl: string,
@@ -729,15 +759,7 @@ export async function renderCertificatePdf(
     timeZone: "Asia/Tokyo",
   });
 
-  const serviceStatement = isPpf
-    ? "本証明書は、下記車両に対してペイントプロテクションフィルム (PPF) の施工が完了した事実を、Polygon ブロックチェーンに刻印された改ざん不可能な記録として証明するものです。"
-    : isMaintenance
-      ? "本証明書は、下記車両に対して整備作業が実施された事実を、Polygon ブロックチェーンに刻印された改ざん不可能な記録として証明するものです。"
-      : isBodyRepair
-        ? "本証明書は、下記車両に対して鈑金塗装作業が実施された事実を、Polygon ブロックチェーンに刻印された改ざん不可能な記録として証明するものです。"
-        : isAccessory
-          ? "本証明書は、下記車両に対して用品取付作業が実施された事実を、Polygon ブロックチェーンに刻印された改ざん不可能な記録として証明するものです。"
-          : "本証明書は、下記車両に対して施工作業が完了した事実を、Polygon ブロックチェーンに刻印された改ざん不可能な記録として証明するものです。";
+  const serviceStatement = buildServiceStatement(row.service_type, totalAnchored > 0);
 
   const networkLabel = (network: "polygon" | "amoy") =>
     network === "amoy" ? "Polygon Amoy testnet" : "Polygon mainnet";
