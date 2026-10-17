@@ -3,8 +3,6 @@ import { PageHero } from "@/components/marketing/PageHero";
 import { Section } from "@/components/marketing/Section";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
 import { CTAButton } from "@/components/marketing/CTAButton";
-import { DemoCredentialsCard } from "@/components/marketing/DemoCredentialsCard";
-import { DEMO_EMAIL, DEMO_PASSWORD } from "@/lib/demo";
 
 export const metadata = {
   title: "デモ環境を試す",
@@ -49,7 +47,10 @@ const HIGHLIGHTS = [
   },
 ];
 
-export default function DemoPage() {
+export default async function DemoPage({ searchParams }: { searchParams: Promise<{ e?: string }> }) {
+  // /demo/enter がログインに失敗すると ?e=1 で戻ってくる
+  const enterFailed = (await searchParams).e === "1";
+
   return (
     <>
       <PageHero
@@ -60,6 +61,18 @@ export default function DemoPage() {
 
       <Section>
         <div className="mx-auto max-w-3xl">
+          {enterFailed && (
+            <div
+              role="alert"
+              className="mb-6 rounded-xl border border-red-400/30 bg-red-400/[0.08] p-4 text-sm leading-relaxed text-red-100"
+            >
+              デモへのログインに失敗しました。少し時間をおいてもう一度お試しください。続く場合は{" "}
+              <Link href="/contact" className="font-medium text-red-200 underline underline-offset-2">
+                お問い合わせ
+              </Link>{" "}
+              からご連絡ください。
+            </div>
+          )}
           <ScrollReveal variant="fade-up">
             <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
               <CTAButton variant="primary" href="/demo/enter" trackLocation="demo-page" trackLabel="demo-enter">
@@ -69,20 +82,6 @@ export default function DemoPage() {
                 自分のアカウントを作る
               </CTAButton>
             </div>
-          </ScrollReveal>
-
-          <ScrollReveal variant="fade-up" delay={100}>
-            <DemoCredentialsCard email={DEMO_EMAIL} password={DEMO_PASSWORD} />
-          </ScrollReveal>
-
-          <ScrollReveal variant="fade-up" delay={150}>
-            <p className="mt-4 text-center text-xs text-white/60">
-              手動でログインしたい場合は{" "}
-              <Link href="/login" className="underline underline-offset-2 hover:text-white">
-                /login
-              </Link>{" "}
-              から上記の認証情報をご利用ください。
-            </p>
           </ScrollReveal>
 
           <ScrollReveal variant="fade-up" delay={250}>

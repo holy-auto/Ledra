@@ -10,8 +10,19 @@
 
 - Medium: `market_vehicles` の RLS が `status = 'listed'` の行を anon に**全列**開いている（仕入原価・仕入先・車台番号・買主情報）。
   本番で listed の行は 0 件なので、今は漏れていない。出品が始まった時点で漏れる。
-- Medium: デモアカウントの認証情報がソースにある（`src/lib/demo.ts`）。これで JWT を取れば、「authenticated なら誰でも読める」ポリシーに届く。
-  推定: その JWT でデモのパスワードを変えられる（未検証）。
+- Medium（施工店デモはソースから消した。**残りは代表の作業**）: 公開済みの施工店デモのパスワードは、Supabase 側でまだ有効。git 履歴にも残る。
+  デプロイ後に `/demo/enter` が通ることを確かめてから、`scripts/setup-demo-tenant-user.ts` を本番の鍵で実行してランダムに付け替える。
+  Supabase ダッシュボードで「Secure email change」を ON、「現在のパスワードを要求する」設定があれば ON（名前は【要確認】）。
+  保険会社・メーカー・代理店のデモ（`*.ledra.test`）も同じ固定パスワードで、setup スクリプトと `docs/agent-demo-guide.md` に載っている。本番にあるかは【要確認】。
+  **Secure email change が OFF だと、デモの利用者がアカウントを乗っ取れる**: `/demo/enter` で取ったセッションで Auth API からメールを自分のアドレスに変え、
+  届いた確認だけで確定できる（OFF だと確認は新しいアドレスにだけ届く。Supabase ドキュメント「Email change behavior」で確認）。
+  確定すると `/demo/enter` は止まり（`?e=1` の表示になる。元のアドレスで generateLink が所属の無いユーザーを作っても、所属を確かめてから入れるので通らない）、乗っ取った人はデモテナントの owner として読み続ける。
+  ON なら現在のアドレス `demo@ledra-motors.example`（`.example` は届かない）にも確認が要るので確定しない。本番の設定値は【要確認】。
+  表示名の書き換え・MFA の登録・全セッションのサインアウトも利用者ができる。表示名と MFA は setup スクリプトの再実行で戻る（MFA を登録されても
+  `/admin` の閲覧は止まらない。aal2 を要求するのは書き出し・秘密情報の変更などだけ）。サインアウトは他の閲覧者が入り直せば済む。
+- Medium: 「ログインしていれば誰でも読める」ポリシーで、他テナントの業務データが見える（自己登録でも JWT は取れるので、デモだけの問題ではない）。
+  `academy_lesson_ratings_select`（`true`。user_id・tenant_id・コメント）、`partner_scores_select`（`auth.uid() IS NOT NULL`。全テナントの受注実績）。
+  低: `academy_cases_read_published` の tenant_id・certificate_id・published_by、`academy_lessons` の author_user_id。再生 DB から抽出（2026-10-17）。
 - Medium: 実証テスト（`ft_applications` / `ft_agreements` / `ft_jobs`）の RLS の UPDATE は tenant_id しか見ていない。
   PostgREST を直接叩けば、メーカーの承認・契約本文・検査を飛ばせる。推定（本番の grant は未確認）。
 - Medium: 外注依頼の相手テナントを、`staff_members.linked_tenant_id` を直接更新することで、相手の同意なく指定できる。推定。
