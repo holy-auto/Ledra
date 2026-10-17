@@ -35,6 +35,16 @@
    2段階で間違えた。
    (b) 止めるなら `POLYGON_ANCHOR_ENABLED` を `"true"` 以外にする —— route はその判定で `skipped` を返し、
    RPC に触らず失敗の連鎖も止まる（`route.ts` の判定順を読んで確認）。
+   **ただしこのフラグは新規アンカーの停止だけではない**（Codex の P1 指摘。2026-10-17）——
+   `api/cert-verify/[public_id]/route.ts:105` が `verifyBatchAnchor()` をこのフラグで囲っているので、
+   **既存の証明書の `on_chain_verified` も `null` になる**。`polygon-signer` のアラート文
+   （`route.ts:116`）が「既存のアンカーは引き続き検証可能」と書いている約束と衝突する。
+   (b) は「検証も止まることを承知で止める」か「書き込みと読み取りをフラグで分けるコード変更を先に入れる」
+   の2択になる（OPEN_QUESTIONS の b-1 / b-2）。
+   (a) 側も2点訂正: **接尾辞付きは「消す」ではなく「そのネットワーク向けに直す」**
+   （両プロバイダの `getReadConfig(networkOverride)` も `perNetworkEnv` を通るので、消すと過去のアンカーの
+   読み取りが接尾辞無しに落ち、別ネットワークの RPC で照会して未検証に見える）。
+   **cron の監視が緑でもアンカー本体が直った証拠にならない**（監視は接尾辞無しだけを読む）。
    **候補の RPC をログに書かない**。確認せずに書けば、検証していない断定を1つ増やすだけになる
    （`M-20261017-wrote-absolutes-about-mechanisms-i-had-not-traced` の直後に同じことをしない）。
 6. 捨てた選択肢: (1) 既定値 `DEFAULT_RPC.amoy` を別の URL に変える —— どれが生きているか確認できないので当て推量になる。
