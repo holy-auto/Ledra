@@ -8,8 +8,6 @@
 調査は3系統（認証なしのルート／ログイン後のテナント越え・一括取得／Supabase への直接アクセス）。
 下の項目はコードを読んで出た指摘で、**再確認したのは顧客一覧の一括取得だけ**。重い順に並べた。
 
-- Medium: `market_vehicles` の RLS が `status = 'listed'` の行を anon に**全列**開いている（仕入原価・仕入先・車台番号・買主情報）。
-  本番で listed の行は 0 件なので、今は漏れていない。出品が始まった時点で漏れる。
 - Medium（施工店デモはソースから消した。**残りは代表の作業**）: 公開済みの施工店デモのパスワードは、Supabase 側でまだ有効。git 履歴にも残る。
   デプロイ後に `/demo/enter` が通ることを確かめてから、`scripts/setup-demo-tenant-user.ts` を本番の鍵で実行してランダムに付け替える。
   Supabase ダッシュボードで「Secure email change」を ON、「現在のパスワードを要求する」設定があれば ON（名前は【要確認】）。
@@ -23,9 +21,6 @@
 - Medium: 「ログインしていれば誰でも読める」ポリシーで、他テナントの業務データが見える（自己登録でも JWT は取れるので、デモだけの問題ではない）。
   `academy_lesson_ratings_select`（`true`。user_id・tenant_id・コメント）、`partner_scores_select`（`auth.uid() IS NOT NULL`。全テナントの受注実績）。
   低: `academy_cases_read_published` の tenant_id・certificate_id・published_by、`academy_lessons` の author_user_id。再生 DB から抽出（2026-10-17）。
-- Medium: 実証テスト（`ft_applications` / `ft_agreements` / `ft_jobs`）の RLS の UPDATE は tenant_id しか見ていない。
-  PostgREST を直接叩けば、メーカーの承認・契約本文・検査を飛ばせる。推定（本番の grant は未確認）。
-- Medium: 外注依頼の相手テナントを、`staff_members.linked_tenant_id` を直接更新することで、相手の同意なく指定できる。推定。
 - Low: `/api/admin/customers`・`/api/admin/vehicles` は `page` を付けないと件数を絞らない
   （1回で PostgREST の上限まで返る。本番の上限値【要確認】）。監査ログもレート制限も無い。自テナント内の閲覧権限者向けの話。
   **単純に上限を掛けると壊れる**: `DocumentForm`・`WalkinJobClient`・`ReservationsClient` などが page 無しで全件を取り、ドロップダウンに出している。先に検索型の選択へ変える必要がある（#1374 で確認）。
@@ -39,7 +34,7 @@
   上限の直前に同時に来たリクエストは全部通るので、上限を少し超えうる（分あたりの制限の範囲まで）。直すには原子的に数える関数（マイグレーション）が要る。
   課金の上限として厳密にしたくなった時点で直す（#1374 の Codex の指摘。2026-10-17）。
 - Low: 一般のレート制限は、`RATE_LIMIT_FAIL_CLOSED` が未設定なら Redis 障害時に fail-open になる。本番の値は【要確認】。
-- Low: `customer_inquiries` の `public_insert WITH CHECK (true)` がマイグレーションに残っている（本番には無い）。新しい環境では穴が復活する。
+- Low（2026-10-17 の RLS 修正の作業中に見つかった。未検証）: `customer_inquiries` の UPDATE ポリシー `tenant_members_update`（20260409000000）はロールを見ていない。
 - Low: `*` の API キーは、将来 read 系のエンドポイントを足すと自動でその権限を持つ。（発行時の AAL2 は proxy で必須になっていた。指摘は誤り。#1374 でテストに固定）
 - 問題なしと確認できたもの: Metabase など分析ツールの稼働痕跡は無い。本番の public 280 表はすべて RLS 有効、Storage 11 バケットはすべて非公開。
   サーバ側の依存に high/critical の脆弱性は無い（`npm audit --omit=dev`）。外部 API キーでは顧客・車両の個人情報を読めない。

@@ -39,14 +39,15 @@ export const GET = withCaller(
       const maker = url.searchParams.get("maker") ?? "";
       const bodyType = url.searchParams.get("body_type") ?? "";
       const search = url.searchParams.get("search") ?? "";
-      const isPublic = url.searchParams.get("public") === "true";
 
       // Single vehicle by ID
       if (singleId) {
-        let q = supabase.from("market_vehicles").select(MV_COLS).eq("id", singleId);
-        if (!isPublic) q = q.eq("tenant_id", caller.tenantId);
-        else q = q.eq("status", "listed");
-        const { data: vehicles, error } = await q;
+        // 自社の車両だけ（他テナントの出品は /market が service role で公開列だけを読む。20261017103611）
+        const { data: vehicles, error } = await supabase
+          .from("market_vehicles")
+          .select(MV_COLS)
+          .eq("id", singleId)
+          .eq("tenant_id", caller.tenantId);
         if (error) {
           return apiInternalError(error, "market-vehicles single fetch");
         }
@@ -72,25 +73,14 @@ export const GET = withCaller(
         return apiJson({ vehicles: enriched, stats: { total: enriched.length, listed: 0, draft: 0 } });
       }
 
-      let query;
+      // 自社の在庫（全ステータス）
+      let query = supabase
+        .from("market_vehicles")
+        .select(MV_COLS)
+        .eq("tenant_id", caller.tenantId)
+        .order("created_at", { ascending: false });
 
-      if (isPublic) {
-        // Cross-tenant: only listed vehicles
-        query = supabase
-          .from("market_vehicles")
-          .select(MV_COLS)
-          .eq("status", "listed")
-          .order("listed_at", { ascending: false });
-      } else {
-        // Tenant's own vehicles: show all statuses
-        query = supabase
-          .from("market_vehicles")
-          .select(MV_COLS)
-          .eq("tenant_id", caller.tenantId)
-          .order("created_at", { ascending: false });
-
-        if (status && status !== "all") query = query.eq("status", status);
-      }
+      if (status && status !== "all") query = query.eq("status", status);
 
       if (maker) query = query.eq("maker", maker);
       if (bodyType) query = query.eq("body_type", bodyType);
@@ -138,7 +128,7 @@ export const GET = withCaller(
       });
 
       // Stats (only for tenant's own vehicles)
-      const allVehicles = isPublic ? enriched : enriched;
+      const allVehicles = enriched;
       const total = allVehicles.length;
       const listed = allVehicles.filter((v) => v.status === "listed").length;
       const draft = allVehicles.filter((v) => v.status === "draft").length;

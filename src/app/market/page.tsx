@@ -6,6 +6,7 @@ import { escapeIlike } from "@/lib/sanitize";
 import MarketClient from "./MarketClient";
 import { signAssetPaths } from "@/lib/signedUrl";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { MARKET_LISTING_COLUMNS } from "@/lib/market/listingColumns";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +20,12 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) redirect("/login?next=/market");
 
-  let query = supabase
+  // 他テナントの出品中の車両は RLS では読めない（自テナントの行だけ。20261017103611）。
+  // service role で、出品中の行と他テナントに見せてよい列だけを読む。
+  const admin = createServiceRoleAdmin("market list — listed vehicles of all tenants, public columns only");
+  let query = admin
     .from("market_vehicles")
-    .select("*")
+    .select(MARKET_LISTING_COLUMNS)
     .eq("status", "listed")
     .order("listed_at", { ascending: false });
 
@@ -30,14 +34,17 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
     query = query.or(`maker.ilike.%${sq}%,model.ilike.%${sq}%`);
   }
 
-  const { data: vehicles } = await query;
+  const { data: vehicles, error } = await query;
+  // 列を指定して読むので、列の改名・削除は照会エラーになる。空の一覧に見せずエラーにする
+  if (error) throw new Error(`market list query failed: ${error.message}`);
 
   // Fetch images for all vehicles
   const vehicleIds = (vehicles ?? []).map((v: any) => v.id);
   const imagesMap: Record<string, any[]> = {};
 
   if (vehicleIds.length > 0) {
-    const { data: images } = await supabase
+    // 画像も RLS では他テナントの分を読めないので service role で読む。vehicleIds は上で読んだ出品中の車両だけ
+    const { data: images } = await admin
       .from("market_vehicle_images")
       .select("*")
       .in("vehicle_id", vehicleIds)
@@ -49,10 +56,10 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
     });
     // 一覧は 1 枚目しか出さないので、1 枚目だけ署名 URL にする。
     // market の objects には読み取りポリシーが無い（20260616000003 で外した）ので、署名は service-role で行う
-    // （署名するのは、この画面の利用者が RLS 越しに読めた出品中の車両の画像だけ）。
+    // （署名するのは、出品中の車両の画像だけ）。
     const firsts = Object.values(imagesMap).map((imgs) => imgs[0]);
     const urls = await signAssetPaths(
-      createServiceRoleAdmin("market list — sign first image of listed vehicles"),
+      admin,
       firsts.map((img) => img.storage_path),
       "market",
     );
