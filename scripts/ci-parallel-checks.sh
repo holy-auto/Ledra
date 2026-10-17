@@ -37,7 +37,7 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # 表示名と実行コマンド。**CI はこの1箇所だけを見る。**
-NAMES=(lint lint:migrations tsc test:coverage check:schema check:context-dates check:ox-override check:ledger-ids check:audit-actions check:c2pa-binary check:db-writes)
+NAMES=(lint lint:migrations tsc test:coverage check:schema check:context-dates check:ox-override check:ledger-ids check:audit-actions check:c2pa-binary check:db-writes check:lib-cycles)
 CMDS=(
   "npm run lint"
   "npm run lint:migrations"
@@ -72,6 +72,10 @@ CMDS=(
   # 書き込みは「画面には成功、DB には何も無い」になる。2026-10-10 にヒアリング連携で
   # 実害が出て、同じ形が 276 件あった (DECISION_LOG 2026-10-12)。0 件を維持する
   "npm run check:db-writes"
+  # src/lib のモジュール同士の循環依存を増やさない。2026-10-17 時点で certificates /
+  # parts / anchoring / line / ai など 22 モジュールが互いに呼び合っており、構成図の
+  # 箱の境界がコード上で守られていなかった。今ある循環は一覧に固定し、新規だけ落とす
+  "npm run check:lib-cycles"
 )
 
 # NAMES と CMDS は添字で対応する並列配列で、間に説明コメントが挟まるため

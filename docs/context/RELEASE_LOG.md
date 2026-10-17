@@ -4,6 +4,15 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-17 src/lib の循環依存を増やさない検査を CI に入れた（check:lib-cycles）
+
+- `npm run check:lib-cycles` を追加し、CI の並列チェック（`scripts/ci-parallel-checks.sh`）に入れた。
+  `src/lib` のモジュール同士で新しく循環に入る依存ができると、原因のファイルを示して落ちる。
+- 現状（2026-10-17）: 150 モジュール中 22 が循環（certificates・parts・anchoring・line・ai などの 19 と、api・auth・billing の 3）、循環辺 57 本。
+  これは `scripts/lib-cycles.baseline.json` に固定し、増減があれば落とす。循環を解いたら `npm run check:lib-cycles -- --update` で一覧を縮める。
+- import は TypeScript の構文解析で拾う（コメント・文字列の中の import、型の位置の `import()`、全部 `type` の import は数えない）。
+- 検証: テスト 10 件（それぞれ、正規表現で拾っていた旧版か、解析モードを壊した版で落ちることを確認）。実コードに逆向きの import を1本足すと exit 1 になることを確認。CI と同じ検査 12 項目がすべて通過。
+
 ## 2026-10-17 証明書 PDF が「刻印あり」と数える集合を1本化した（署名用 PDF への施工担当の追加は取り下げ）
 
 #1370 の `/code-review` で残りとして記録した2件を片付けた（どちらも #1370 の前からある挙動）。
