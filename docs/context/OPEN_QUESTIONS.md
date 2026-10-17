@@ -151,14 +151,52 @@ JMS Bizweek 2026 で OEM が「バリューチェーン・入力の簡略化・�
 `UPDATE stripe_processed_events SET processed_at = now() WHERE event_id IN (...3件)` で閉じる、(b) 追いついていなければ Stripe から Resend する。
 本番データの書き換えなので、このセッションでは実行していない。閉じない限り 288 回/日 Sentry とログに出続け、本物の詰まりが埋もれる。
 
-**2. `polygon-signer` は一度も成功していない。**
-`cron_failure_streaks` で `consecutive_failures=4305`、`last_success_at=NULL`（2026-10-09 14:00 UTC 時点）。
-現在のエラーは `rpc-amoy.polygon.technology` への `fetch failed`。原因候補は (i) 2026-10-02 の TLS 1.3 限定（`tls13HttpsFetch`）に Amoy 公開 RPC が非対応、
-(ii) 公開 RPC 側の遮断・不調、(iii) DNS。この環境からは当該ホストに接続できず切り分けられなかった。
-今回 `cause` の連鎖をログに出すようにしたので、**デプロイ後の次の実行のログ（または `last_error` の先頭 `[cause: ...]`）で決まる**。
-あわせて【要確認】本番の `POLYGON_NETWORK` が `amoy`（テストネット）になっている。本番のアンカーをテストネットに打つ運用で良いのか、
-アンカリング自体を止める（`POLYGON_ANCHOR_ENABLED` を外す）のかは代表判断。また Vercel cron（GET）とは別に、
-`www.ledra.co.jp` 宛ての POST でも毎時叩かれている（外部スケジューラ。出所未確認）。
+**2. `polygon-signer` は一度も成功していない。** → **2026-10-17 に原因を特定（DNS）。残りは代表判断。**
+
+**原因は DNS。** 本番の `cron_failure_streaks.last_error` に cause 連鎖が入っていた（2026-10-17 05:31 UTC に Supabase MCP で確認）:
+
+```
+[cause: fetch failed <- ENOTFOUND: getaddrinfo ENOTFOUND rpc-amoy.polygon.technology] HTTP request failed.
+URL: https://rpc-amoy.polygon.technology/
+Request body: {"method":"eth_getBalance","params":["0x8938…","latest"]}
+Version: viem@2.57.2
+```
+
+`ENOTFOUND` は名前解決の失敗なので、**候補 (i) TLS 1.3 限定は原因ではない**（TLS 握手より前で落ちている）。
+`rpc-amoy.polygon.technology` が世界的に消えたのかは**この環境からは判定できない** ——
+ここの名前解決は許可リストで、実在する `docs.github.com` や `polygon-rpc.com` も引けない（実測）。
+言えるのは「**Vercel のランタイムがこのホスト名を解決できない**」まで。
+
+**コードの経路から演繹できる本番の設定**（`src/app/api/cron/polygon-signer/route.ts` / `providers/polygonBatch.ts`）:
+`POLYGON_ANCHOR_ENABLED !== "true"` の判定は RPC に触る前にあり、そこで `skipped` を返す。
+RPC エラーが記録されている以上、
+- `POLYGON_ANCHOR_ENABLED` は `"true"`
+- `POLYGON_PRIVATE_KEY` は設定済みかつ `0x`+64桁に正規化できる（できなければ手前で skip）
+- `POLYGON_NETWORK` は `amoy`（エラーの URL が amoy の既定値）→ **2026-10-09 の【要確認】はこれで確定**
+- `POLYGON_RPC_URL_AMOY` も `POLYGON_RPC_URL` も未設定（ハードコードの既定値 `DEFAULT_RPC.amoy` に落ちている）
+
+**新しく分かったこと: 呼び出しが毎時2回ある（1回は出所不明で、有効な cron シークレットを持っている）。**
+`vercel.json` の cron は `0 * * * *` の**毎時1回**。一方、行の作成 2026-07-01 07:34:43 から
+最終失敗 2026-10-17 05:00:21 までの **2589.4 時間で 4671 件 = 1.804 件/時**（自分で測った）。
+`recordCronFailure` は読んで `prevCount + 1` を書くだけでリトライも二重加算も無く、ルートの export は `GET` だけ、
+`recordCronFailure` の呼び出しも1か所だけなので、**1回の実行＝1増**。したがって呼び出しが複数ある。
+さらに `verifyCronRequest` が失敗した呼び出しは記録前に return するので、**2つ目の呼び出しは認証を通っている**。
+2026-10-09 の記録（4305 件）との差分でも +366 件 / 183 時間 = 2.0 件/時 になるが、4305 は自分で測った数字ではない。
+- 161 行で触れた「`www.ledra.co.jp` 宛ての POST」では**この経路は動かない**（`GET` しか export していないので 405）。
+  つまりその記述が誤りか、あるいは別の GET の呼び出し元がある。**出所は未確認。**
+- 探し方: Vercel のランタイムログで `/api/cron/polygon-signer` を1時間分見て、2件の user-agent と送信元 IP を比べる。
+
+**代表に決めてもらうこと（どちらもレバーはコードで確認済み）**:
+- (a) **アンカリングを続けるなら**: Vercel の環境変数 `POLYGON_RPC_URL_AMOY`（または `POLYGON_RPC_URL`）に、
+  Vercel から名前解決できる RPC を設定する。**どのエンドポイントが生きているかはこの環境から確認できないので、
+  候補をここに書かない**（確認せずに書けば、同じ形の失敗を1つ増やすだけになる）。
+- (b) **アンカリングを止めるなら**: `POLYGON_ANCHOR_ENABLED` を `"true"` 以外にする（削除でもよい）。
+  route はその判定で `skipped` を返すので、**RPC に触らず、失敗の連鎖も止まる**。
+- 併せて: 本番のアンカーを **amoy（テストネット）** に打つ運用のままで良いのかは、2026-10-09 から未決のまま。
+
+**コードは変えていない。** DNS の失敗を `skip` に変える案は採らない —— 既存の skip は
+「ネットワークに触らずに分かる設定不足」に対するもので、DNS の失敗を同じ扱いにすると
+本物の RPC 障害も黙る（型 D の「追加で弱める」）。
 
 ## Codex の「利用上限」メッセージが掛かるスコープと回復条件（2026-10-09）
 
