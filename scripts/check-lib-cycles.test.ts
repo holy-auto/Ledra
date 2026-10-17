@@ -57,6 +57,48 @@ describe("check-lib-cycles", () => {
     expect(extractImports(src)).toEqual(["@/lib/logger"]);
   });
 
+  // 以下は正規表現で拾っていた版を /code-review が崩した入力（PR #1373）。
+  it("文字列や行コメントの中の `/*` で、その後の import を見落とさない", () => {
+    const src = `
+      const csp = "https://*.supabase.co";
+      // 対象: /admin/*
+      import { send } from "@/lib/line/client";
+      export async function f() { return import("@/lib/ai/x"); }
+      /** doc */
+    `;
+    expect(extractImports(src)).toEqual(["@/lib/line/client", "@/lib/ai/x"]);
+  });
+
+  it("複数行 import の行末コメントにアポストロフィがあっても拾う", () => {
+    const src = `import {\n  sendLine, // don't call before consent\n} from "@/lib/line/client";`;
+    expect(extractImports(src)).toEqual(["@/lib/line/client"]);
+  });
+
+  it("コードの後ろの行コメント、型の位置の import()、全部 type の import は数えない", () => {
+    const src = `
+      const s = 1; // e.g. import { x } from "@/lib/staff"
+      type C = import("@/lib/ai/x").Cfg;
+      let t: typeof import("@/lib/ai/y");
+      import { type A, type B } from "@/lib/auth/roles";
+      import { type D, real } from "@/lib/billing";
+    `;
+    expect(extractImports(src)).toEqual(["@/lib/billing"]);
+  });
+
+  it(".ts のジェネリクス付きアロー関数の後ろの import も拾う（TSX として読まない）", () => {
+    const src = `const id = <T>(x: T) => x;\nimport { log } from "@/lib/logger";`;
+    expect(extractImports(src, "a/b.ts")).toEqual(["@/lib/logger"]);
+  });
+
+  it("`.js` で終わる相対指定子も同じモジュールとして数える", () => {
+    expect(
+      cycles({
+        "line/client.ts": `import { log } from "../logger.js";`,
+        "logger.ts": `import { send } from "./line/client.js";`,
+      }),
+    ).toEqual(["line -> logger", "logger -> line"]);
+  });
+
   it("一覧と比べて、増えた辺と解けた辺を分ける", () => {
     expect(compareWithBaseline(["a -> b", "b -> a", "c -> d"], ["a -> b", "b -> a", "x -> y"])).toEqual({
       added: ["c -> d"],

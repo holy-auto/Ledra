@@ -25,37 +25,70 @@
  * 走らせ方: npm run check:lib-cycles（CI の ci-parallel-checks.sh からも走る）
  *           npm run check:lib-cycles -- --update   ← 循環を減らしたあとに一覧を縮める
  *
- * ponytail: import は正規表現で拾う（TypeScript の解析器を使わない）。
- * 天井: `import { type A }` のように型だけをインライン指定した import は実行時の依存として
- * 数える（安全側）。文字列リテラル中の `from "..."` を誤って拾いうる。誤検出が
- * 問題になったら dependency-cruiser（docs/diagrams/code-flow-observability-proposal.md の
+ * import は TypeScript の構文解析で拾う（コメント・文字列の中の `import` を数えない）。
+ * 正規表現で拾っていた版はコメント内の使用例を依存と数え、実在しない循環を出した
+ * （MISTAKE_LEDGER `M-20261017-counted-jsdoc-import-as-dependency`）。
+ *
+ * ponytail: 天井。`import { Foo }` の Foo が型でも、`type` と書いていなければ実行時の依存として
+ * 数える（安全側。型情報までは解決しない）。パスの別名は `@/lib/` だけを解く。
+ * 足りなくなったら dependency-cruiser（docs/diagrams/code-flow-observability-proposal.md の
  * Phase 1）に置き換える。
  */
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, dirname, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const LIB = join(ROOT, "src/lib");
 const BASELINE = join(ROOT, "scripts/lib-cycles.baseline.json");
 
-/** `certificates/issueHooks.ts` → `certificates`、`logger.ts` → `logger`。 */
+/** `certificates/issueHooks.ts` → `certificates`、`logger.ts` / `logger.js` → `logger`。 */
 export function moduleOf(relPath) {
-  return relPath.split(/[\\/]/)[0].replace(/\.tsx?$/, "");
+  return relPath.split(/[\\/]/)[0].replace(/\.(?:tsx?|jsx?|mjs|cjs)$/, "");
+}
+
+/** `import { type A, type B }` のように、名前付き指定が全部 `type` なら実行時に消える。 */
+function isTypeOnlyImport(clause) {
+  if (!clause) return false; // `import "x"` は副作用の import
+  if (clause.isTypeOnly) return true;
+  if (clause.name) return false;
+  const b = clause.namedBindings;
+  return !!b && ts.isNamedImports(b) && b.elements.length > 0 && b.elements.every((e) => e.isTypeOnly);
 }
 
 /**
  * ソースから実行時に効く import 指定子を拾う。
- * `import type` / `export type` は実行時に消えるので落とす。コメント内の例示も落とす。
+ * 拾う: import / export ... from / 動的 import() / require()。
+ * 落とす: `import type` / `export type` / 全指定が `type` の import / 型の位置の `import("x").T`。
  */
-export function extractImports(source) {
-  const code = source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "")
-    .replace(/\b(?:import|export)\s+type\s[^;]*?from\s*["'][^"']+["']/g, "");
+export function extractImports(source, fileName = "x.ts") {
+  // .ts を TSX として読むと `<T>(x) => x` を JSX と誤読するので、拡張子で切り替える。
+  const kind = fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, false, kind);
   const specs = [];
-  const re =
-    /\b(?:import|export)\b[^"';]*?\bfrom\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)|^\s*import\s*["']([^"']+)["']/gm;
-  for (const m of code.matchAll(re)) specs.push(m[1] ?? m[2] ?? m[3]);
+  const visit = (node) => {
+    if (ts.isImportDeclaration(node)) {
+      if (!isTypeOnlyImport(node.importClause)) specs.push(node.moduleSpecifier.text);
+      return;
+    }
+    if (ts.isExportDeclaration(node)) {
+      if (node.moduleSpecifier && !node.isTypeOnly) specs.push(node.moduleSpecifier.text);
+      return;
+    }
+    if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) && node.expression.text === "require")) &&
+      node.arguments.length > 0 &&
+      ts.isStringLiteralLike(node.arguments[0])
+    ) {
+      specs.push(node.arguments[0].text);
+    }
+    // 型の位置の import("x").T は ImportTypeNode で、CallExpression にならないので拾われない。
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
   return specs;
 }
 
@@ -69,7 +102,7 @@ export function buildGraph(files) {
   for (const [rel, src] of Object.entries(files)) {
     const from = moduleOf(rel);
     if (!graph.has(from)) graph.set(from, new Set());
-    for (const spec of extractImports(src)) {
+    for (const spec of extractImports(src, rel)) {
       let target;
       if (spec.startsWith("@/lib/")) target = moduleOf(spec.slice("@/lib/".length));
       else if (spec.startsWith(".")) {
