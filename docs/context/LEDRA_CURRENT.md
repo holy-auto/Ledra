@@ -52,6 +52,19 @@
 > `certificate_anchor_batches` はいずれも 0 件（2026-10-07 に service role で件数確認）。ブロックチェーン証明は本番ではまだ1件も作られていない。
 > デモテナントには撮影用ヒーロー車両（LEDRA-DEMO-0017〜0027、NFC タグ付き）を追加した（RELEASE_LOG 2026-10-07）。
 
+> 2026-10-17 追記（**残高監視 cron の失敗原因は DNS。続けるか止めるかは代表判断で未決**）:
+> `polygon-signer`（毎時）の `cron_failure_streaks.last_error` に
+> `ENOTFOUND: getaddrinfo ENOTFOUND rpc-amoy.polygon.technology` が入っていた（2026-10-17 05:31 UTC 確認）。
+> **言えるのは最新の1件についてだけ**（`recordCronFailure()` は `last_error` を毎回上書きし履歴を残さない）。
+> `last_success_at` は NULL だが、`recordCronSuccess()` は書き込み失敗を握り潰すので
+> 「**成功の記録が無い**」までが言える範囲。呼び出しは**毎時1回より多い**（件数は実行回数の下限）。
+> `POLYGON_NETWORK` の値と `POLYGON_RPC_URL` の設定有無は**Vercel の環境変数を見るまで不明**。
+> 代表に渡した選択肢は (a) 生きている RPC に差し替えて再デプロイ / (b) `POLYGON_ANCHOR_ENABLED` を外す。
+> **(b) は `cert-verify` の `on_chain_verified`（証明書単位）も止める**ので、
+> 「止まるのを承知で止める」か「その1行を書き込みフラグから切り離す」の2択になる
+> （画像単位・保険会社・ZKP の検証経路はフラグを見ないので残る）。手順と根拠は OPEN_QUESTIONS 2.、
+> 判断の経緯は DECISION_LOG 2026-10-17。
+
 > 2026-10-10 更新（**staging でアプリ経由の E2E が通った**）: Supabase の独立プロジェクト `Ledra-staging` と、Vercel の
 > `staging` ブランチ（`https://ledra-git-staging-yusuke-horikoshis-projects.vercel.app`、プレビュー保護あり）をつないだ。
 > 証明書写真の流れ（作成→写真なしの発行ブロック→施工前後の撮影送信→DB 記録→発行→ダウンロード）が **9/9 合格**。

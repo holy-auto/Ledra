@@ -70,20 +70,311 @@
 
 | 型 | 中身 | 該当 |
 |---|---|---|
-| **A. 道具を検証しない** | 変更したコードは検証したのに、「何を変えるべきか判断するために使った道具」（検出器・正規表現・スクリプト・クエリ）を検証していない。道具の出力を事実として扱う。**そのクエリが何を確定させたのかを確かめずに、確定したつもりになる**のもこの型。**自分の想定だけで検証するのも同じ**（当たりを取る「既知の1件」を自分で作る）。**動作を主張するコメントを、その根拠（スキーマ・型定義）を確認せずに書く**のも同じ。**検査の「該当なし」を、その検査が何件を見たか数えずに受け取る**のも同じ | M-001, M-002, M-003, M-006, **M-010**, M-012, M-016, M-017, **M-022**, **M-024**, **M-031**, M-036, **M-041**, **M-044**, **M-046**, **M-050**, **M-055**, **M-056**, **M-057**, **M-060**, **M-061**, **M-062**, **M-064**, **M-065**, **M-068**, **M-075**, **M-078**, **M-079**, **M-084**, **M-085**, **M-089**, **M-092**, **M-093**, **M-20260904-repeated-m035-shape**, **M-20260905-calibrated-on-single-line-cases**, **M-20260906-prototype-numbers-reported**, **M-20260906-unverified-finding-accepted**, **M-20260906-leftover-files-polluted-check**, **M-20260906-tested-only-happy-input**, **M-20260906-wrong-control-three-times**, **M-20260907-no-negative-control**, **M-20260908-scan-script-two-errors**, **M-20260908-bulk-replace-without-context**, **M-20260908-tested-only-touched-dir**, **M-20260908-x-forwarded-for-unverified**, **M-20260908-null-made-guard-fail-open**, **M-20260909-unverified-overwrite-assumption**, **M-20260910-check-covered-28-percent**, **M-20260911-dts-as-behavior-evidence**, **M-20260911-git-grep-missed-untracked**, **M-20260911-git-checkout-destroyed-work**, **M-20260912-rls-table-double-count**, **M-20260913-regex-missed-two-digit-cols**, **M-20260913-ineffective-css-claimed-fixed**, **M-20260914-plain-replace-silently-noop**, **M-20260914-escaped-angle-brackets-in-commit**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-silent-skip-made-detector-never-run**, **M-20260918-replay-db-lacked-prod-column**, **M-20260918-read-detector-blindness-as-stale-list**, **M-20260919-attributed-an-overloads-call-to-its-sibling**, **M-20260919-swept-for-the-literal-not-the-bug-class**, **M-20260919-cancel-2xx-treated-as-final**, **M-20260921-compared-counts-where-names-differed**, **M-20260921-detector-covered-half-the-tables-i-had-listed**, **M-20260921-said-the-drift-checker-ignores-policies**, **M-20260922-wrote-constraint-bodies-from-their-names**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260923-committed-conflict-markers-from-truncated-merge-output**, **M-20260923-counted-only-page-files-for-tenant-bug**, **M-20260925-grep-missed-the-generic-upsert-helper**, **M-20260927-read-a-failed-rebuild-as-a-measurement**, **M-20260927-checks-were-green-on-rows-production-would-reject**, **M-20260927-said-evaluated-all-while-filtering-the-population**, **M-20260927-grep-filter-hid-vitest-errors-line**, **M-20260929-build-oom-cause-guessed-three-times**, **M-20261001-grep-filtered-vitest-summary-again**, **M-20261002-asserted-conformance-impact-from-our-own-gpsa**, **M-20260929-assumed-ingredient-needs-original-bytes**, **M-20260929-swapped-fetch-broke-formdata-uploads**, **M-20260927-c2pa-ledger-tested-only-on-exif-free-images**, **M-20260927-read-c2pa-valid-as-conformant**, **M-20260929-never-tested-the-gps-leak-premise**, **M-20261002-relayed-the-notes-framing-as-the-fix**, **M-20261005-log-edit-replaced-heading-prefix-and-dropped-it**, **M-20261005-test-tsa-echoed-my-own-content-type-assumption**, **M-20261005-declared-auth-root-cause-without-retest**, **M-20261005-said-loader-table-unreadable-after-granting-select**, **M-20261005-statement-splitter-split-inside-comments**, **M-20261005-hoisted-a-try-scoped-name-and-trusted-eslint-zero-errors**, **M-20261005-truncated-grep-hid-the-mobile-pdf-caller**, **M-20261005-took-sharps-limit-as-the-limit-of-what-i-could-verify**, **M-20261007-committed-ours-theirs-conflict-markers**, **M-20261007-read-an-empty-tool-result-as-no-problem-found**, **M-20261008-swapped-a-parity-having-impl-for-my-own-parser**, **M-20261008-called-the-build-successful-from-a-file-mtime**, **M-20261008-named-two-clusters-from-three-points**, **M-20261009-parity-test-covered-the-parser-and-missed-the-override**, **M-20261008-wrote-subagent-feature-claims-unchecked**, **M-20261009-wrote-that-stale-time-refetches**, **M-20261010-validated-the-scanner-on-single-type-headings-only**, **M-20261010-e2e-checklist-claimed-verified-calls**, **M-20261010-guard-compared-head-parent-and-silently-skipped-push**, **M-20261010-tested-a-global-regex-and-halved-the-count**, **M-20261010-stated-action-ids-change-every-build-from-memory**, **M-20261011-sample-report-claimed-ft-defects-by-vehicle-year**, **M-20261012-inferred-unchanged-password-from-matching-timestamps**, **M-20261012-checked-the-population-not-the-entrypoint**, **M-20261012-said-cert-digest-ignores-manufacturer-without-checking-version-at**, **M-20261012-seeded-notification-types-the-product-never-sends**, **M-20261012-fixed-the-separator-with-a-repo-wide-replace-and-broke-three-sentences**, **M-20261012-read-a-3-minute-failure-as-a-completed-build**, **M-20261015-read-one-green-build-as-disproof**, **M-20261010-comment-claimed-the-500-prevents-double-registration**, **M-20261012-loose-write-detector-broke-three-statements**, **M-20261015-trusted-unsigned-user-id-in-session-cookie**, **M-20261015-replay-fixture-too-weak-to-catch-guard-removal**, **M-20261016-tail-6-hid-which-vitest-test-failed**, **M-20261016-grepped-topic-literal-missed-built-topic-names**, **M-20261016-deleted-preview-branch-trusting-it-would-be-recreated** |
-| **B. 読まずに分類する** | コードの形（関数名・構造・コメント）から中身を推測して分類し、実際に読んでいない。**1段だけ深く読んで止まる**のも同じ（条件式は読んだが、その値の既定を追っていない）。**その値がどこから来るかを見ない**のも同じ（既定・サンプル・過去の配布物に同じ値が無いか）。**列や機能が「ある」ことを「使われている」と読む**のもこの型。**値の出所を変えたのに、その値を使う式が旧い出所の前提（排他性等）を暗黙に置いたままか確認しない**のも同じ。**部品が直ったことを、その部品を使う機能が直ったことと読む**のも同じ | M-004, M-020, **M-032**, M-035, M-036, **M-039**, **M-040**, **M-048**, **M-052**, **M-063**, **M-074**, **M-083**, **M-088**, **M-20260904-ignored-input-type**, **M-20260904-escape-hatch-disabled-guard**, **M-20260904-repeated-m035-shape**, **M-20260904-limit-read-as-cost-guard**, **M-20260908-part-fixed-read-as-feature**, **M-20260908-mixed-axes-in-fix**, **M-20260911-payment-failure-single-message**, **M-20260914-claimed-no-gate-exists**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-asked-for-a-decision-that-was-already-made-in-the-file-i-cited**, **M-20260921-classified-rls-impact-from-one-policy**, **M-20260922-copied-a-check-without-checking-the-default**, **M-20260924-blamed-all-ten-inserts-on-the-check**, **M-20260924-called-a-tolerant-job-the-real-check**, **M-20260927-anon-customer-names-read-as-by-design**, **M-20260930-diagnosable-fix-left-without-anyone-watching**, **M-20260929-assumed-ingredient-needs-original-bytes**, **M-20260929-left-crjson-time-fallback-unread**, **M-20261002-delete-ignored-legal-retention**, **M-20261002-relayed-the-notes-framing-as-the-fix**, **M-20261006-grant-ui-removed-opt-out-the-comment-said-to-keep**, **M-20261008-kept-the-own-tenant-policy-that-bypasses-server-checks**, **M-20261012-read-the-creating-migration-not-the-one-that-dropped-the-policy**, **M-20261013-wrote-demo-fully-read-only-from-one-rls-policy**, **M-20261012-added-throws-without-reading-the-enclosing-flow**, **M-20261015-said-the-delete-policy-alone-lets-users-remove-files**, **M-20261015-read-the-sample-finding-as-advice-after-the-architecture-passed**, **M-20261015-new-vin-step-matched-a-hidden-stale-vin**, **M-20261016-treated-every-guarded-post-as-a-write** |
-| **C. 経路を1本しか見ない** | 同じ操作に複数の入口があるのに、目についた1本だけ直す。**同じ事実を2箇所に書いて片方だけ直す**のも同じ（文書に出た形）。**排他にすべき組み合わせのうち一部のペアだけをチェックする**のも同じ | M-005, M-007, M-013, M-019, **M-023**, **M-025**, M-038, **M-058**, **M-061**, **M-072**, **M-076**, **M-087**, **M-20260904-same-eight-in-two-entries**, **M-20260906-zero-refs-read-as-unused**, **M-20260906-public-page-code-only**, **M-20260908-asked-production-not-replay**, **M-20260911-untracked-files-investigated-thrice**, **M-20260918-verification-skippable-via-transition-flag**, **M-20260919-exclusivity-guard-only-in-admin-route**, **M-20260919-exclusivity-checked-one-pair-not-all**, **M-20260920-called-it-all-no-op-while-fixing-the-one-statement-that-runs**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260922-renamed-a-migration-the-preview-db-had-applied**, **M-20260923-new-key-axis-not-traced-to-every-entry-point**, **M-20261001-cited-sources-i-never-opened-in-decision-log**, **M-20261001-reported-applied-migrations-as-not-applied**, **M-20260929-swapped-fetch-broke-formdata-uploads**, **M-20260929-checked-exif-gps-but-not-manifest-gps**, **M-20260929-closed-vercel-app-bypass-for-uploads-only**, **M-20261002-tls-check-covered-www-but-app-host-is-app-ledra**, **M-20261002-gpsa-o5-traced-upload-path-only**, **M-20261002-tls13-guard-scanned-providers-dir-only**, **M-20261002-added-holy-inc-category-without-ledra-cms-list**, **M-20261002-checked-one-side-effect-and-called-it-no-orphans**, **M-20261003-fixed-the-pr-body-and-left-the-business-logs-wrong**, **M-20261005-truncated-grep-hid-the-mobile-pdf-caller**, **M-20261006-breakdown-ids-wiped-by-draft-edit**, **M-20261006-widened-delete-without-checking-cycle-invoice-links**, **M-20261007-service-role-read-trusted-client-consolidation-check**, **M-20261007-claimed-single-source-without-grepping-the-siblings**, **M-20261008-widened-the-scan-once-and-stopped-at-src-and-scripts**, **M-20261009-consolidated-invoice-left-sources-receivable**, **M-20261009-parity-test-covered-the-parser-and-missed-the-override**, **M-20261009-said-sibling-pdfs-used-the-main-domain-without-reading-them**, **M-20261009-hashed-the-token-but-line-history-stored-it-plain**, **M-20261009-new-consent-entry-not-stopped-by-existing-revoke**, **M-20261010-wide-scopes-in-the-ledgers-own-checker-forbid-how-the-ledger-is-written**, **M-20261010-checked-bucket-limits-against-two-writers-not-all**, **M-20261012-updated-open-questions-but-not-the-decision-log-copies**, **M-20261012-blamed-the-bucket-size-for-what-the-function-body-limit-blocks**, **M-20261012-dropped-tenants-key-without-grepping-other-readers**, **M-20261012-swapped-originals-but-left-stale-variants**, **M-20261013-counted-withcaller-coverage-inside-one-auth-entrance**, **M-20261015-pushed-while-the-preview-db-was-still-migrating**, **M-20261015-cleanup-only-on-the-paths-i-wrote-first**, **M-20261016-pushed-in-parallel-with-an-unconfirmed-branch-delete**, **M-20261016-verify-button-could-mark-content-nobody-saw** |
+| **A. 道具を検証しない** | 変更したコードは検証したのに、「何を変えるべきか判断するために使った道具」（検出器・正規表現・スクリプト・クエリ）を検証していない。道具の出力を事実として扱う。**そのクエリが何を確定させたのかを確かめずに、確定したつもりになる**のもこの型。**自分の想定だけで検証するのも同じ**（当たりを取る「既知の1件」を自分で作る）。**動作を主張するコメントを、その根拠（スキーマ・型定義）を確認せずに書く**のも同じ。**検査の「該当なし」を、その検査が何件を見たか数えずに受け取る**のも同じ | M-001, M-002, M-003, M-006, **M-010**, M-012, M-016, M-017, **M-022**, **M-024**, **M-031**, M-036, **M-041**, **M-044**, **M-046**, **M-050**, **M-055**, **M-056**, **M-057**, **M-060**, **M-061**, **M-062**, **M-064**, **M-065**, **M-068**, **M-075**, **M-078**, **M-079**, **M-084**, **M-085**, **M-089**, **M-092**, **M-093**, **M-20260904-repeated-m035-shape**, **M-20260905-calibrated-on-single-line-cases**, **M-20260906-prototype-numbers-reported**, **M-20260906-unverified-finding-accepted**, **M-20260906-leftover-files-polluted-check**, **M-20260906-tested-only-happy-input**, **M-20260906-wrong-control-three-times**, **M-20260907-no-negative-control**, **M-20260908-scan-script-two-errors**, **M-20260908-bulk-replace-without-context**, **M-20260908-tested-only-touched-dir**, **M-20260908-x-forwarded-for-unverified**, **M-20260908-null-made-guard-fail-open**, **M-20260909-unverified-overwrite-assumption**, **M-20260910-check-covered-28-percent**, **M-20260911-dts-as-behavior-evidence**, **M-20260911-git-grep-missed-untracked**, **M-20260911-git-checkout-destroyed-work**, **M-20260912-rls-table-double-count**, **M-20260913-regex-missed-two-digit-cols**, **M-20260913-ineffective-css-claimed-fixed**, **M-20260914-plain-replace-silently-noop**, **M-20260914-escaped-angle-brackets-in-commit**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-silent-skip-made-detector-never-run**, **M-20260918-replay-db-lacked-prod-column**, **M-20260918-read-detector-blindness-as-stale-list**, **M-20260919-attributed-an-overloads-call-to-its-sibling**, **M-20260919-swept-for-the-literal-not-the-bug-class**, **M-20260919-cancel-2xx-treated-as-final**, **M-20260921-compared-counts-where-names-differed**, **M-20260921-detector-covered-half-the-tables-i-had-listed**, **M-20260921-said-the-drift-checker-ignores-policies**, **M-20260922-wrote-constraint-bodies-from-their-names**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260923-committed-conflict-markers-from-truncated-merge-output**, **M-20260923-counted-only-page-files-for-tenant-bug**, **M-20260925-grep-missed-the-generic-upsert-helper**, **M-20260927-read-a-failed-rebuild-as-a-measurement**, **M-20260927-checks-were-green-on-rows-production-would-reject**, **M-20260927-said-evaluated-all-while-filtering-the-population**, **M-20260927-grep-filter-hid-vitest-errors-line**, **M-20260929-build-oom-cause-guessed-three-times**, **M-20261001-grep-filtered-vitest-summary-again**, **M-20261002-asserted-conformance-impact-from-our-own-gpsa**, **M-20260929-assumed-ingredient-needs-original-bytes**, **M-20260929-swapped-fetch-broke-formdata-uploads**, **M-20260927-c2pa-ledger-tested-only-on-exif-free-images**, **M-20260927-read-c2pa-valid-as-conformant**, **M-20260929-never-tested-the-gps-leak-premise**, **M-20261002-relayed-the-notes-framing-as-the-fix**, **M-20261005-log-edit-replaced-heading-prefix-and-dropped-it**, **M-20261005-test-tsa-echoed-my-own-content-type-assumption**, **M-20261005-declared-auth-root-cause-without-retest**, **M-20261005-said-loader-table-unreadable-after-granting-select**, **M-20261005-statement-splitter-split-inside-comments**, **M-20261005-hoisted-a-try-scoped-name-and-trusted-eslint-zero-errors**, **M-20261005-truncated-grep-hid-the-mobile-pdf-caller**, **M-20261005-took-sharps-limit-as-the-limit-of-what-i-could-verify**, **M-20261007-committed-ours-theirs-conflict-markers**, **M-20261007-read-an-empty-tool-result-as-no-problem-found**, **M-20261008-swapped-a-parity-having-impl-for-my-own-parser**, **M-20261008-called-the-build-successful-from-a-file-mtime**, **M-20261008-named-two-clusters-from-three-points**, **M-20261009-parity-test-covered-the-parser-and-missed-the-override**, **M-20261008-wrote-subagent-feature-claims-unchecked**, **M-20261009-wrote-that-stale-time-refetches**, **M-20261010-validated-the-scanner-on-single-type-headings-only**, **M-20261010-e2e-checklist-claimed-verified-calls**, **M-20261010-guard-compared-head-parent-and-silently-skipped-push**, **M-20261010-tested-a-global-regex-and-halved-the-count**, **M-20261010-stated-action-ids-change-every-build-from-memory**, **M-20261011-sample-report-claimed-ft-defects-by-vehicle-year**, **M-20261012-inferred-unchanged-password-from-matching-timestamps**, **M-20261012-checked-the-population-not-the-entrypoint**, **M-20261012-said-cert-digest-ignores-manufacturer-without-checking-version-at**, **M-20261012-seeded-notification-types-the-product-never-sends**, **M-20261012-fixed-the-separator-with-a-repo-wide-replace-and-broke-three-sentences**, **M-20261012-read-a-3-minute-failure-as-a-completed-build**, **M-20261015-read-one-green-build-as-disproof**, **M-20261010-comment-claimed-the-500-prevents-double-registration**, **M-20261012-loose-write-detector-broke-three-statements**, **M-20261015-trusted-unsigned-user-id-in-session-cookie**, **M-20261015-replay-fixture-too-weak-to-catch-guard-removal**, **M-20261016-tail-6-hid-which-vitest-test-failed**, **M-20261016-grepped-topic-literal-missed-built-topic-names**, **M-20261016-deleted-preview-branch-trusting-it-would-be-recreated**, **M-20261017-filtered-on-a-field-name-that-does-not-exist-and-reported-zero** |
+| **B. 読まずに分類する** | コードの形（関数名・構造・コメント）から中身を推測して分類し、実際に読んでいない。**1段だけ深く読んで止まる**のも同じ（条件式は読んだが、その値の既定を追っていない）。**その値がどこから来るかを見ない**のも同じ（既定・サンプル・過去の配布物に同じ値が無いか）。**列や機能が「ある」ことを「使われている」と読む**のもこの型。**値の出所を変えたのに、その値を使う式が旧い出所の前提（排他性等）を暗黙に置いたままか確認しない**のも同じ。**部品が直ったことを、その部品を使う機能が直ったことと読む**のも同じ | M-004, M-020, **M-032**, M-035, M-036, **M-039**, **M-040**, **M-048**, **M-052**, **M-063**, **M-074**, **M-083**, **M-088**, **M-20260904-ignored-input-type**, **M-20260904-escape-hatch-disabled-guard**, **M-20260904-repeated-m035-shape**, **M-20260904-limit-read-as-cost-guard**, **M-20260908-part-fixed-read-as-feature**, **M-20260908-mixed-axes-in-fix**, **M-20260911-payment-failure-single-message**, **M-20260914-claimed-no-gate-exists**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-asked-for-a-decision-that-was-already-made-in-the-file-i-cited**, **M-20260921-classified-rls-impact-from-one-policy**, **M-20260922-copied-a-check-without-checking-the-default**, **M-20260924-blamed-all-ten-inserts-on-the-check**, **M-20260924-called-a-tolerant-job-the-real-check**, **M-20260927-anon-customer-names-read-as-by-design**, **M-20260930-diagnosable-fix-left-without-anyone-watching**, **M-20260929-assumed-ingredient-needs-original-bytes**, **M-20260929-left-crjson-time-fallback-unread**, **M-20261002-delete-ignored-legal-retention**, **M-20261002-relayed-the-notes-framing-as-the-fix**, **M-20261006-grant-ui-removed-opt-out-the-comment-said-to-keep**, **M-20261008-kept-the-own-tenant-policy-that-bypasses-server-checks**, **M-20261012-read-the-creating-migration-not-the-one-that-dropped-the-policy**, **M-20261013-wrote-demo-fully-read-only-from-one-rls-policy**, **M-20261012-added-throws-without-reading-the-enclosing-flow**, **M-20261015-said-the-delete-policy-alone-lets-users-remove-files**, **M-20261015-read-the-sample-finding-as-advice-after-the-architecture-passed**, **M-20261015-new-vin-step-matched-a-hidden-stale-vin**, **M-20261016-treated-every-guarded-post-as-a-write**, **M-20261017-recommended-a-bulk-gas-spending-endpoint-as-a-one-record-probe** |
+| **C. 経路を1本しか見ない** | 同じ操作に複数の入口があるのに、目についた1本だけ直す。**同じ事実を2箇所に書いて片方だけ直す**のも同じ（文書に出た形）。**排他にすべき組み合わせのうち一部のペアだけをチェックする**のも同じ | M-005, M-007, M-013, M-019, **M-023**, **M-025**, M-038, **M-058**, **M-061**, **M-072**, **M-076**, **M-087**, **M-20260904-same-eight-in-two-entries**, **M-20260906-zero-refs-read-as-unused**, **M-20260906-public-page-code-only**, **M-20260908-asked-production-not-replay**, **M-20260911-untracked-files-investigated-thrice**, **M-20260918-verification-skippable-via-transition-flag**, **M-20260919-exclusivity-guard-only-in-admin-route**, **M-20260919-exclusivity-checked-one-pair-not-all**, **M-20260920-called-it-all-no-op-while-fixing-the-one-statement-that-runs**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260922-renamed-a-migration-the-preview-db-had-applied**, **M-20260923-new-key-axis-not-traced-to-every-entry-point**, **M-20261001-cited-sources-i-never-opened-in-decision-log**, **M-20261001-reported-applied-migrations-as-not-applied**, **M-20260929-swapped-fetch-broke-formdata-uploads**, **M-20260929-checked-exif-gps-but-not-manifest-gps**, **M-20260929-closed-vercel-app-bypass-for-uploads-only**, **M-20261002-tls-check-covered-www-but-app-host-is-app-ledra**, **M-20261002-gpsa-o5-traced-upload-path-only**, **M-20261002-tls13-guard-scanned-providers-dir-only**, **M-20261002-added-holy-inc-category-without-ledra-cms-list**, **M-20261002-checked-one-side-effect-and-called-it-no-orphans**, **M-20261003-fixed-the-pr-body-and-left-the-business-logs-wrong**, **M-20261005-truncated-grep-hid-the-mobile-pdf-caller**, **M-20261006-breakdown-ids-wiped-by-draft-edit**, **M-20261006-widened-delete-without-checking-cycle-invoice-links**, **M-20261007-service-role-read-trusted-client-consolidation-check**, **M-20261007-claimed-single-source-without-grepping-the-siblings**, **M-20261008-widened-the-scan-once-and-stopped-at-src-and-scripts**, **M-20261009-consolidated-invoice-left-sources-receivable**, **M-20261009-parity-test-covered-the-parser-and-missed-the-override**, **M-20261009-said-sibling-pdfs-used-the-main-domain-without-reading-them**, **M-20261009-hashed-the-token-but-line-history-stored-it-plain**, **M-20261009-new-consent-entry-not-stopped-by-existing-revoke**, **M-20261010-wide-scopes-in-the-ledgers-own-checker-forbid-how-the-ledger-is-written**, **M-20261010-checked-bucket-limits-against-two-writers-not-all**, **M-20261012-updated-open-questions-but-not-the-decision-log-copies**, **M-20261012-blamed-the-bucket-size-for-what-the-function-body-limit-blocks**, **M-20261012-dropped-tenants-key-without-grepping-other-readers**, **M-20261012-swapped-originals-but-left-stale-variants**, **M-20261013-counted-withcaller-coverage-inside-one-auth-entrance**, **M-20261015-pushed-while-the-preview-db-was-still-migrating**, **M-20261015-cleanup-only-on-the-paths-i-wrote-first**, **M-20261016-pushed-in-parallel-with-an-unconfirmed-branch-delete**, **M-20261016-verify-button-could-mark-content-nobody-saw**, **M-20261017-handed-over-a-switch-without-grepping-its-other-readers** |
 | **D. 移設で弱める** | 「同じものを別の場所に置くだけ」のつもりが、検査の強さや信号が落ちている。**移設先の信頼境界（誰の書き換えを受けるか・どんな権限を持つか）が変わっているのに気づかない**のもこの型。**移設でなく「追加」で弱めるのも同じ** —— 制約を1本足したら、同じ対象を別の観点で見ていた既存の検査が、その制約のせいで区別できなくなる | M-008, **M-028**, **M-029**, **M-042**, **M-047**, **M-054**, **M-060**, **M-062**, **M-063**, **M-065**, **M-20260906-stripped-security-invoker**, **M-20260906-unification-dropped-guarantees**, **M-20260906-write-token-to-foreign-code**, **M-20260924-shared-resolver-dropped-error-to-500**, **M-20260925-my-not-null-blinded-the-sibling-check**, **M-20261005-reused-oauth-state-signer-with-shared-fallback-key**, **M-20261008-swapped-a-parity-having-impl-for-my-own-parser**, **M-20261010-stored-paths-without-validating-whose-paths** |
 | **J. 兄弟実装と揃えていない** | 同じ理由で複数箇所に同種のガード・分岐を書いたのに、片方にしか適用しなかった／既存の兄弟実装が既に持っていた条件を新しい実装に持ち込まなかった。**「同じパターンで書いた」つもりが実は違う**のがこの型の核。**「AをBに置き換える」判断をしたのに、A自体を全リポジトリでgrepせず一部だけ置き換えて終わる**のも同じ | M-066, **M-069**, **M-092**, **M-093**, **M-20260908-sibling-guard-condition-lost**, **M-20260909-logged-type-still-repeated**, **M-20260914-advised-three-actually-six**, **M-20260916-timeout-branch-missed-sibling-fix**, **M-20260919-cancel-checkout-scattered-across-4-handlers**, **M-20260919-handled-completed-branch-not-failed-branch**, **M-20260919-else-fix-not-swept-to-siblings**, **M-20260921-claimed-all-db-errors-swept-but-left-booking-upsert**, **M-20260923-fixed-url-length-in-one-route-not-its-sibling**, **M-20261001-new-loader-dropped-query-error-unlike-siblings**, **M-20261005-abs-chevron-reserved-space-in-one-row-only**, **M-20261005-rewrote-customer-resolver-that-already-existed**, **M-20261007-paid-scope-copied-the-window-not-the-opt-out**, **M-20261009-extended-three-test-timeouts-and-missed-the-first-caller**, **M-20261010-wrote-the-same-computation-twice-and-left-the-mirror-assertion**, **M-20261012-added-db-write-but-only-warned-on-its-failure**, **M-20261010-showed-success-while-dropping-three-db-errors**, **M-20261015-dropped-error-in-the-lookup-i-added-while-sweeping-dropped-errors**, **M-20261015-twin-sql-skipped-the-customer-backlink** |
 | **K. 新しいコード経路を、それが実際に呼ばれる文脈で動かして試していない** | 単体の変更としては正しいのに、それが実際に発火する呼び出し元・エラー経路まで通して動かしていない。ユニットテストがあっても「起こりうる呼び出し順」を再現していなければ検出できない | **M-067**, **M-20260908-401-handler-infinite-loop**, **M-20260916-codex-found-8-in-own-untested-pr**, **M-20260923-draft-autosave-baseline-before-prefill**, **M-20261005-fail-closed-flag-read-blocked-non-opt-in-tenants**, **M-20261006-breakdown-ids-wiped-by-draft-edit**, **M-20261009-added-consent-request-below-a-one-click-shop-record-button**, **M-20261009-keyset-cursor-started-with-empty-string-on-uuid**, **M-20261012-moved-signed-at-inside-a-fire-and-forget-call** |
 | **L. 既定を開いたまま守る（除外リスト）** | 「見せないもの」を並べて塞ぐ。塞いだ時点では実データと一致していても、**既定が公開**なので、値が増えるたびに漏れる。**母集団を数えていない**のが根（「今あるもの」を実測して、「入りうるもの」を数えていない）。外向けの経路では許可リストにして、知らないものを既定で落とす | **M-077**, **M-20260911-denylist-default-public** |
 | **E. 手元とCIの差を忘れる** | 手元では通るのに CI だけ落ちる構成を作る。書いた本人には見えない。**リポジトリが用意した「CIと同じ検査」を走らせず、思い出せる検査だけ個別に走らせる**のも同じ | M-009, **M-030**, **M-084**, **M-089**, **M-094**, **M-20260913-ci-test-timeout**, **M-20260914-verified-without-installing**, **M-20260915-ran-known-checks-not-ci**, **M-20260922-pushed-without-ci-parallel-checks**, **M-20260923-schema-snapshot-missed-again**, **M-20260929-build-oom-cause-guessed-three-times**, **M-20260929-merged-main-without-migration-order-lint**, **M-20261008-bisected-a-flaky-oom-as-deterministic**, **M-20261008-test-wrote-env-local-into-the-repo-root**, **M-20261009-extended-three-test-timeouts-and-missed-the-first-caller**, **M-20261009-new-public-route-ran-only-nearby-tests**, **M-20261015-route-scan-test-hit-5s-timeout-in-ci**, **M-20261015-wrote-only-finding-without-running-the-reviewers-checker** |
-| **F. 確認できる事実を確認しない** | 環境から1コマンドで確かめられる事実（今日の日付・件数・バージョン・設定ファイルの中身・**2つの出来事の時刻差**・**CI が実際に走ったか**・**同じ問題を直している PR が既に開いていないか**）を、確かめずに書く。**自分がこれから追記しようとしているログファイル自身に、既に矛盾する記述が無いか確認しない**のも同じ。**本番の実データをそのまま調査ログ・事業ログに転記する**のも同じ（PIIのマスクを確認事実として扱わない） | M-011, M-014, M-015, M-016, **M-018**, **M-021**, **M-026**, **M-027**, M-034, M-037, **M-045**, **M-049**, **M-053**, **M-059**, **M-070**, **M-071**, **M-073**, **M-080**, **M-081**, **M-082**, **M-086**, **M-088**, **M-090**, **M-20260904-push-did-not-rerun-ci**, **M-20260904-unverified-direct-call**, **M-20260906-merged-45s-after-review**, **M-20260907-stale-snapshot-ci-claim**, **M-20260909-fixed-red-without-checking-others**, **M-20260909-contradicted-own-log**, **M-20260909-pushed-real-customer-email**, **M-20260910-estimated-what-grep-answers**, **M-20260911-plugin-docs-unread**, **M-20260911-merged-20s-after-review**, **M-20260911-uncounted-24-types**, **M-20260913-counted-two-populations**, **M-20260914-hunk-count-subtraction**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-called-it-untraceable-without-checking-open-prs**, **M-20260919-said-no-open-pr-has-it-again**, **M-20260919-hand-applied-ahead-of-a-pending-migration**, **M-20260919-skipped-the-check-i-had-just-written**, **M-20260919-green-ci-read-as-production-applied**, **M-20260919-credited-my-own-dirty-tree-to-another-session**, **M-20260919-wrote-a-replay-count-i-never-read**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-counted-12-as-11-again**, **M-20260921-reported-a-subtraction-as-a-measurement**, **M-20260921-two-samples-read-as-all**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-said-typegen-red-on-every-merge**, **M-20260922-said-ten-checks-without-listing-them**, **M-20260923-git-add-all-swept-a-formatted-generated-file**, **M-20260925-migration-timestamp-collided-with-parallel-pr**, **M-20260927-anon-customer-names-read-as-by-design**, **M-20261001-cited-sources-i-never-opened-in-decision-log**, **M-20261001-wrote-not-observed-over-my-own-vercel-font-record**, **M-20261001-said-fix-reaches-production-before-deploy-checked**, **M-20261001-reported-applied-migrations-as-not-applied**, **M-20261002-asserted-conformance-impact-from-our-own-gpsa**, **M-20261002-said-no-mechanism-without-reading-the-workflow-that-exists**, **M-20261001-acted-on-dependabot-pr-without-checking-it-was-closed**, **M-20261001-duplicated-an-open-pr-for-four-days**, **M-20260929-logged-the-wrong-zip-as-sent**, **M-20261003-fixed-the-pr-body-and-left-the-business-logs-wrong**, **M-20261005-called-ci-green-from-check-runs-only**, **M-20261005-blamed-migrations-for-a-stale-clone**, **M-20261005-handed-user-cli-commands-i-never-ran**, **M-20261005-diagnosed-device-from-origin-not-users-checkout**, **M-20261005-took-sharps-limit-as-the-limit-of-what-i-could-verify**, **M-20261006-built-on-a-not-null-premise-from-my-own-log**, **M-20261007-read-elastic-build-machine-as-fixed-16gb**, **M-20261007-claimed-env-vars-apply-only-to-new-session**, **M-20261007-posted-rerun-done-before-result**, **M-20261007-claimed-single-source-without-grepping-the-siblings**, **M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing**, **M-20261007-read-an-empty-tool-result-as-no-problem-found**, **M-20261008-bisected-a-flaky-oom-as-deterministic**, **M-20261008-claimed-terms-absent-without-grep**, **M-20261009-read-one-codex-limit-message-as-an-ongoing-state**, **M-20261009-used-an-arrow-the-pdf-font-lacks**, **M-20261009-wrote-an-interval-without-subtracting-two-timestamps**, **M-20261009-diagnosed-double-count-from-code-without-reading-prod**, **M-20261010-read-tails-exit-code-as-the-pushs-exit-code**, **M-20261012-said-prod-unverifiable-while-supabase-mcp-was-loadable**, **M-20261012-planned-to-look-for-a-file-tracing-never-copies**, **M-20261012-wrote-1078-from-a-wider-find-than-the-script-counts**, **M-20261012-wrote-rerun-done-before-the-rerun-returned**, **M-20261013-wrote-identifiers-before-reading-the-output**, **M-20261015-documented-an-npm-script-that-does-not-exist**, **M-20261016-reported-logs-in-pr-without-reading-diffstat**, **M-20261016-said-cutting-branching-stops-previews-from-an-old-note**, **M-20261016-base-merged-a-branch-another-session-was-already-pushing**, **M-20261016-subscribed-pr-by-guessed-number**, **M-20261016-promised-a-workflow-dispatch-i-cannot-send**, **M-20261017-proposed-a-paths-filter-that-would-redden-every-migration-pr**, **M-20261017-widened-where-a-check-runs-without-checking-it-ever-passed**, **M-20261017-read-a-migration-version-as-a-date**, **M-20261017-wrote-absolutes-about-mechanisms-i-had-not-traced** |
+| **F. 確認できる事実を確認しない** | 環境から1コマンドで確かめられる事実（今日の日付・件数・バージョン・設定ファイルの中身・**2つの出来事の時刻差**・**CI が実際に走ったか**・**同じ問題を直している PR が既に開いていないか**）を、確かめずに書く。**自分がこれから追記しようとしているログファイル自身に、既に矛盾する記述が無いか確認しない**のも同じ。**本番の実データをそのまま調査ログ・事業ログに転記する**のも同じ（PIIのマスクを確認事実として扱わない） | M-011, M-014, M-015, M-016, **M-018**, **M-021**, **M-026**, **M-027**, M-034, M-037, **M-045**, **M-049**, **M-053**, **M-059**, **M-070**, **M-071**, **M-073**, **M-080**, **M-081**, **M-082**, **M-086**, **M-088**, **M-090**, **M-20260904-push-did-not-rerun-ci**, **M-20260904-unverified-direct-call**, **M-20260906-merged-45s-after-review**, **M-20260907-stale-snapshot-ci-claim**, **M-20260909-fixed-red-without-checking-others**, **M-20260909-contradicted-own-log**, **M-20260909-pushed-real-customer-email**, **M-20260910-estimated-what-grep-answers**, **M-20260911-plugin-docs-unread**, **M-20260911-merged-20s-after-review**, **M-20260911-uncounted-24-types**, **M-20260913-counted-two-populations**, **M-20260914-hunk-count-subtraction**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-called-it-untraceable-without-checking-open-prs**, **M-20260919-said-no-open-pr-has-it-again**, **M-20260919-hand-applied-ahead-of-a-pending-migration**, **M-20260919-skipped-the-check-i-had-just-written**, **M-20260919-green-ci-read-as-production-applied**, **M-20260919-credited-my-own-dirty-tree-to-another-session**, **M-20260919-wrote-a-replay-count-i-never-read**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-counted-12-as-11-again**, **M-20260921-reported-a-subtraction-as-a-measurement**, **M-20260921-two-samples-read-as-all**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-said-typegen-red-on-every-merge**, **M-20260922-said-ten-checks-without-listing-them**, **M-20260923-git-add-all-swept-a-formatted-generated-file**, **M-20260925-migration-timestamp-collided-with-parallel-pr**, **M-20260927-anon-customer-names-read-as-by-design**, **M-20261001-cited-sources-i-never-opened-in-decision-log**, **M-20261001-wrote-not-observed-over-my-own-vercel-font-record**, **M-20261001-said-fix-reaches-production-before-deploy-checked**, **M-20261001-reported-applied-migrations-as-not-applied**, **M-20261002-asserted-conformance-impact-from-our-own-gpsa**, **M-20261002-said-no-mechanism-without-reading-the-workflow-that-exists**, **M-20261001-acted-on-dependabot-pr-without-checking-it-was-closed**, **M-20261001-duplicated-an-open-pr-for-four-days**, **M-20260929-logged-the-wrong-zip-as-sent**, **M-20261003-fixed-the-pr-body-and-left-the-business-logs-wrong**, **M-20261005-called-ci-green-from-check-runs-only**, **M-20261005-blamed-migrations-for-a-stale-clone**, **M-20261005-handed-user-cli-commands-i-never-ran**, **M-20261005-diagnosed-device-from-origin-not-users-checkout**, **M-20261005-took-sharps-limit-as-the-limit-of-what-i-could-verify**, **M-20261006-built-on-a-not-null-premise-from-my-own-log**, **M-20261007-read-elastic-build-machine-as-fixed-16gb**, **M-20261007-claimed-env-vars-apply-only-to-new-session**, **M-20261007-posted-rerun-done-before-result**, **M-20261007-claimed-single-source-without-grepping-the-siblings**, **M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing**, **M-20261007-read-an-empty-tool-result-as-no-problem-found**, **M-20261008-bisected-a-flaky-oom-as-deterministic**, **M-20261008-claimed-terms-absent-without-grep**, **M-20261009-read-one-codex-limit-message-as-an-ongoing-state**, **M-20261009-used-an-arrow-the-pdf-font-lacks**, **M-20261009-wrote-an-interval-without-subtracting-two-timestamps**, **M-20261009-diagnosed-double-count-from-code-without-reading-prod**, **M-20261010-read-tails-exit-code-as-the-pushs-exit-code**, **M-20261012-said-prod-unverifiable-while-supabase-mcp-was-loadable**, **M-20261012-planned-to-look-for-a-file-tracing-never-copies**, **M-20261012-wrote-1078-from-a-wider-find-than-the-script-counts**, **M-20261012-wrote-rerun-done-before-the-rerun-returned**, **M-20261013-wrote-identifiers-before-reading-the-output**, **M-20261015-documented-an-npm-script-that-does-not-exist**, **M-20261016-reported-logs-in-pr-without-reading-diffstat**, **M-20261016-said-cutting-branching-stops-previews-from-an-old-note**, **M-20261016-base-merged-a-branch-another-session-was-already-pushing**, **M-20261016-subscribed-pr-by-guessed-number**, **M-20261016-promised-a-workflow-dispatch-i-cannot-send**, **M-20261017-proposed-a-paths-filter-that-would-redden-every-migration-pr**, **M-20261017-widened-where-a-check-runs-without-checking-it-ever-passed**, **M-20261017-read-a-migration-version-as-a-date**, **M-20261017-wrote-absolutes-about-mechanisms-i-had-not-traced**, **M-20261017-grepped-one-export-form-and-read-a-same-named-function-from-another-module** |
 | **G. 構造テストを振る舞いの証明として扱う** | ソースを grep して「その語が書かれている」を確かめただけで、**値が通るか**を確かめていない。テストは緑、機能は壊れている。**ファイルに在ること**を、**その経路が実際に動く/覆われている**ことの証拠として扱うのも同じ | **M-033**, **M-20260921-file-content-read-as-behavior**, **M-20261002-closed-open-question-on-settings-screen-not-build-log**, **M-20261002-checked-one-side-effect-and-called-it-no-orphans**, **M-20261008-called-the-build-successful-from-a-file-mtime** |
 | **H. 未確定の前提の上に作る** | 依頼者しか決められない前提を確認しないまま、その前提が変われば丸ごと消える実装を先に作る | **M-043** |
 | **I. 前提が途中で変わったのに読み直さない** | 判断したときは正しかった観察が、その後の `main` 取り込みなどで無効になっているのに、変更を見直さない。**衝突しなかったファイルにこそ潜む**。**自分が書いた実測値が、自分のマージで古くなる**のも同じ | **M-047**, **M-051**, **M-20260925-my-own-merge-staled-the-replay-count**, **M-20260929-merged-main-without-migration-order-lint**, **M-20261007-merge-duplicated-the-ledger-type-row-and-i-verified-the-wrong-thing**, **M-20261009-carried-a-mutation-count-past-the-change-that-invalidated-it**, **M-20261010-wrote-row-counts-then-added-an-entry-in-the-same-pr** |
 
 ---
+
+## M-20261017-recommended-a-bulk-gas-spending-endpoint-as-a-one-record-probe 「1件だけ試す」として、実費が出る全件処理のエンドポイントを代表に勧めた（2026-10-17・型 B）
+
+**Before**: 「cron の監視が緑でもアンカー本体の証拠にならない」と書いたあと、確かめ方として
+**「実際に1件アンカーする（`POST /api/admin/polygon/backfill` 等）」**と書いた。
+`backfill` という名前と、管理画面から押すものだという理解から、「1件ずつ試せるもの」だと思っていた。
+**このルートのコードは一度も開いていない。**
+
+**After**: このルートは1件の試し打ちではない。
+- `POST /api/admin/polygon/backfill` は**そのテナントの未アンカー画像を全部数え**、
+  `polygon_backfill_jobs` に `total_count = count` でジョブを作ってキューに入れる。
+  **応答は「キューに入れた」しか意味せず、RPC の成否を何も示さない。**
+- 実処理は `api/qstash/polygon-backfill` で、`BATCH_SIZE = 50` ずつ `anchorToPolygon()` を呼び
+  **本物のトランザクション（ガス代）を出し、残りが無くなるまで再キュー**する。
+- つまり代表がこの手順に従うと、**「1件試す」つもりで未アンカーの全件を打ち、
+  しかも成否は分からない**。実費の出る操作を、確認手段として勧めていた。
+
+**なぜ気づけなかったか**: **名前と設置場所から役割を決め、中を読まなかった。**
+`backfill` は「埋める」なので件数の指定ができるだろう、管理画面の操作なので小さく試せるだろう——
+どちらも**コードから来ていない推測**で、1ファイル開けば崩れた。型 B そのもの。
+- 直前に `M-20261017-handed-over-a-switch-without-grepping-its-other-readers` で
+  「**環境変数の変更を人に渡す前に読み手を全部数える**」と書いた。**環境変数には適用し、
+  API エンドポイントには適用しなかった。** 人に渡すのが「設定」でも「操作」でも、
+  渡す前に中を読む必要は同じだった。
+- **「読み取りで確認する」という安全な手段を、同じ文の中に既に書いていた**
+  （`cert-verify` の `on_chain_verified`）。**安全な手段を書いた上で、わざわざ危険な手段を併記した。**
+  「念のため選択肢を増やす」が、実費と不可逆性を持ち込んだ。
+
+**再発防止**: 仕組み無し（判断に依存）。
+- 習慣: **人に「この操作をやってください」と書く前に、そのルート／コマンドの実装を開く。**
+  開いていないものを手順に書かない。名前は仕様ではない。
+- 習慣: **手順に書く操作は「読み取り」「1件の書き込み」「全件の書き込み」を見分けて明示する。**
+  特に**ガス代・送金・外部送信を伴うもの**は、件数の上限が実装のどこで決まるかを書く。
+- 習慣: **安全な確認手段が1つ書けているなら、危険な手段を併記しない。** 選択肢を増やすこと自体が
+  リスクになる場面がある（相手は速い方・分かりやすい方を選ぶ）。
+
+**同じ手順書で、さらに2件（2026-10-17）。どちらも「この手順を全部終えても直っていない」形。**
+- **チェーンを変える手順に、コントラクトアドレスが入っていなかった。** RPC とは別系統で、しかも2系統
+  （`POLYGON_BATCH_CONTRACT_ADDRESS[_AMOY|_POLYGON]` と `POLYGON_CONTRACT_ADDRESS[_AMOY|_POLYGON]`）。
+  選んだネットワーク向けの値が無いと `getSignerConfig()` が `null` を返し、**アンカーはエラーにならず
+  no-op**（`polygonBatch.ts:87`）。接尾辞無しだけなら古いチェーンのアドレスを使う。
+  **残高監視は healthy なのに書き込みだけ静かに失敗する**状態が作れた。
+- **鍵の残高を確かめる手順が無かった。** `recordCronSuccess()` は `status` が `critical` でも呼ばれる
+  （`route.ts:225-226`。RPC 疎通と残高警告を分ける意図的な設計）。読み取り確認もガス代を使わない。
+  つまり**手順を全部満たしても、資金不足で新規アンカーが全部失敗する**状態を「直った」と読めた。
+
+**なぜ気づけなかったか**: **「失敗の原因」を直す手順を書いて、「成功の条件」を列挙していなかった。**
+DNS が原因だったので、名前解決できる RPC に差し替える手順を組み立てた。だが
+**アンカーが1件通るには RPC・ネットワーク・コントラクトアドレス・鍵・残高の5つが揃う**必要があり、
+私は最初の1つしか手順にしていなかった。**原因の除去と、動作の成立は別の問題**。
+手順を足していく過程でも、「この手順を全部終えたら本当に動くか」を一度も通して考えていない。
+
+**再発防止**: 仕組み無し（判断に依存）。
+- 習慣: **「直す手順」を渡す前に、その機能が1回成功するのに必要な条件を全部列挙する。**
+  手順はその列挙に対応させる。原因の裏返しは手順の一部にすぎない。
+- 習慣: **「成功を示す信号」を書くときは、その信号が成立しても失敗しうる経路を1つ探す。**
+  今回は `last_success_at` が「RPC 疎通」しか意味しないことが、コードのコメントに書いてあった。
+
+**さらに2件（2026-10-17）。同じ穴を Codex が5巡に分けて突いた。**
+`CERT_RECORD_ANCHOR_ENABLED`（証明書単位のアンカーを別フラグで止めている）と、
+**コントラクト側の `anchorers` 登録・`paused`**（`LedraBatchAnchor.sol:61-63` / `LedraAnchor.sol:50` の
+`onlyAnchorer whenNotPaused`）。後者は**読み取り確認では絶対に検出できない** ——
+`isAnchored()` は modifier の無い `view` なので、**既存のアンカーは `true` を返すのに
+新規の書き込みだけ revert する**。つまり私が「これで確認できる」と書いた読み取り確認は、
+書き込みの可否について**原理的に何も言っていなかった**。
+
+**なぜ5巡かかったか**: **毎回「指摘された条件を1つ足す」で閉じたから。**
+3巡続けて同じ形（手順を終えても動かない）を指摘されているのに、**手順を足す作業を続けて、
+「条件を全部列挙する」作業に切り替えなかった。** 同じ型の指摘が2回来たら、
+それは個別の漏れではなく**列挙の方法が間違っている**という信号だった。
+最後にコードから辿って**9項目**になり、DNS はそのうち1項目だった。
+
+**再発防止**: 仕組み無し（判断に依存）。
+- 習慣: **同じ型の指摘を2回受けたら、個別に足すのをやめて、列挙そのものをやり直す。**
+  「漏れを埋める」と「漏れない作り方に変える」は別の作業で、2回目は後者の合図。
+- 習慣: **読み取りで書き込みの可否を確かめたことにしない。** 読み取り関数に権限・停止の
+  modifier が無いなら、それは書き込みについて何も証明しない。権限と停止フラグを直接読む。
+
+## M-20261017-handed-over-a-switch-without-grepping-its-other-readers 代表に渡したスイッチが、別の場所で検証も止めていた（2026-10-17・型 C）
+
+**Before**: `polygon-signer` の失敗を止める手順として、代表に2つのレバーを渡し、
+**「どちらもレバーはコードで確認済み」**と書いた。確認したのは:
+- (b) `POLYGON_ANCHOR_ENABLED` を `"true"` 以外にすると、`route.ts:136` の判定で `skipped` を返し
+  RPC に触らなくなる —— **その route のその行は確かに読んだ。**
+- (a) 接尾辞付きの `POLYGON_RPC_URL_AMOY` が設定済みならアンカー側は接尾辞付きを先に見るので、
+  「接尾辞付きがあるなら、そちらを**直すか消す**」。
+
+**After**: Codex の P1 指摘4件で、**どちらのレバーも他の読み手を巻き込む**ことが分かった。
+- `POLYGON_ANCHOR_ENABLED` は `src/app/api/cert-verify/[public_id]/route.ts:105` でも読まれており、
+  `verifyBatchAnchor()` がこのフラグで囲まれている。**`"true"` 以外にすると、既存の証明書の
+  `on_chain_verified` が `null` になる**（新規の停止ではなく、既存の検証の停止）。
+  しかも `polygon-signer` 自身のアラート文（`route.ts:116`）が
+  「既存のアンカーは引き続き検証可能」と書いている。**自分が渡した手順が、自分が引用した約束を壊していた。**
+- 「接尾辞付きを消す」も壊す。両プロバイダの `getReadConfig(networkOverride)`
+  （`polygonBatch.ts:95` / `polygon.ts:86`）は同じ `perNetworkEnv` を通るので、
+  **消すと過去のアンカーの読み取りも接尾辞無しに落ちる**。amoy のアンカーを mainnet の RPC で照会すれば
+  契約が無いので「未検証」に見える。
+- 検証手順も2つ外れていた。`last_error` が「変わらないこと」は成功の証拠にならない
+  （同じ失敗は同じ文字列で上書きされ、`recordCronSuccess()` は `last_error` を触らない）。
+  cron の監視が緑でもアンカー本体の証拠にならない（監視は接尾辞無しだけを読む）。
+
+**なぜ気づけなかったか**: **「レバーを読んでいる行を特定する」で満足した。**
+これは直前の失敗の再発防止として自分で書いた習慣
+（`M-20261017-grepped-one-export-form-and-read-a-same-named-function-from-another-module`:
+「環境変数名を渡すときは、それを `process.env` から読んでいる行を特定する」）。
+**その習慣を「1行見つける」で終わりにしていた。** 設定は1対多で、
+**スイッチを切る判断に必要なのは「読んでいる行」ではなく「読んでいる行の全部」**だった。
+`grep -rn POLYGON_ANCHOR_ENABLED src/` を1回打てば `cert-verify` が出てくる（実際に打つと 24 行出る）。
+**一番安い確認を飛ばして、一番高い誤り（製品の検証を黙って止める手順を代表に渡す）を出した。**
+
+CLAUDE.md には既に「ガードを1本入れたら、その操作を起こす画面に他の入口が無いかを見る」とある。
+**入口の話として読んでいて、「出口」—— 同じ設定を読む側 —— に適用していなかった。** 同じ型の裏返し。
+
+**再発防止**: 仕組み無し（判断に依存）。
+- 習慣: **環境変数・フラグの変更を人に渡す前に `grep -rn '<名前>' src/` を打ち、
+  読み手を全部数えて、1つずつ「この行はどうなるか」を書く。** 1行だけ見て「確認済み」と書かない。
+- 習慣: **「止める」手順は、止まるものの一覧で渡す。** 「何が止まるか」を列挙できないなら、
+  まだその手順を渡せない。書き込みと読み取りが同じフラグなら、それ自体が選択肢の分岐になる。
+- 習慣: **自分が引用した約束（アラート文・ドキュメントの文言）と、自分が渡した手順を突き合わせる。**
+  今回は同じファイルの 116 行と 136 行だった。
+
+**訂正が逆方向に外れた（2026-10-17）。** 「このフラグは検証も止める」と指摘されたあと、
+(b-1) を「**新規も既存も、オンチェーンの裏取りが消える**」と書いた。これは**広すぎた**。
+`verifyAnchor()` を呼ぶ `api/public/verify:114`・`api/insurer/anchor-verify/[sha256]:91`・
+`lib/zkp/verifier.ts:85` は**このフラグを見ない**ので動き続ける。止まるのは `cert-verify` の
+`on_chain_verified`（証明書単位・バッチ）だけだった。**指摘を受けた直後も、`verifyAnchor` の
+呼び出し元を grep していなかった** —— 指摘されたファイル（`cert-verify`）だけを見て、
+そこから一般化した。
+
+**これは「安全側に倒した誤り」ではない。** 影響を広く書けば、代表は**より侵襲的な選択肢**
+（フラグ体系を作り直す (b-2)）を選びやすくなる。実測では (b-2) は1行の条件を変えるだけで足りる。
+**過大評価は、過小評価と同じように判断を歪める。** 「盛っておけば安全」は成立しない。
+- 習慣: **影響範囲を書くときは、広い方に振っても grep する。** 「全部止まる」も「1か所だけ」も、
+  同じ1回の検索で決まる。検索せずに書いた「全部」は、検索せずに書いた「1か所」と同じ強さの主張。
+
+## M-20261017-filtered-on-a-field-name-that-does-not-exist-and-reported-zero 実在しないフィールド名で絞り込み、「未解決 0 件」を代表に報告した（2026-10-17・型 A）
+
+**Before**: #1368 の Codex 3巡目を2件直し、残りが無いことを確かめるつもりで
+`gh api .../ccr/review_threads -q '[.[] | select(.is_resolved == false)] | length'` を打った。`0` が返った。
+総数 11 件も取れていたので「11 件中 0 件が未解決」と読み、**代表への報告に「未解決スレッドは 0/11 件」と書いた**。
+
+**After**: このルートのフィールド名は `resolved` で、**`is_resolved` は存在しない**。
+存在しないキーは `null` を返すので `null == false` は常に偽 —— **この絞り込みは、何件未解決でも 0 を返す。**
+正しい名前で打ち直すと **未解決 2 件**。3巡目の指摘は2件ではなく**4件**あり、
+`DECISION_LOG.md:48` に残っていた古い断定（「export は `GET` だけ」）と、差し替える RPC の TLS 1.3 要件の2件を
+**私は見ていなかった**。気づいたのは Codex のコメントが通知で届いたからで、自分の確認では永久に気づけなかった。
+
+**なぜ気づけなかったか**: **「0 が返った」を「0 件だった」と読んだ。**
+検出器が「無い」と答えたときに、その検出器が「有るもの」を拾えるかを確かめていない。
+- `jq` の `select` は、**キー名を間違えてもエラーにならず静かに全件落とす**。
+  失敗が「空の結果」に化ける道具は、空の結果を信用できない。
+- 同じ日に同じ形を2回やっている（`grep -n 'export async function'` が `export const POST = GET` を
+  拾えないのに「export は GET だけ」と確定させた:
+  `M-20261017-grepped-one-export-form-and-read-a-same-named-function-from-another-module`）。
+  **その時の再発防止を「行頭の `export` を全部出す」と書き、grep の話に閉じていた。**
+  型 A の対策を「その道具」だけに書くと、次に別の道具（今回は `jq`）で同じことをやる。
+- さらに悪いのは、**この数字を代表への報告に書いたこと**。「0/11 件」は分母まで付いているので、
+  読み手には検証済みの数字に見える。§10 の「もっともらしい数値」そのもの。
+
+**再発防止**: 仕組み無し（判断に依存）。
+- 習慣: **「0 件」を結論にする前に、同じクエリを「必ず1件以上返す形」に変えて当たりを取る。**
+  今回なら `select(.resolved == true)` が 9 件返る（返らなければキー名が違う）。
+  CLAUDE.md「自作の走査スクリプトの数字を文書に書く前に、既知の1件で当たりを取る」の `jq` 版。
+- 習慣: **レビューの残件は件数ではなく ID の一覧で確かめる。** `comment_ids` を並べ、自分が返信した ID と
+  突き合わせる。件数が合っていても中身が違うことはあるが、ID なら差分が見える。
+- 習慣: **API のレスポンスを絞り込む前に `keys` を1回打つ。** フィールド名は推測しない。
+
+## M-20261017-grepped-one-export-form-and-read-a-same-named-function-from-another-module 「コードから演繹した」と書いた3点が、route 自身を読んでいなかったせいで全部外れた（2026-10-17・型 F）
+
+**Before**: `polygon-signer` の原因を調べ、本番のエラーとコードから本番の設定を**演繹した**と書いて PR を出した。
+- 「ルートの export は `GET` だけなので、記録されている毎時の POST ではこの経路は動かない（405）」
+- 「`POLYGON_NETWORK` は `amoy` で確定。エラーの URL が amoy の既定値だから」
+- 「代表へのレバー: `POLYGON_RPC_URL_AMOY`（または `POLYGON_RPC_URL`）に生きている RPC を設定」
+
+**After**: Codex の指摘3件（うち P1 が1件）で、**3つとも外れ**だった。
+- `route.ts:265` に **`export const POST = GET`** がある。ヘッダ5行目にも「POST で叩く外部スケジューラ・
+  監視ツール用」と明記。POST でもこの経路は動く。**既に記録されていた毎時 POST が2つ目の呼び出しの最有力**で、
+  私はそこから捜索を逸らしていた。
+- route 自身の `getConfig()`（62-68行）は `process.env.POLYGON_RPC_URL || DEFAULT_RPC[network]`。
+  **`POLYGON_RPC_URL` に amoy の URL が明示設定されていれば、`POLYGON_NETWORK` が `polygon` でも
+  同じ URL が出る。** 「URL が amoy の既定値だから network は amoy」は成り立たない。
+- **`POLYGON_RPC_URL_AMOY` はこの cron では読まれない。** ネットワーク別の `perNetworkEnv` は
+  アンカー側の `providers/polygonBatch.ts` にあり、**別の関数**。代表がレバー (a) に従って `_AMOY` だけを
+  設定したら、cron は既定値のまま失敗し続け、「直したのに直らない」になっていた。
+
+**なぜ気づけなかったか**: 2つの別の失敗が同じ結論（「演繹した」）を支えていた。
+1. **grep の形を1つしか試していない。** `grep -n 'export async function'` は
+   **`export const POST = GET` を構造的に拾えない**。それなのに出力を見て「export は GET だけ」と確定させた。
+   検出器が「無い」と答えたときに、その検出器が「有るもの」を拾えるかを確かめていない
+   （`M-20261017-wrote-absolutes-about-mechanisms-i-had-not-traced` と同じ日に、同じ形をやった）。
+2. **同名の関数を別モジュールから読み、route の実装だと思った。** `polygonBatch.ts` の `getSignerConfig()` は
+   `perNetworkEnv` を使う。route の `getConfig()` は使わない。名前も役割も似ているので、
+   **`grep 'POLYGON_RPC_URL'` の結果を見て「対応している」と読み、どのファイルの話かを分けていなかった**。
+   「コードの経路から演繹」と書くなら、**実際に走るファイルを上から下まで読む**のが前提だった。
+   私は `grep` の断片を繋いで経路を再構成し、それを「読んだ」と呼んだ。
+
+**再発防止**: 仕組み無し（判断に依存）。
+- 習慣: **「このルートは X しか export していない」と書く前に `grep -n '^export' <file>` を打つ。**
+  `export async function` も `export const` も `export {` も1つの正規表現では拾えない。行頭の `export` を全部出す。
+- 習慣: **同名の関数が複数あるときは、どのファイルのものかを毎回書く。** 「`getConfig()` は〜」ではなく
+  「`route.ts:62` の `getConfig()` は〜」と書く。書けないなら、まだ読んでいない。
+- 習慣: **代表に渡す「レバー」は、そのレバーを読んでいるコードを指して書く。** 環境変数名を渡すときは、
+  それを `process.env` から読んでいる行を特定する。読んでいる行が示せない変数名を渡さない。
+
+**同じ PR の2巡目で、同じ形をさらに4件（2026-10-17）**。訂正した側でまた断定していた。
+- 「`POLYGON_RPC_URL` を設定すれば**両方に効く**」→ 偽。`perNetworkEnv`（74-80行）は接尾辞付きを**先に**見るので、
+  `POLYGON_RPC_URL_AMOY` が既に設定済みならアンカー側は古い値を使い続ける。**1巡目の訂正の中で、
+  条件を確かめずに新しい絶対を書いた。**
+- 「**原因は DNS**」（3か月半の全部について）→ 言えない。`recordCronFailure()` は `last_error` を毎回上書きし、
+  履歴を残さない。読めたのは**最後の1件**だけ。
+- 「**毎時2回**」→ 言えない。読み取り→upsert が非原子的で、同時実行は同じ `prevCount + 1` を書きうる。
+  書き込みの結果も best-effort で捨てている。カウンタは**下限**。言えるのは「毎時1回より多い」まで。
+- 環境変数を替えても**再デプロイしないと既存のデプロイに効かない**（`docs/polygon-anchoring-deployment.md:100`）。
+  レバーを渡しながら、それを有効にする手順を書いていなかった。代表は「替えたのに直らない」を見ることになった。
+
+**なぜ訂正の中で繰り返したか**: 1件直すと、その修正文が新しい断定になる。
+**直した箇所は「今さっき確かめた」気分になるので、確かめ直さない。** 訂正は新規の記述と同じ検証が要る。
+- 習慣: **訂正を書いたら、その訂正文に対して §6 の自己攻撃を1回やる。** 「この訂正が間違っているとしたら何が反例か」。
+- 習慣: **代表に渡す手順は、1〜4 の番号付きにして「見る→直す→有効にする」を分ける。**
+  変数名だけ渡すと、見る手順と有効化の手順が落ちる。
+
+**同じ PR の3巡目、4件のうち私が気づいた2件（2026-10-17）**。両方とも「渡す記述を、それが走る経路の末尾まで読まずに書いた」形。
+- 「`polygon-signer` は**一度も成功していない**」→ 言えない。根拠は `last_success_at = NULL` だが、
+  `recordCronSuccess()`（`failureTracker.ts:49-75`）は `bestEffortWrite` を try/catch で包み、
+  **書き込みの失敗を握り潰す**（「失敗トラッカが落ちても cron 本体を止めない」という設計意図）。
+  成功したのに記録だけ落ちていれば NULL のまま残る。言えるのは「**成功の記録が無い**」まで。
+  **2巡目で `recordCronFailure()` の `last_error` 上書きは追跡したのに、同じファイルで1つ上にある
+  `recordCronSuccess()` を読んでいなかった。** 失敗側の主張だけを点検し、対になる成功側の主張を素通りさせた。
+- 代表へのレバー (a)「生きている RPC を設定する」に、**資格情報を URL に埋めたエンドポイントを渡すな**
+  という条件が無かった。失敗時の `msg`（`route.ts:239`）は viem のエラー文で**リクエスト URL 全体を含み**、
+  それが `console.error`（240行）と `cron_failure_streaks.last_error`（244行・先頭500文字）に入る。
+  `https://…/v2/<APIキー>` 形のエンドポイント（この種の RPC では一般的）を設定したら、
+  **次の失敗でキーが DB とログに残る**。手順を渡しながら、その手順が失敗したときに何が書かれるかを見ていなかった。
+
+**なぜ気づけなかったか**（3巡目）:
+- **点検の範囲を「指摘された主張」に閉じていた。** 2巡目の指摘が `last_error` だったので `last_error` を直した。
+  **同じ関数群の対になる主張（`last_success_at`）は同じ欠陥を持ちうるのに、見に行かなかった。**
+  CLAUDE.md の「呼び出し元を全部 grep して共有関数を1回直す」の文章版をやっていない。
+- **手順の正常系しか読んでいなかった。** 「この値を設定して」と書くとき、その値が**失敗経路でどこへ書かれるか**
+  を見ていない。エラー文に入る値は、ログと DB に残る値である。
+
+**再発防止**: 仕組み無し（判断に依存）。
+- 習慣: **指摘を1件直したら、同じ関数・同じテーブルの対になる列について同じ問いを立てる。**
+  「失敗側がこうなら、成功側はどうか」。片側だけ直した訂正は、次の巡で同じ指摘を呼ぶ。
+- 習慣: **代表に「この値を設定して」と書く前に、その値が失敗時のエラー文に入るかを確かめる。**
+  入るなら、資格情報を含めない条件を手順に書く。
+
+**この習慣を同じ日に適用して、自分の文章の矛盾を2件見つけた**（2026-10-17）。1〜2巡目の訂正を
+**箇条書きで足しただけで、上の本文を直していなかった**ため、同じ段落が「ルートの export は `GET` だけ」と
+「`export const POST = GET`」を、「呼び出しが毎時2回ある」と「毎時ちょうど2回とは言えない」を、
+4行の間に並べて書いていた。**上から読む人は、先に偽の方を読む。**
+→ 習慣: **訂正を箇条書きで足したら、その上の本文を読み直して同じ主張を消す。** 足すだけの訂正は矛盾を残す。
+
+**同じ3巡目の、見落としていた残り2件（2026-10-17）**。3巡目の指摘は4件あったのに2件しか見ておらず、
+その状態で「未解決0件」と判断していた
+（見落としの経緯は `M-20261017-filtered-on-a-field-name-that-does-not-exist-and-reported-zero`）。
+- **矛盾を直したのは `OPEN_QUESTIONS.md` だけで、`DECISION_LOG.md` の同じ文を grep していなかった**（型 C）。
+  「export は `GET` だけ」「毎時2回叩かれている」は2つのファイルに書いてあり、片方だけ直した。
+  **同じ日に、同じ事実を4か所に書いて全部直した経験がある**のに
+  （`M-20261017-read-a-migration-version-as-a-date`）、今回は1か所で止めた。
+  事業ログは同じ主張を複数ファイルに写すので、**訂正は必ず `grep -rn` で全コピーを数えてから始める**。
+- **「原因ではない」と分かった候補を、制約の一覧からも落とした。** 原因候補 (i) TLS 1.3 限定は、
+  `ENOTFOUND` が TLS 握手より前で落ちているので**この失敗の原因ではない**。それは正しい。
+  だが `route.ts:192` は viem に `tls13HttpsFetch` を渡し続けており、**差し替える RPC が TLS 1.3 を
+  話せなければ、DNS エラーが TLS 握手エラーに替わるだけ**。代表に渡した手順にその条件が無かった。
+  **「原因の候補から外す」と「要件から外す」は別**。前者を済ませた安心感で、後者を確かめずに外していた。
+
+**なぜ気づけなかったか**（この2件）: どちらも「**1件直したら、その1件で閉じた**」形。
+3巡目の反省に「同じ関数の対になる列を見る」と書いたのに、その適用範囲を**関数**に限っていた。
+対になるのは列だけでなく、**同じ主張を載せた別のファイル**でも、**同じ候補リストの別の役割**でもある。
+
+**再発防止**: 仕組み無し（判断に依存）。
+- 習慣: **事業ログの記述を訂正するときは、先に `grep -rn '<直す文の特徴語>' docs/` を打って件数を出し、
+  その件数を直す。** 1か所だけ直して終われるのは、grep が1件と答えたときだけ。
+- 習慣: **「原因ではない」と結論した候補は、消す前に「では要件としては残るか」を1行で書く。**
+
+**同じ PR の4巡目で、同じ型をもう1件（2026-10-17）。しかも直前に書いた再発防止を、その直後に自分で外した。**
+`DECISION_LOG` の見出しが「polygon-signer の原因は DNS」のまま、2巡目で `OPEN_QUESTIONS` に入れた限定
+（`last_error` は毎回上書きされるので読めるのは最後の1件だけ）が**この記録には一度も入っていなかった**。
+
+**なぜ気づけなかったか**: 直前に「訂正は `grep -rn` で全コピーを数えてから始める」と書き、実際に grep した。
+**だが grep したのは「消した誤り」の語だけだった**（`毎時2回`・`export は GET だけ`・`一度も成功していない`）。
+**足した限定の方は grep していない。** 限定は「無い文」なので、grep では見つからない ——
+`DECISION_LOG` に足りなかったのは文ではなく、**文の不在**だった。
+訂正には2つの面があり、片面だけを機械的に確認する手順を書いていた。
+
+**再発防止**: 仕組み無し（判断に依存）。
+- 習慣: **限定を1か所に足したら、`grep -rn '<主題の語>' docs/` で主題の全出現を出し、
+  1件ずつ「ここに限定が付いているか」を見る。** 今回なら `原因は DNS` ではなく `DNS` で引く。
+  消した語を引くと、限定が要る場所は1つも出てこない。
+- 習慣: **事業ログの訂正は、見出し行を最後に読み直す。** 見出しは最も引用され最も限定が落ちる。
 
 ## M-20261016-verify-button-could-mark-content-nobody-saw 運営の「検証済みにする」が、運営の見た後に書き換わった中身にも付けられた（2026-10-16・型 C）
 

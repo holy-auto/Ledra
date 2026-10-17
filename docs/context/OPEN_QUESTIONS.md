@@ -152,14 +152,197 @@ JMS Bizweek 2026 で OEM が「バリューチェーン・入力の簡略化・�
 `UPDATE stripe_processed_events SET processed_at = now() WHERE event_id IN (...3件)` で閉じる、(b) 追いついていなければ Stripe から Resend する。
 本番データの書き換えなので、このセッションでは実行していない。閉じない限り 288 回/日 Sentry とログに出続け、本物の詰まりが埋もれる。
 
-**2. `polygon-signer` は一度も成功していない。**
-`cron_failure_streaks` で `consecutive_failures=4305`、`last_success_at=NULL`（2026-10-09 14:00 UTC 時点）。
-現在のエラーは `rpc-amoy.polygon.technology` への `fetch failed`。原因候補は (i) 2026-10-02 の TLS 1.3 限定（`tls13HttpsFetch`）に Amoy 公開 RPC が非対応、
-(ii) 公開 RPC 側の遮断・不調、(iii) DNS。この環境からは当該ホストに接続できず切り分けられなかった。
-今回 `cause` の連鎖をログに出すようにしたので、**デプロイ後の次の実行のログ（または `last_error` の先頭 `[cause: ...]`）で決まる**。
-あわせて【要確認】本番の `POLYGON_NETWORK` が `amoy`（テストネット）になっている。本番のアンカーをテストネットに打つ運用で良いのか、
-アンカリング自体を止める（`POLYGON_ANCHOR_ENABLED` を外す）のかは代表判断。また Vercel cron（GET）とは別に、
-`www.ledra.co.jp` 宛ての POST でも毎時叩かれている（外部スケジューラ。出所未確認）。
+**2. `polygon-signer` は成功の記録が一度も無い。** → **2026-10-17、最新の失敗の原因は DNS と判明。残りは代表判断。**
+（**「一度も成功していない」とは言い切れない** —— 根拠は `last_success_at = NULL` だが、`recordCronSuccess()` は
+書き込みの失敗を握り潰す設計（`failureTracker.ts:49-75`「失敗トラッカが落ちても cron 本体を止めない」）。
+成功したのに DB 書き込みだけ落ちていれば NULL のまま残る。Codex の指摘で限定。2026-10-17）
+
+**最新の失敗の原因は DNS。**（**3か月半の失敗すべてが同じ原因とは言えない** —— `recordCronFailure()` は
+`last_error` を毎回上書きし、履歴を残さない。読めるのは最後の1件だけ。Codex の指摘で限定。2026-10-17）
+本番の `cron_failure_streaks.last_error`（2026-10-17 05:31 UTC に Supabase MCP で確認）:
+
+```
+[cause: fetch failed <- ENOTFOUND: getaddrinfo ENOTFOUND rpc-amoy.polygon.technology] HTTP request failed.
+URL: https://rpc-amoy.polygon.technology/
+Request body: {"method":"eth_getBalance","params":["0x8938…","latest"]}
+Version: viem@2.57.2
+```
+
+`ENOTFOUND` は名前解決の失敗なので、**候補 (i) TLS 1.3 限定はこの失敗の原因ではない**（TLS 握手より前で落ちている）。
+**ただし (i) を「原因ではない」と外しても、制約としては残る**（Codex の指摘。2026-10-17）。差し替える RPC が TLS 1.3 を話せなければ、DNS エラーが TLS 握手エラーに替わるだけで失敗は続く（下記 (a) の6）。
+`rpc-amoy.polygon.technology` が世界的に消えたのかは**この環境からは判定できない** ——
+ここの名前解決は許可リストで、実在する `docs.github.com` や `polygon-rpc.com` も引けない（実測）。
+言えるのは「**Vercel のランタイムがこのホスト名を解決できない**」まで。
+
+**コードの経路から言えること**（`src/app/api/cron/polygon-signer/route.ts`）。
+`POLYGON_ANCHOR_ENABLED !== "true"` の判定は RPC に触る前にあり、そこで `skipped` を返す。
+RPC エラーが記録されている以上:
+- `POLYGON_ANCHOR_ENABLED` は `"true"`
+- `POLYGON_PRIVATE_KEY` は設定済みかつ `0x`+64桁に正規化できる（できなければ手前で skip）
+- 実際に使われた RPC は `https://rpc-amoy.polygon.technology/`（エラーに出ている URL そのもの）
+
+**ここから先は演繹できない**（Codex の指摘で訂正。2026-10-17）。route 自身の `getConfig()`（62-68行）は
+`process.env.POLYGON_RPC_URL || DEFAULT_RPC[network]` なので、**`POLYGON_RPC_URL` に amoy の URL が
+明示設定されていれば、`POLYGON_NETWORK` が `polygon` でも同じ URL が出る**。したがって
+- `POLYGON_NETWORK` の値は**不明**（2026-10-09 の【要確認】は未解決のまま。テストネット/メインネットの判断を
+  この推測の上でしないこと）
+- `POLYGON_RPC_URL` が未設定かどうかも**不明**
+どちらも Vercel の環境変数を見るまで確定しない。
+
+**新しく分かったこと: 呼び出しが毎時1回より多い（超過分は出所不明で、有効な cron シークレットを持っている）。**
+`vercel.json` の cron は `0 * * * *` の**毎時1回**。一方、行の作成 2026-07-01 07:34:43 から
+最終失敗 2026-10-17 05:00:21 までの **2589.4 時間で 4671 件 = 1.804 件/時**（自分で測った）。
+`recordCronFailure` の呼び出しは route 内の1か所だけで、リトライも二重加算も無い。取りこぼし（非原子的な
+読み取り→upsert、best-effort で捨てられる書き込み結果）は起こるが二重計上は起こらないので、
+**件数は実行回数の下限**。したがって実行は毎時1回より多い。
+さらに `verifyCronRequest` が失敗した呼び出しは記録前に return するので、**超過分の呼び出しも認証を通っている**。
+2026-10-09 の記録（4305 件）との差分でも +366 件 / 183 時間 = 2.0 件/時 になるが、4305 は自分で測った数字ではない。
+- **超過分は、既に記録されている「`www.ledra.co.jp` 宛ての毎時 POST」が最も有力**（Codex の指摘で訂正。2026-10-17）。
+  route は `export const POST = GET`（265行）で、ヘッダにも「POST で叩く外部スケジューラ・監視ツール用」と
+  書いてある。**POST でもこの経路は動く**（当初「GET しか export していないので 405」と書いたのは誤り。
+  `M-20261017-grepped-one-export-form-and-read-a-same-named-function-from-another-module`）。
+- 残っている疑問は「その POST を出しているのは何か」。**出所は未確認。**
+- **「毎時ちょうど2回」とは言えない**（Codex の指摘で限定。2026-10-17）。`recordCronFailure()` は
+  読み取り→upsert が非原子的で、同時に走った呼び出しが同じ `prevCount + 1` を書きうるし、
+  書き込みの結果は best-effort で捨てている。**カウンタは下限**。
+  実測の 1.804 件/時 から言えるのは「**毎時1回より多い**」まで。
+- 探し方: Vercel のランタイムログで `/api/cron/polygon-signer` を1時間分見て、**その区間のリクエストを全部数える**
+  （2件だけ比べて終わりにしない）。メソッド・user-agent・送信元 IP を並べる。
+
+**代表に決めてもらうこと**（レバーは、設定を読む行だけでなく、**同じ設定を読む他の行まで `grep` で確認した**。
+初版は前者だけで「コードで確認済み」と書いていた —— `MISTAKE_LEDGER` の
+`M-20261017-handed-over-a-switch-without-grepping-its-other-readers`）:
+- (a) **アンカリングを続けるなら**: Vercel から名前解決できる RPC を設定する。
+  **まず「アンカーが1件成立する条件」の全部を見る**（2026-10-17 にコードから列挙。
+  Codex の指摘が5回に分けてこの穴を突いたので、手順を足すのをやめて条件の側を並べた。
+  経緯は `MISTAKE_LEDGER` の `M-20261017-handed-over-a-switch-without-grepping-its-other-readers`）。
+  **DNS を直すのは (4) だけで、残りが揃っていなければ1件も通らない**:
+  1. `POLYGON_ANCHOR_ENABLED = "true"`（`providers/polygonBatch.ts:67` の `isEnabled()`、
+     `api/cron/anchor-batch/route.ts:26`）
+  2. `CERT_RECORD_ANCHOR_ENABLED = "true"`（**証明書単位のアンカーだけに必要**。
+     `lib/anchoring/certificateAnchorService.ts:25` が enqueue を止め、
+     `api/cron/anchor-batch/route.ts:29` が日次バッチを provider に届く前に skip する）
+  3. `POLYGON_NETWORK` が運用するチェーンと一致（`resolveNetwork()`）
+  4. そのネットワークの RPC が **Vercel から名前解決でき、TLS 1.3 を話す `https`**
+     （`perNetworkEnv("POLYGON_RPC_URL", network)` / `lib/net/tls13Fetch.ts`）
+  5. そのネットワークの**コントラクトアドレス**。2系統:
+     `POLYGON_BATCH_CONTRACT_ADDRESS[_AMOY|_POLYGON]`（証明書バッチ）と
+     `POLYGON_CONTRACT_ADDRESS[_AMOY|_POLYGON]`（画像単位・ZKP）。無いと **no-op**
+  6. `POLYGON_PRIVATE_KEY` が `0x`+64桁hex に正規化できる
+  7. **署名アドレスに POL 残高がある**（監視は `critical` でも success を記録するので、監視では分からない）
+  8. **署名アドレスがコントラクトの `anchorers` に登録されている**
+     （`contracts/LedraBatchAnchor.sol:61-63` と `contracts/LedraAnchor.sol:50` の `onlyAnchorer`）
+  9. **コントラクトが `paused` でない**（同 `whenNotPaused`）
+
+  **(8)(9) は読み取り確認では絶対に検出できない**（Codex の P1 指摘。2026-10-17）——
+  `isAnchored()` は modifier の無い `view` なので、**既存のアンカーは `true` を返すのに
+  新規の書き込みだけ revert する**。`anchorers` と `paused` はどちらも `public` なので、
+  `anchorers(署名アドレス)` と `paused()` を読めば書き込み前に確かめられる。
+
+  **手順の順番**:
+  1. **まず既存の値を見る。** `POLYGON_RPC_URL` / `POLYGON_RPC_URL_AMOY` / `POLYGON_RPC_URL_POLYGON` の
+     3つと、**`POLYGON_NETWORK`** が今どうなっているか（この環境からは読めない）。
+     **`POLYGON_NETWORK` も決める対象**（Codex の指摘。2026-10-17）—— cron はチェーンの指定を
+     `POLYGON_NETWORK` から取り（`route.ts:57-60` の `resolveNetwork()` と 189行の `chain` 選択）、
+     **URL とは独立**に決まる。しかも `eth_getBalance` はチェーン ID を照合しないので、
+     **amoy の URL に `POLYGON_NETWORK=polygon`（またはその逆）でも「healthy」が返る**。
+     どちらのチェーンで運用するかを決め、**接尾辞無しの RPC をそれに合わせる**。
+     **チェーンを変えるなら、コントラクトアドレスも同時に見る**（Codex の P1 指摘。2026-10-17）。
+     RPC とは別系統で、しかも**2系統ある**:
+     `POLYGON_BATCH_CONTRACT_ADDRESS[_AMOY|_POLYGON]`（証明書バッチ。`polygonBatch.ts:85`・`:98`）と
+     `POLYGON_CONTRACT_ADDRESS[_AMOY|_POLYGON]`（画像単位・ZKP。`polygon.ts:89`）。
+     **選んだネットワーク向けの値が無いと、アンカーはエラーにならず no-op になる**
+     （`getSignerConfig()` が `null` を返し `DISABLED_RESULT`。`polygonBatch.ts:87`）。
+     接尾辞無しだけ設定されていると、**古いチェーンのアドレスを使い続ける**。
+     つまり**残高監視は healthy なのに書き込みだけ静かに失敗する**状態が作れる。
+  2. cron の監視（`route.ts:62-68` の `getConfig()`）は **`POLYGON_RPC_URL` だけ**を読む。`_AMOY` は見ない。
+  3. アンカー本体（`providers/polygonBatch.ts` の `perNetworkEnv`、74-80行）は **`_AMOY` / `_POLYGON` を先に見て、
+     無ければ `POLYGON_RPC_URL` に落ちる**。したがって**接尾辞付きが既に設定されていると、
+     `POLYGON_RPC_URL` を変えてもアンカー側は古い値を使い続ける**（Codex の P1 指摘で訂正。2026-10-17。
+     当初「`POLYGON_RPC_URL` を設定すれば両方に効く」と書いたのは、接尾辞付きが無い場合だけの話だった）。
+     → **接尾辞付きがあるなら、そのネットワーク向けの生きているエンドポイントに「直す」。**
+     **消すのは、`POLYGON_RPC_URL` がそのネットワークの読み取り全部に使えると確認できたときだけ**
+     （Codex の P1 指摘。2026-10-17）。両プロバイダの読み取り設定
+     （`providers/polygonBatch.ts:95` と `providers/polygon.ts:86` の `getReadConfig(networkOverride)`）は
+     同じ `perNetworkEnv` を通るので、**接尾辞付きを消すと、過去のアンカーの読み取りも接尾辞無しに落ちる**。
+     amoy に打った過去のアンカーを mainnet の RPC で照会すれば、**契約が無いので「未検証」に見える**
+     （実際には刻まれている）。過去と現在でネットワークが違う運用なら、消すと検証が壊れる。
+  4. **変更後に再デプロイする。** 環境変数を替えただけでは、既にデプロイ済みの関数は古い環境のまま動く。
+     `docs/polygon-anchoring-deployment.md:100` も「環境変数を差し替え、再デプロイ」と書いている。
+  5. **資格情報を URL に埋めたエンドポイントを使わないこと。**（Codex の P1 指摘。2026-10-17）
+     失敗時の `msg` は viem のエラー文で、**リクエスト URL 全体を含む**（この項目に貼ってある実例がその証拠）。
+     それが `console.error`（240行）と `cron_failure_streaks.last_error`（244行・先頭500文字）に書かれる。
+     したがって `https://…/v2/<APIキー>` の形の RPC を設定すると、**次の失敗でキーが DB とログに残る**。
+     キー付きのエンドポイントしか使えない場合は、**先にエラー文から資格情報を落とすコード変更が要る**
+     （この PR では入れていない。必要になった時点で別 PR）。
+  6. **TLS 1.3 を話せる `https://` のエンドポイントであること。**（Codex の指摘。2026-10-17）
+     この cron は viem に `tls13HttpsFetch` を渡している（`route.ts:192`）。その実装は undici の
+     `Agent({ connect: { minVersion: "TLSv1.3" } })`（`src/lib/net/tls13Fetch.ts`）で、
+     **TLS 1.2 までしか話さない相手とは握手で失敗する**（C2PA GPSA O.5 / Req 5.1 の要件なので緩めない）。
+     さらに `https` 以外は送らずに `TypeError` で失敗する。名前が引けるだけでは足りない。
+  7. **再デプロイ後に、実際の1回の実行を確認する。** 見るのは
+     **`last_success_at` が新しくなり、`consecutive_failures` が 0 に戻ること**。
+     **`last_error` が「変わらないこと」は成功の証拠にならない**（Codex の P1 指摘。2026-10-17）——
+     同じ DNS 失敗が再発すれば同じ文字列で上書きされるし、`recordCronSuccess()` は `last_error` を
+     触らないので、成功しても古い値が残る。**変化が無いことは「成功」「同じ失敗の再発」「未実行」を
+     区別しない。**
+  8. **cron の監視が緑になっても、アンカー本体が直った証拠にはならない**（Codex の P1 指摘。2026-10-17）。
+     監視は接尾辞無しの `POLYGON_RPC_URL` だけを読む（手順2）。接尾辞付きが設定されていれば、
+     **アンカー側は別の URL を使い続ける**（手順3）。アンカーの確認は別に要る。
+     **読み取りで確認する**: そのネットワークのアンカーに対し `cert-verify` の `on_chain_verified` か
+     `public/verify` が `true` を返すかを見る（どちらもガス代のかからない read-only 呼び出し）。
+     **`POST /api/admin/polygon/backfill` を「1件の試し打ち」に使わない**（Codex の P1 指摘。2026-10-17）——
+     このルートは**そのテナントの未アンカー画像を全部数えてジョブを作る**だけで、応答は
+     「キューに入れた」しか意味しない。実処理は `api/qstash/polygon-backfill` が
+     **50件ずつ本物のトランザクション（ガス代）を出し、残りが無くなるまで再キュー**する。
+     試し打ちのつもりで未アンカーの全件を打ってしまい、しかも応答は RPC の成否を示さない。
+     書き込みで確かめる必要があるなら、**対象を1件に絞れる操作**でやり、その tx の確定まで見る。
+     **「設定したから直った」で終わらせない** —— 条件5・6を満たさないエンドポイントなら、
+     DNS エラーが別のエラーに替わるだけで、代表からは「同じように赤いまま」に見える。
+  9. **鍵の残高を別に確かめる**（Codex の P1 指摘。2026-10-17）。`last_success_at` が更新されても
+     **残高は保証されない** —— `route.ts:225-226` は `status` が `critical`/`warning` でも
+     `recordCronSuccess()` を呼ぶ（意図的。「RPC の疎通」と「残高警告」を分けている）。
+     手順7・8の読み取り確認もガス代を使わないので、**どちらも残高不足を検出しない**。
+     cron の応答 JSON の `status` と `balance_pol` を見て、**選んだネットワークのウォレットに
+     POL があること**を確かめる。空のままだと、ここまでの手順を全部満たしても
+     **新規のアンカーは資金不足で失敗し続ける**。
+  10. **署名アドレスが書けるかをコントラクトで確かめる**（Codex の P1 指摘。2026-10-17）。
+     上の条件 (8)(9) —— `anchorers(署名アドレス)` が `true` で `paused()` が `false` か。
+     どちらも `public` の読み取りなのでガス代はかからない。**ここを飛ばすと、
+     ここまでの手順を全部満たし読み取り確認も `true` なのに、新規の書き込みだけ revert する。**
+  11. **証明書単位のアンカーを続けるなら `CERT_RECORD_ANCHOR_ENABLED` も見る**
+     （Codex の P1 指摘。2026-10-17。上の条件 2）。`"true"` でなければ
+     `enqueueCertificateAnchor()` は行を作らず、日次バッチも provider に届く前に skip するので、
+     **残高監視も画像単位の読み取り確認も通るのに、証明書の証明だけ完全に止まっている**状態になる。
+     日次バッチ（`api/cron/anchor-batch`）の応答が `skipped` でないことまで見る。
+  **どのエンドポイントが生きているかはこの環境から確認できないので、候補をここに書かない**
+  （確認せずに書けば、同じ形の失敗を1つ増やすだけになる）。
+- (b) **アンカリングを止めるなら**: `POLYGON_ANCHOR_ENABLED` を `"true"` 以外にする（削除でもよい）。
+  route はその判定で `skipped` を返すので、**RPC に触らず、失敗の連鎖も止まる**。
+  **こちらも再デプロイが要る**（同上）。
+  **ただしこのフラグは「新規アンカーの停止」だけではない**（Codex の P1 指摘。2026-10-17）。
+  `src/app/api/cert-verify/[public_id]/route.ts:105` が `verifyBatchAnchor()` をこのフラグで囲っており、
+  **`"true"` 以外にすると、既存の証明書の `on_chain_verified` が `null` になる**（検証しなくなる）。
+  `polygon-signer` のアラート文（`route.ts:116`）は「既存のアンカーは引き続き検証可能」と書いているので、
+  **(b) をそのまま選ぶとこの約束が崩れる**。`POLYGON_ANCHOR_ENABLED` を読む行は `src/` に 24 行あり
+  （テスト除く。`grep -rn POLYGON_ANCHOR_ENABLED src/ | grep -v __tests__ | wc -l`。コメントと UI 文言を含む）、
+  そのうち**読み取り専用の検証を止めるのはこの1か所だけ**。したがって (b) は2択に分かれる:
+  - (b-1) **止まる範囲を承知で止める** —— **止まるのは `cert-verify` の `on_chain_verified` だけ**
+    （Codex の指摘で範囲を訂正。2026-10-17。当初「オンチェーンの裏取りが消える」と書いたのは**広すぎた**）。
+    `verifyAnchor()` を呼ぶ他の読み取り経路は**このフラグを見ない**ので動き続ける:
+    `api/public/verify/route.ts:114`（画像単位）・`api/insurer/anchor-verify/[sha256]/route.ts:91`（保険会社）・
+    `lib/zkp/verifier.ts:85`（ZKP）。読み取り設定（`getReadConfig`）もフラグを参照しない。
+    つまり失うのは**バッチ（証明書単位）のオンチェーン表示**で、画像単位・保険会社・ZKP の検証は残る。
+    刻まれた事実も残るので、後でフラグを戻せば証明書側の表示も復活する。
+  - (b-2) **書き込みだけ止める** —— `cert-verify` の1行を書き込みフラグから切り離すコード変更が要る
+    （この PR には入れていない）。**証明書ページのオンチェーン表示を維持したいならこちら。**
+    影響範囲が1か所に限られることが分かったので、(b-2) は「フラグ体系の作り直し」ではなく
+    **1行の条件を変える変更**で足りる。
+- 併せて: 本番のアンカーを **amoy（テストネット）** に打つ運用のままで良いのかは、2026-10-09 から未決のまま。
+
+**コードは変えていない。** DNS の失敗を `skip` に変える案は採らない —— 既存の skip は
+「ネットワークに触らずに分かる設定不足」に対するもので、DNS の失敗を同じ扱いにすると
+本物の RPC 障害も黙る（型 D の「追加で弱める」）。
 
 ## Codex の「利用上限」メッセージが掛かるスコープと回復条件（2026-10-09）
 
