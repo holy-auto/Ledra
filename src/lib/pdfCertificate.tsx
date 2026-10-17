@@ -2,6 +2,7 @@
 import { Document, Page, Text, View, Image, StyleSheet, Font, Svg, Path, Circle, G } from "@react-pdf/renderer";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { notoSansJpDataUrl } from "@/lib/marketing/pdfFonts";
+import { buildServiceStatement } from "@/lib/certificates/serviceStatement";
 
 // バンドル済み Noto Sans JP (public/fonts) を data URL として登録する。
 // 外部 CDN (@latest) への実行時フェッチを排し、供給元の改変・停止リスクを断つ。
@@ -729,15 +730,10 @@ export async function renderCertificatePdf(
     timeZone: "Asia/Tokyo",
   });
 
-  const serviceStatement = isPpf
-    ? "本証明書は、下記車両に対してペイントプロテクションフィルム (PPF) の施工が完了した事実を、Polygon ブロックチェーンに刻印された改ざん不可能な記録として証明するものです。"
-    : isMaintenance
-      ? "本証明書は、下記車両に対して整備作業が実施された事実を、Polygon ブロックチェーンに刻印された改ざん不可能な記録として証明するものです。"
-      : isBodyRepair
-        ? "本証明書は、下記車両に対して鈑金塗装作業が実施された事実を、Polygon ブロックチェーンに刻印された改ざん不可能な記録として証明するものです。"
-        : isAccessory
-          ? "本証明書は、下記車両に対して用品取付作業が実施された事実を、Polygon ブロックチェーンに刻印された改ざん不可能な記録として証明するものです。"
-          : "本証明書は、下記車両に対して施工作業が完了した事実を、Polygon ブロックチェーンに刻印された改ざん不可能な記録として証明するものです。";
+  // 刻印の主張は、PDF が根拠として載せられるもの（QR を出せるアンカー）に合わせる。tx hash の
+  // 有無（totalAnchored）で判定すると、ネットワーク不明で QR を出せない行でも刻印を主張して
+  // しまう（`/code-review` の指摘。2026-10-17）。
+  const serviceStatement = buildServiceStatement(row.service_type, anchorQrs.length > 0);
 
   const networkLabel = (network: "polygon" | "amoy") =>
     network === "amoy" ? "Polygon Amoy testnet" : "Polygon mainnet";
