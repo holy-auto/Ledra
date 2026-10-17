@@ -108,13 +108,14 @@ export async function DELETE(req: Request) {
     // 一致しないため email で引くと撤回が黙って 0 件になり、30 日後に本当に消える。
     // customer_id があるときは必ずそちらで引く (audit-log と同じ方針)。
     // 両方あるセッションでは OR で引く。customer_id だけに絞ると、customer_id を
-    // 持たずに作られた過去の申請を撤回できなくなるため。
+    // 持たずに作られた過去の申請を撤回できなくなるため。ただし email での一致は
+    // customer_id の無い行に限る（同じメールを共有する家族の申請まで撤回しない）。
     // email は `,` や `(` を含み得るので postgrest のフィルタ文字列にそのまま埋めない
     // (customer_id は uuid なのでそのままでよい)。
     const quoted = (v: string) => `"${v.replace(/["\\]/g, "\\$&")}"`;
     const scope = [
       session.customer_id ? `customer_id.eq.${session.customer_id}` : null,
-      session.email ? `email.eq.${quoted(session.email)}` : null,
+      session.email ? `and(customer_id.is.null,email.eq.${quoted(session.email)})` : null,
     ]
       .filter(Boolean)
       .join(",");

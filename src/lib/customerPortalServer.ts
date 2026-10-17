@@ -1,6 +1,7 @@
 ﻿import crypto from "crypto";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { OUTWARD_VISIBLE_TYPES } from "@/lib/audit/certificateLog";
+import { escapeIlike } from "@/lib/sanitize";
 
 const PEPPER = process.env.CUSTOMER_AUTH_PEPPER!;
 
@@ -128,8 +129,10 @@ export async function markCodeUsed(id: string) {
  * 自分のメールと下4桁 (10⁴ 通り) を入れるだけで、その下4桁の他人の証明書・
  * 氏名・メール・電話 (全桁)・問い合わせが読めた (監査 2026-10-17 Critical)。
  *
- * 下4桁は衝突するので「下4桁の一致する顧客が1人」は求めない。下4桁の一致する
- * 証明書を持つ顧客のうち、登録メールが一致する者がちょうど1人のときに確定する。
+ * 下4桁は衝突するので「下4桁の一致する顧客が1人」は求めない。登録メールの一致する顧客を
+ * 先に引き、その中で下4桁の一致する証明書を持つ者に確定する。同じ人が重複登録されて
+ * いる（同じメール・同じ下4桁の行が複数）ときは、いちばん新しい証明書の行を採る ——
+ * どの行も同じメールの持ち主のものなので、他人には広がらない。
  * メール未登録の顧客はここでは確定できない (LINE ログインの経路は別にある)。
  */
 export async function resolveUniqueCustomerId(
@@ -138,20 +141,25 @@ export async function resolveUniqueCustomerId(
   email: string,
 ): Promise<string | null> {
   const db = admin();
-  const { data: certs } = await db
+  const { data: customers } = await db
+    .from("customers")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .ilike("email", escapeIlike(normalizeEmail(email)));
+  const ids = (customers ?? []).map((c) => c.id as string);
+  if (ids.length === 0) return null;
+
+  const { data: cert } = await db
     .from("certificates")
     .select("customer_id")
     .eq("tenant_id", tenantId)
+    .in("customer_id", ids)
     .neq("status", "void")
-    .not("customer_id", "is", null)
-    .eq("customer_phone_last4_hash", phoneHash);
-  const ids = [...new Set((certs ?? []).map((r) => r.customer_id as string).filter(Boolean))];
-  if (ids.length === 0) return null;
-
-  const { data: customers } = await db.from("customers").select("id, email").eq("tenant_id", tenantId).in("id", ids);
-  const want = normalizeEmail(email);
-  const matched = (customers ?? []).filter((c) => !!c.email && normalizeEmail(c.email as string) === want);
-  return matched.length === 1 ? (matched[0].id as string) : null;
+    .eq("customer_phone_last4_hash", phoneHash)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (cert?.customer_id as string | undefined) ?? null;
 }
 
 export async function createSession(tenantId: string, email: string, phoneHash: string) {

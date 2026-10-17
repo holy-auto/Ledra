@@ -27,6 +27,20 @@ function from(table: string) {
     select: () => q,
     eq: (c: string, v: unknown) => (preds.push((r) => r[c] === v), q),
     neq: (c: string, v: unknown) => (preds.push((r) => r[c] !== v), q),
+    // PostgreSQL の ILIKE と同じく `_` / `%` をワイルドカード、`\` の後ろを文字そのものとして扱う
+    ilike: (c: string, pattern: string) => {
+      const re = pattern.replace(/\\(.)|([_%])|([^\\_%]+)/g, (_m, esc, wild, lit) =>
+        esc !== undefined
+          ? esc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+          : wild
+            ? wild === "_"
+              ? "."
+              : ".*"
+            : lit.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      );
+      preds.push((r) => new RegExp(`^${re}$`, "i").test(String(r[c] ?? "")));
+      return q;
+    },
     in: (c: string, vs: unknown[]) => (preds.push((r) => vs.includes(r[c])), q),
     is: (c: string, v: unknown) => (preds.push((r) => (r[c] ?? null) === v), q),
     not: (c: string, _op: string, v: unknown) => (preds.push((r) => (r[c] ?? null) !== v), q),
@@ -68,6 +82,20 @@ describe("resolveUniqueCustomerId", () => {
   it("下4桁が衝突していても、メールで本人1人に確定する（大文字小文字は無視）", async () => {
     expect(await portal.resolveUniqueCustomerId(T, H, "victim@example.com")).toBe("victim");
     expect(await portal.resolveUniqueCustomerId(T, H, "other@example.com")).toBe("other");
+  });
+  it("同じ人の重複登録（同じメール・同じ下4桁）でも締め出さず、新しい証明書の行に確定する", async () => {
+    db.customers.push({ id: "victim-dup", tenant_id: T, email: "victim@example.com", phone: "090-0000-1234" });
+    db.certificates.push({
+      public_id: "p3",
+      tenant_id: T,
+      customer_id: "victim-dup",
+      customer_phone_last4_hash: H,
+      status: "active",
+    });
+    expect(await portal.resolveUniqueCustomerId(T, H, "victim@example.com")).not.toBeNull();
+  });
+  it("メールの `_` はワイルドカードにならない（ta_o@ で taro@ を引かない）", async () => {
+    expect(await portal.resolveUniqueCustomerId(T, H, "victi_@example.com")).toBeNull();
   });
   it("メールが合っても下4桁が違えば確定しない", async () => {
     expect(await portal.resolveUniqueCustomerId(T, portal.phoneLast4Hash(T, "9999"), "victim@example.com")).toBeNull();
