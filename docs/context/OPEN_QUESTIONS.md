@@ -3,41 +3,41 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
-## スキーマのドリフト検出が週1回しか走らない（2026-10-16 起票）
+## スキーマのドリフト検出が、本番に対して一度も成功していない（2026-10-16 起票 / 2026-10-17 全面改訂）
 
-- 状況: `check:drift` は Supabase Advisors ワークフロー（`schedule: 0 0 * * 1`、月曜 00:00 UTC と workflow_dispatch）でしか走らない。
-  PR の CI には入っていない。したがって**本番にドリフトが生まれてから最大7日間は誰も気づかない**し、
-  検出器そのものを直した PR も、その PR の CI では一度も動かない（2026-10-16 の `storage_policy` 追加がまさにそれ）。
-- なぜ PR の CI に入っていないか: 再生だけで数分かかり、本番のシークレット（`SUPABASE_ACCESS_TOKEN` /
-  `SUPABASE_PROJECT_ID`）が要る。fork の PR ではシークレットが渡らない。
-- 対策候補 (a): `supabase/migrations/**` と `scripts/{check-schema-drift,replay-migrations}.mjs` を触る PR でだけ走らせる
-  （`paths` 条件）。触らない PR の時間は増えない。fork の PR では従来どおり skip する判断が別に要る。
-  - **→ 2026-10-17 訂正。`supabase/migrations/**` を入れるのは誤りだった。** この検出器は逆向き
-    （マイグレーションにあって本番に無い列・一意制約・外部キー）でも落ちるが、本番への適用は
-    `db-migrate.yml` が **main への push** で行うので、PR の時点では本番が必ず PR のマイグレーションより遅れている。
-    入れると**列や表を足す PR が例外なく赤になる**（検出ではなく適用順のずれ）。
-    `M-20261017-proposed-a-paths-filter-that-would-redden-every-migration-pr`。
-  - **→ 2026-10-17 実施（検出器自身のファイルだけに絞って採用）**: `scripts/check-schema-drift.mjs` /
-    `scripts/replay-migrations.mjs` / `scripts/lib/dumpParse.mjs` / `scripts/replay/**` /
-    `.github/workflows/supabase-advisors.yml` を触る PR で `schema-drift` ジョブだけ走らせる。
-    fork の PR は（シークレットが渡らず必ず落ちるので）`if` で走らせない。
-    これで「検出器を直した変更が本番に対して一度も動かないままマージされる」穴は閉じた。
-    **本番のドリフトに気づくまでの最大7日は変わっていない** —— それは (b) の話。
-- 対策候補 (b): 毎日に上げる（`0 0 * * *`）。気づくまで最大1日。CI 時間は週7回分。**ここが未解決。**
-  費用の前提: このリポジトリは **public**（2026-10-17 に `gh api repos/holy-auto/Ledra` の `private=false` で確認）。
-  実行時間は1回 3〜5 分。判断は代表。
-- 対策候補 (c): 現状維持。検出器を直したときは workflow_dispatch で手動起動して確かめる。
-  —— **2026-10-17 訂正: 「今回はそうした」と書いていたが、実際には起動できていない**（下の 403）。
-  (c) は Claude のセッションでは成立しない選択肢。
-- (b) の判断は代表。**費用の前提は確認できていない**: public リポジトリの GitHub-hosted 標準ランナーは
-  無料という理解だが、これは訓練データ時点の GitHub の方針で、請求情報はこのセッションから読めない
-  【要確認】。実行時間（1回 3〜5 分 × 週7回）だけは確かな入力。
-- **このセッションからは手動起動もできない**: `POST actions/workflows/supabase-advisors.yml/dispatches` が
-  403 `Resource not accessible by integration`（2026-10-16 に GitHub MCP と `gh api` の両方で確認）。
-  つまり「検出器を直したら手動で起動して確かめる」という運用は、Claude のセッションでは成立しない。
-  **2026-10-16 の `storage_policy` 追加（#1363）は、本番に対して一度も動いていない。**
-  代表が Actions 画面で「Supabase Advisors」→ Run workflow を押すか、次の月曜 00:00 UTC を待つ。
-
+- **根本の状況（2026-10-17 に確定）**: `check:drift` は**どこでも成功していない**。
+  週次の定期実行は **2026-09-21 / 09-28 / 10-05 / 10-12 と4回連続で failure**、最後の success は 2026-09-14
+  （`actions/workflows/supabase-advisors.yml/runs` で確認）。原因は**シークレット未登録**
+  （`SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID`）。LEDRA_CURRENT.md に 2026-09-19 時点で
+  「未登録なので週次ジョブが赤くなる。登録は代表の操作が要る」と書いてある。
+  `REQUIRE_SCHEMA_DRIFT=1` があるので黙って skip せず赤くなる —— 設計どおりだが、**赤のまま放置された**。
+- **いま効いていないこと**: 2026-09-14 以降、本番とマイグレーションのずれは誰も見ていない。
+  2026-10-16 に #1363 で足した `storage_policy` の軸も、本番に対して一度も動いていない。
+- **ブロッカーは1つだけ**: 代表が GitHub の Settings → Secrets and variables → Actions で
+  2つのシークレットを登録すること。**これが登録されるまで、走らせる場所を増やしても価値はゼロ**
+  （赤が増えるだけ）。Claude のセッションからは登録も手動起動もできない
+  （`dispatches` が 403 `Resource not accessible by integration`。`actions/secrets` も proxy が 403）。
+- **登録された日に出す変更（設計は確定、実装は保留）**: 検出器自身のファイルを触る PR で `schema-drift` だけ走らせる
+  （`scripts/check-schema-drift.mjs` / `scripts/replay-migrations.mjs` / `scripts/lib/dumpParse.mjs` /
+  `scripts/replay/**` / 同ワークフロー自身）。2026-10-17 に実装したが、**シークレットが無いまま入れると
+  恒久的に赤いチェックを PR に足すだけ**になるので取り下げた（#1366）。出すときに併せて要るもの:
+  - **`environment: production` ＋必須レビュアー。** paths の条件は「検出器のスクリプトを書き換えた PR」だけを選ぶので、
+    ゲート無しだと**本番の PAT を、その PR が書き換えたスクリプトに渡す**形になる。
+    `db-migrate.yml` が同じ対策を既に名指ししている。
+  - **Dependabot の除外。** `.github/dependabot.yml` の `github-actions` ecosystem が同ワークフローの
+    action 版を上げる PR を出すが、Dependabot の実行は Actions シークレットを読めないので赤になる。
+  - **`concurrency`（`cancel-in-progress: true`）と `timeout-minutes`（15〜20）。**
+    1回 3〜5 分・534 本の再生が多重に走る。`pg_ctl -w` が固まれば既定の 360 分ランナーを占有する。
+  - **`supabase/migrations/**` は入れない。** 逆向き（マイグレーションにあって本番に無い列・一意制約・外部キー）でも
+    落ちる検査で、本番への適用は `db-migrate.yml` が main への push で行うため、PR の時点では本番が必ず遅れている
+    （`M-20261017-proposed-a-paths-filter-that-would-redden-every-migration-pr`）。
+- **残る設計の宿題**: 逆向きの判定は `db-migrate` が止まっている間、検出器だけを触る PR でも赤を出す
+  （2026-09-19 に数日止まった実績がある）。根本は「逆向きを main に限る」か「base と比べる」で、
+  paths の選び方では解けない。
+- **対策候補（頻度。シークレット登録後の話）**: (b) 毎日に上げる（`0 0 * * *`）。気づくまで最大1日。
+  費用の前提は未確認: このリポジトリは public（2026-10-17 に `private=false` で確認）だが、
+  GitHub-hosted 標準ランナーが無料かどうかは請求情報を読めないので【要確認】。
+  確かな入力は実行時間（1回 3〜5 分）だけ。判断は代表。
 ## OEM（トヨタ等）への再連絡の前に決めること（2026-10-16）
 
 JMS Bizweek 2026 で OEM が「バリューチェーン・入力の簡略化・データ利活用」に関心を示した。整理は `docs/oem-value-chain-exploration-2026-10.md`。
