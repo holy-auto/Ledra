@@ -43,7 +43,6 @@ type CertSelectRow = {
   logo_asset_path: string | null;
   current_version: number | null;
   created_at: string | null;
-  craftsman_name: string | null;
 };
 
 /**
@@ -82,8 +81,7 @@ export async function generateCertificatePdfBytes(certificateId: string): Promis
       warranty_exclusions,
       logo_asset_path,
       current_version,
-      created_at,
-      craftsman_name
+      created_at
     `,
     )
     .eq("id", certificateId)
@@ -118,10 +116,6 @@ export async function generateCertificatePdfBytes(certificateId: string): Promis
     logo_asset_path: cert.logo_asset_path ?? null,
     created_at: cert.created_at ?? new Date().toISOString(),
     current_version: cert.current_version ?? null,
-    // 他の PDF 経路（pdf-one・pdf-selected・api/certificate/pdf・qstash/batch-pdf）は全て
-    // 渡している。ここだけ欠けていると、顧客が署名する PDF に施工担当の行が無く、
-    // ダウンロードできる PDF と中身が違う（`/code-review` の指摘。2026-10-17）。
-    craftsman_name: cert.craftsman_name ?? null,
   };
 
   const buffer = await renderCertificatePdf(row, publicUrl);

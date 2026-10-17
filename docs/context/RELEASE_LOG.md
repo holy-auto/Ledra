@@ -16,17 +16,37 @@
   重複していた絞り込みが消え、`buildAnchorQrs` は上限で切って QR を作るだけになった。
   **本番の表示は変わらない** —— `polygon_tx_hash` が入った 11 行はすべてネットワークも入っている
   （2026-10-17 実測、不明は 0 件）。将来の書き込み・移行で開くズレを閉じた。
-- **署名用 PDF に `craftsman_name` を出す**: 他4経路（`pdf-one`・`pdf-selected`・
-  `api/certificate/pdf`・`qstash/batch-pdf`）は渡していたのに `lib/signature/pdfUtils.ts` だけ
-  select に無く、**顧客が署名する PDF にだけ施工担当の行が無かった**（ダウンロードできる PDF とは中身が違う）。
-- テスト: `src/lib/__tests__/pdfCertificate.anchors.test.ts`（3件）。tx hash とネットワークが
-  揃ったものだけ通すこと、未設定・空配列、そして**ネットワーク不明の行を件数に数えないこと**
-  （以前の数え方なら 5 件になり QR は 1 件しか出ない形を固定）。
-- 本番: DB の変更は無く、マージで Vercel の main デプロイに乗る。
-  **注意**: デプロイ前に作られデプロイ後に署名される署名セッションは、保存される PDF が
-  記録済みの `document_hash` と食い違う。**描画を変える変更すべてに共通**の既知の問題で、
-  OPEN_QUESTIONS「署名済み PDF は署名後に作り直して保存しており、署名依頼時にハッシュを取った
-  PDF と一致する保証がない」（2026-10-09）が構造的な未解決項目。
+- **署名用 PDF への `craftsman_name` 追加は入れて、取り下げた**（`/code-review` の指摘）。
+  「顧客が署名する PDF にだけ施工担当の行が無い」という前提が誤りだった ——
+  署名ページが顧客に見せるのは `/api/certificate/pdf?pid=...` で、`generateCertificatePdfBytes` の
+  出力は顧客に出ていない（使われるのはハッシュ計算と `assets` への保存だけ）。しかもその
+  `/api/certificate/pdf` は匿名の署名者には `redactCertificateDetails` を通して
+  `craftsman_name` を `null` にする（`lib/certificates/detailAccess.ts:138`）。
+  足すと、**顧客の見る PDF が意図的に隠している担当者名を、保存される PDF に入れる**ことになる。
+  個人情報を増やす方向なので取り下げた（`MISTAKE_LEDGER`
+  `M-20261017-added-pii-to-a-hashed-document-on-a-false-premise`）。
+  併せて、`craftsman_name` が個人情報かどうかで `pdfCertificate.tsx:64` のコメントと
+  `detailAccess.ts` が反対のことを言っている件を OPEN_QUESTIONS に起票した。
+- **1本化したのは証明書 PDF の中だけ**（`/code-review` の指摘で限定）。
+  `api/public/verify/route.ts:144` と管理画面は今も `polygon_tx_hash` の有無で数えるので、
+  ネットワーク不明の行があると PDF の件数と画面の件数が食い違う（別 PR）。
+- **「オンチェーン記録済み」の意味が「PDF 上で検証リンクを出せる」に変わった。**
+  tx hash はあるがネットワーク不明の行が多数あると、PDF は実際より少ない件数を示す。
+  本番に不明の行が 0 件なので、両方の数を出す言い方は今回は入れていない。
+- テスト: `src/lib/certificates/__tests__/anchorSummary.test.ts`（6件）。
+  絞り込みの条件、未設定・空配列、**`total` と `more` を同じ集合から出すこと**
+  （以前の数え方なら 5 件になり QR は 1 件しか出ない形を固定）、上限超過分だけが `more` になること、
+  上限が 0 や負でも `shown + more === total` が保たれること。
+  `verifiableAnchors` と `anchorCounts` は `src/lib/certificates/anchorSummary.ts` に置いた ——
+  `@react-pdf` も 4.7MB のフォント登録も要らない純関数で、テストが 260ms で終わる
+  （`pdfCertificate.tsx` から import すると 0.8 秒ほどフォントの base64 化に取られる）。
+- 本番: DB の変更は無く、マージで Vercel の main デプロイに乗る。表示は変わらない。
+  **併せて実測で分かったこと**: `@react-pdf` の出力は**バイト単位で再現しない**
+  （`lenA=62773 lenB=62773 / BYTES_IDENTICAL=false / /CreationDate` と `/ID` を含む）。
+  したがって保存される署名済み PDF が `document_hash` と一致することは、どのセッションでも、
+  何も変えなくても無い。OPEN_QUESTIONS の該当項目を「一致する保証がない」から
+  「**一致しない**」に格上げした。**#1370 で「ハッシュの再現性を優先した」と書いたのは誤り**
+  （`MISTAKE_LEDGER` `M-20261017-claimed-a-reproducibility-i-never-measured`）。
 
 ## 2026-10-17 証明書 PDF の冒頭文を、刻印がある証明書だけ「ブロックチェーンに刻印された」にした
 
