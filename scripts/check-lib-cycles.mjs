@@ -53,7 +53,8 @@ export function extractImports(source) {
     .replace(/^\s*\/\/.*$/gm, "")
     .replace(/\b(?:import|export)\s+type\s[^;]*?from\s*["'][^"']+["']/g, "");
   const specs = [];
-  const re = /\b(?:import|export)\b[^"';]*?\bfrom\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)|^\s*import\s*["']([^"']+)["']/gm;
+  const re =
+    /\b(?:import|export)\b[^"';]*?\bfrom\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)|^\s*import\s*["']([^"']+)["']/gm;
   for (const m of code.matchAll(re)) specs.push(m[1] ?? m[2] ?? m[3]);
   return specs;
 }
@@ -150,7 +151,9 @@ function walk(dir, out = []) {
 }
 
 function main() {
-  const files = Object.fromEntries(walk(LIB).map((p) => [relative(LIB, p).split(sep).join("/"), readFileSync(p, "utf8")]));
+  const files = Object.fromEntries(
+    walk(LIB).map((p) => [relative(LIB, p).split(sep).join("/"), readFileSync(p, "utf8")]),
+  );
   const { graph, causes } = buildGraph(files);
   const current = cyclicEdges(graph);
   // 空を「循環ゼロ」と読まない。読み取りが壊れても緑になってしまう。
