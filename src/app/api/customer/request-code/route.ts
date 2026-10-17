@@ -110,31 +110,37 @@ export async function POST(req: Request) {
       return genericOk;
     }
 
-    const code = genCode6();
-    const expires = new Date(Date.now() + OTP_TTL_MIN * 60 * 1000).toISOString();
-    await createLoginCode(tenantId, email, phoneHash, code, expires);
+    // ここから先の失敗（コード保存・メール送信）は該当ありの時だけ起きる。500 を返すと登録の有無が分かるので、
+    // 記録だけして該当なしと同じ応答にする。
+    try {
+      const code = genCode6();
+      const expires = new Date(Date.now() + OTP_TTL_MIN * 60 * 1000).toISOString();
+      await createLoginCode(tenantId, email, phoneHash, code, expires);
 
-    const baseUrl = resolveBaseUrl({ req });
+      const baseUrl = resolveBaseUrl({ req });
 
-    // URL does NOT include the code to prevent exposure in browser history,
-    // server logs, and Referer headers
-    const loginUrl =
-      `${baseUrl}/customer/${tenant_slug}/login` +
-      `?email=${encodeURIComponent(email)}` +
-      `&last4=${encodeURIComponent(last4Raw)}`;
+      // URL does NOT include the code to prevent exposure in browser history,
+      // server logs, and Referer headers
+      const loginUrl =
+        `${baseUrl}/customer/${tenant_slug}/login` +
+        `?email=${encodeURIComponent(email)}` +
+        `&last4=${encodeURIComponent(last4Raw)}`;
 
-    const subject = "ログインコード（WEB施工証明書）";
-    const safeUrl = escapeHtml(loginUrl);
-    const safeCode = escapeHtml(code);
-    const html =
-      `<p>以下のコードをログイン画面で入力してください（${OTP_TTL_MIN}分以内に有効）。</p>` +
-      `<div style="text-align: center; margin: 24px 0;">` +
-      `<span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; font-family: monospace;">${safeCode}</span>` +
-      `</div>` +
-      `<p>上記のコードをログイン画面で入力してください。</p>` +
-      `<p><a href="${safeUrl}">ログイン画面を開く</a></p>`;
+      const subject = "ログインコード（WEB施工証明書）";
+      const safeUrl = escapeHtml(loginUrl);
+      const safeCode = escapeHtml(code);
+      const html =
+        `<p>以下のコードをログイン画面で入力してください（${OTP_TTL_MIN}分以内に有効）。</p>` +
+        `<div style="text-align: center; margin: 24px 0;">` +
+        `<span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; font-family: monospace;">${safeCode}</span>` +
+        `</div>` +
+        `<p>上記のコードをログイン画面で入力してください。</p>` +
+        `<p><a href="${safeUrl}">ログイン画面を開く</a></p>`;
 
-    await sendEmailResend(email, subject, html);
+      await sendEmailResend(email, subject, html);
+    } catch (e) {
+      logger.error("customer/request-code: failed after a match (responding generically)", e);
+    }
 
     return genericOk;
   } catch (e: unknown) {

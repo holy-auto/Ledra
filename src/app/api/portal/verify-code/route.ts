@@ -9,8 +9,8 @@ import {
   markGlobalCodeAttempt,
   markGlobalCodeUsed,
 } from "@/lib/customerPortalGlobal";
-import { normalizeEmail, normalizeLast4 } from "@/lib/customerPortalServer";
-import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { OTP_MAX_ATTEMPTS, normalizeEmail, normalizeLast4 } from "@/lib/customerPortalServer";
+import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { portalVerifyCodeSchema } from "@/lib/validations/portal";
 
 const isSecureCookie = process.env.NODE_ENV === "production";
@@ -40,10 +40,16 @@ export async function POST(req: Request) {
     const code = parsed.data.code;
     const preferredTenantSlug = parsed.data.preferred_tenant_slug ?? parsed.data.tenant ?? null;
 
+    // 「コード無し / 使用済み / 期限切れ / 不一致」を同じ 400 invalid_code にまとめる（店ごとの
+    // customer/verify-code と同じ）。応答の種類でコード発行の有無が分からないようにする。
+    const invalidCodeResponse = apiValidationError("invalid_code");
     const row = await getLatestGlobalCodeRow(email, last4);
-    if (!row) return apiNotFound("no_code");
-    if (row.used_at) return apiValidationError("code_used");
-    if (new Date(row.expires_at).getTime() < Date.now()) return apiValidationError("code_expired");
+    if (!row || row.used_at || new Date(row.expires_at).getTime() < Date.now()) return invalidCodeResponse;
+
+    // 照合の前に試行を1回分予約する。同時の試行に負けた・上限に達した行は照合しない。
+    const prevAttempts = row.attempts ?? 0;
+    if (prevAttempts >= OTP_MAX_ATTEMPTS) return invalidCodeResponse;
+    if (!(await markGlobalCodeAttempt(row.id, prevAttempts))) return invalidCodeResponse;
 
     const expected = globalOtpCodeHash(email, last4, code);
     // 定数時間比較でタイミング攻撃を防止
@@ -51,9 +57,10 @@ export async function POST(req: Request) {
     const actualBuf = Buffer.from(row.code_hash ?? "");
     const codeMatches = expectedBuf.length === actualBuf.length && timingSafeEqual(expectedBuf, actualBuf);
     if (!codeMatches) {
-      const nextAttempts = (row.attempts ?? 0) + 1;
-      await markGlobalCodeAttempt(row.id, nextAttempts);
-      return apiValidationError("invalid_code");
+      // 数えるだけでは総当たりを止めない。上限で使用済みにする。
+      // 上限でも応答は他の失敗と同じにする。429 を返すと「コードが実在する＝顧客である」と分かる。
+      if (prevAttempts + 1 >= OTP_MAX_ATTEMPTS) await markGlobalCodeUsed(row.id);
+      return invalidCodeResponse;
     }
 
     await markGlobalCodeUsed(row.id);

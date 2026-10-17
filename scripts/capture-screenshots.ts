@@ -10,14 +10,19 @@
 import { chromium, Page } from "playwright";
 import path from "path";
 import fs from "fs";
+import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { DEMO_EMAIL } from "../src/lib/demo";
 
 const BASE_URL = process.env.E2E_BASE_URL?.replace(/\/$/, "") || "http://localhost:3000";
 
-// Defaults match the seed scripts (setup-demo-tenant-user / setup-demo-insurer /
-// setup-demo-agent). Without these fallbacks, missing CI secrets caused entire
-// portals to silently skip and slides rendered as 📸 placeholders.
-const ADMIN_EMAIL      = process.env.DEMO_ADMIN_EMAIL    || "demo@ledra-motors.example";
-const ADMIN_PASSWORD   = process.env.DEMO_ADMIN_PASSWORD || "Demo1234!";
+// Defaults match the seed scripts (setup-demo-insurer / setup-demo-agent).
+// Without these fallbacks, missing CI secrets caused entire portals to silently
+// skip and slides rendered as 📸 placeholders.
+// The shop demo (setup-demo-tenant-user) has no known password. In production it is
+// entered via /demo/enter, but that route is rate-limited with the fail-closed "auth"
+// preset and the capture job has no Redis, so here we mint the same session ourselves
+// (see demoSessionCookies).
 const INSURER_EMAIL    = process.env.DEMO_INSURER_EMAIL    || "demo@insurer.ledra.test";
 const INSURER_PASSWORD = process.env.DEMO_INSURER_PASSWORD || "Demo1234!";
 const AGENT_EMAIL      = process.env.DEMO_AGENT_EMAIL    || "demo@agent.ledra.test";
@@ -90,6 +95,55 @@ async function login(page: Page, email: string, password: string, loginPath: str
   await page.waitForTimeout(1500);
 }
 
+/**
+ * Same steps as /demo/enter (magic link token → verifyOtp), done from this script.
+ * @supabase/ssr writes the session cookies exactly as the app reads them; we hand those to the browser.
+ */
+async function demoSessionCookies(): Promise<{ name: string; value: string }[]> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !anonKey || !serviceKey) {
+    throw new Error("NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY are required");
+  }
+  const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+
+  // generateLink replaces the user's previous token, so a concurrent capture job or a live /demo/enter
+  // visitor can invalidate ours before we verify it. Retry like /demo/enter does.
+  let lastError = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 200 + Math.random() * 800 * attempt));
+    const { data, error } = await admin.auth.admin.generateLink({ type: "magiclink", email: DEMO_EMAIL });
+    const tokenHash = data?.properties?.hashed_token;
+    if (error || !tokenHash) {
+      lastError = `generateLink failed: ${error?.message ?? "no hashed_token"}`;
+      continue;
+    }
+
+    let jar: { name: string; value: string }[] = [];
+    const ssr = createServerClient(url, anonKey, {
+      cookies: {
+        getAll: () => jar,
+        setAll: (cookies) => {
+          for (const c of cookies) {
+            jar = jar.filter((j) => j.name !== c.name);
+            if (c.value) jar.push({ name: c.name, value: c.value });
+          }
+        },
+      },
+    });
+    const { error: verifyErr } = await ssr.auth.verifyOtp({ type: "magiclink", token_hash: tokenHash });
+    if (verifyErr) {
+      lastError = `verifyOtp failed: ${verifyErr.message}`;
+      continue;
+    }
+    if (jar.length === 0) throw new Error("verifyOtp succeeded but no session cookie was written");
+    // /demo/enter also lands on the shop dashboard
+    return [...jar, { name: "active_context", value: "shop" }];
+  }
+  throw new Error(`demo sign-in failed after 3 attempts: ${lastError}`);
+}
+
 async function captureAdmin(browser: ReturnType<typeof chromium.launch> extends Promise<infer T> ? T : never) {
   const ctx = await browser.newContext({
     viewport: { width: 1920, height: 1080 },
@@ -101,8 +155,12 @@ async function captureAdmin(browser: ReturnType<typeof chromium.launch> extends 
   await go(page, `${BASE_URL}/login`);
   await shot(page, "admin/login.png");
 
-  // Authenticate
-  await login(page, ADMIN_EMAIL, ADMIN_PASSWORD, "/login");
+  // Authenticate (password-less, same session /demo/enter would issue)
+  await ctx.addCookies((await demoSessionCookies()).map((c) => ({ ...c, url: BASE_URL })));
+  await go(page, `${BASE_URL}/admin`);
+  if (!new URL(page.url()).pathname.startsWith("/admin")) {
+    throw new Error(`demo session did not reach /admin (current URL: ${page.url()})`);
+  }
 
   // Dashboard
   await go(page, `${BASE_URL}/admin`);

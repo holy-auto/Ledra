@@ -13,6 +13,9 @@ describe("requiresAal2ForRequest", () => {
     ["/api/agent/supply/webhook-secret", "POST"],
     ["/api/agent/supply/profile", "PUT"],
     ["/api/admin/tenant/external-api-key", "POST"],
+    // 外部連携 API キーの発行・失効（route 内にガードは無く、proxy の中央境界だけが守る）
+    ["/api/admin/integrations/api-keys", "POST"],
+    ["/api/admin/integrations/api-keys/key-id", "DELETE"],
     ["/api/admin/gcal", "POST"],
     ["/api/admin/gcal/callback", "GET"],
     ["/api/admin/connect/slack/callback", "GET"],

@@ -3,31 +3,39 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
-## 本番では、顧客ポータルの OTP ログインを使える顧客が1人もいない（2026-10-17 起票）
-
-- 事実: 本番の証明書 70 件（無効化済みを含む）すべてで `customer_phone_last4_hash` が空（2026-10-17 に読み取りで集計）。
-  `/api/customer/request-code` は下4桁の一致する証明書が無いとコードを送らないので、どの顧客もメールの OTP ではポータルに入れない。
-  LINE ログインは別の経路なので影響しない。
-- 推定: 証明書を作る画面が下4桁を送っていない（`/api/certificates/create` は本文に `customer_phone_last4` があるときだけハッシュを入れる）。未検証。
-- 決めること: 顧客ポータルの OTP ログインを使う前提か。使うなら、証明書の作成時に下4桁を入れる（または顧客の電話から引く）作業が要る。
-  今は使わないなら、ポータルの入口に OTP を出し続けるかを決める。判断は代表。
-
 ## 2026-10-17 の API 点検で見つかり、顧客ポータルの PR では直していない項目
 
 調査は3系統（認証なしのルート／ログイン後のテナント越え・一括取得／Supabase への直接アクセス）。
 下の項目はコードを読んで出た指摘で、**再確認したのは顧客一覧の一括取得だけ**。重い順に並べた。
 
-- Medium: デモアカウントの認証情報がソースにある（`src/lib/demo.ts`）。これで JWT を取れば、「authenticated なら誰でも読める」ポリシーに届く。
-  推定: その JWT でデモのパスワードを変えられる（未検証）。
-- Medium〜Low: メーカーの研修・施工条件を作成する API が、プロジェクトの所有者を確かめていない。他社のプロジェクトに偽のリンクを入れられる。
-- Medium: 横断マイページの `request-code` が、該当なしなら 404・ありなら 200 を返す。応答の違いで、メールが Ledra の顧客かどうかが分かる。
-  `verify-code` には試行回数の上限が無い。
+- Medium（施工店デモはソースから消した。**残りは代表の作業**）: 公開済みの施工店デモのパスワードは、Supabase 側でまだ有効。git 履歴にも残る。
+  デプロイ後に `/demo/enter` が通ることを確かめてから、`scripts/setup-demo-tenant-user.ts` を本番の鍵で実行してランダムに付け替える。
+  Supabase ダッシュボードで「Secure email change」を ON、「現在のパスワードを要求する」設定があれば ON（名前は【要確認】）。
+  保険会社・メーカー・代理店のデモ（`*.ledra.test`）も同じ固定パスワードで、setup スクリプトと `docs/agent-demo-guide.md` に載っている。本番にあるかは【要確認】。
+  **Secure email change が OFF だと、デモの利用者がアカウントを乗っ取れる**: `/demo/enter` で取ったセッションで Auth API からメールを自分のアドレスに変え、
+  届いた確認だけで確定できる（OFF だと確認は新しいアドレスにだけ届く。Supabase ドキュメント「Email change behavior」で確認）。
+  確定すると `/demo/enter` は止まり（`?e=1` の表示になる。元のアドレスで generateLink が所属の無いユーザーを作っても、所属を確かめてから入れるので通らない）、乗っ取った人はデモテナントの owner として読み続ける。
+  ON なら現在のアドレス `demo@ledra-motors.example`（`.example` は届かない）にも確認が要るので確定しない。本番の設定値は【要確認】。
+  表示名の書き換え・MFA の登録・全セッションのサインアウトも利用者ができる。表示名と MFA は setup スクリプトの再実行で戻る（MFA を登録されても
+  `/admin` の閲覧は止まらない。aal2 を要求するのは書き出し・秘密情報の変更などだけ）。サインアウトは他の閲覧者が入り直せば済む。
+- Medium: 「ログインしていれば誰でも読める」ポリシーで、他テナントの業務データが見える（自己登録でも JWT は取れるので、デモだけの問題ではない）。
+  `academy_lesson_ratings_select`（`true`。user_id・tenant_id・コメント）、`partner_scores_select`（`auth.uid() IS NOT NULL`。全テナントの受注実績）。
+  低: `academy_cases_read_published` の tenant_id・certificate_id・published_by、`academy_lessons` の author_user_id。再生 DB から抽出（2026-10-17）。
 - Low: `/api/admin/customers`・`/api/admin/vehicles` は `page` を付けないと件数を絞らない
   （1回で PostgREST の上限まで返る。本番の上限値【要確認】）。監査ログもレート制限も無い。自テナント内の閲覧権限者向けの話。
+  **単純に上限を掛けると壊れる**: `DocumentForm`・`WalkinJobClient`・`ReservationsClient` などが page 無しで全件を取り、ドロップダウンに出している。先に検索型の選択へ変える必要がある（#1374 で確認）。
 - Low: `agent/apply` が、既存アカウントの有無を応答で返す（signup/join で直した列挙と同じ型）。
+  **応答を揃えるだけでは直らない**: 未ログインで既存代理店のメールを入れた申請を承認すると、`approve_agent_application` が同じユーザーに2つ目の代理店を作る。
+  #1374 で一度直したが、この回帰が /code-review で分かって取り下げた。先に**承認時に「すでに代理店か」を確かめる**（RPC 側）を入れる。
+  あわせて、申請時の既存ユーザー検索（`auth.admin.listUsers()`）が最初の1ページしか見ていない。
+- Low: 横断マイページの request-code / verify-code には、1アカウントあたりの回数制限が無い（IP ごとだけ。店ごとの版にはある）。
+  request-code は、顧客のときだけメール送信を待つので、応答時間で顧客かどうかが分かりうる（店ごとの版も同じ）。
+- Low: 外部 API の月間クォータ（`checkPassportMonthlyQuota`。verify・marketplace-info・accident-match が共用）は、ログの件数を数えてから通す。
+  上限の直前に同時に来たリクエストは全部通るので、上限を少し超えうる（分あたりの制限の範囲まで）。直すには原子的に数える関数（マイグレーション）が要る。
+  課金の上限として厳密にしたくなった時点で直す（#1374 の Codex の指摘。2026-10-17）。
 - Low: 一般のレート制限は、`RATE_LIMIT_FAIL_CLOSED` が未設定なら Redis 障害時に fail-open になる。本番の値は【要確認】。
 - Low（2026-10-17 の RLS 修正の作業中に見つかった。未検証）: `customer_inquiries` の UPDATE ポリシー `tenant_members_update`（20260409000000）はロールを見ていない。
-- Low: `/api/admin/integrations/api-keys` の発行に AAL2 が要らない。`*` キーは、将来 read 系のエンドポイントを足すと自動でその権限を持つ。
+- Low: `*` の API キーは、将来 read 系のエンドポイントを足すと自動でその権限を持つ。（発行時の AAL2 は proxy で必須になっていた。指摘は誤り。#1374 でテストに固定）
 - 問題なしと確認できたもの: Metabase など分析ツールの稼働痕跡は無い。本番の public 280 表はすべて RLS 有効、Storage 11 バケットはすべて非公開。
   サーバ側の依存に high/critical の脆弱性は無い（`npm audit --omit=dev`）。外部 API キーでは顧客・車両の個人情報を読めない。
 

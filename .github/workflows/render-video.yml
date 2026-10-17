@@ -48,8 +48,6 @@ jobs:
       SECRET_ENCRYPTION_KEY:         ${{ secrets.SECRET_ENCRYPTION_KEY }}
       CUSTOMER_AUTH_PEPPER:          ${{ secrets.CUSTOMER_AUTH_PEPPER }}
       NEXT_PUBLIC_APP_URL:           ${{ secrets.NEXT_PUBLIC_APP_URL || 'http://localhost:3000' }}
-      DEMO_ADMIN_EMAIL:              ${{ secrets.DEMO_ADMIN_EMAIL || 'demo@ledra-motors.example' }}
-      DEMO_ADMIN_PASSWORD:           ${{ secrets.DEMO_ADMIN_PASSWORD || 'Demo1234!' }}
       DEMO_INSURER_EMAIL:            ${{ secrets.DEMO_INSURER_EMAIL }}
       DEMO_INSURER_PASSWORD:         ${{ secrets.DEMO_INSURER_PASSWORD }}
       DEMO_AGENT_EMAIL:              ${{ secrets.DEMO_AGENT_EMAIL }}
@@ -151,8 +149,6 @@ jobs:
         run: npx tsx scripts/capture-screenshots.ts
         env:
           E2E_BASE_URL:          http://localhost:3000
-          DEMO_ADMIN_EMAIL:      ${{ secrets.DEMO_ADMIN_EMAIL || 'demo@ledra-motors.example' }}
-          DEMO_ADMIN_PASSWORD:   ${{ secrets.DEMO_ADMIN_PASSWORD || 'Demo1234!' }}
           DEMO_INSURER_EMAIL:    ${{ secrets.DEMO_INSURER_EMAIL }}
           DEMO_INSURER_PASSWORD: ${{ secrets.DEMO_INSURER_PASSWORD }}
           DEMO_AGENT_EMAIL:      ${{ secrets.DEMO_AGENT_EMAIL }}
