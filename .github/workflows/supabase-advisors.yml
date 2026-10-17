@@ -12,16 +12,41 @@ name: Supabase Advisors
 # When the secrets are absent both jobs FAIL in CI (REQUIRE_* below). They used to
 # skip with exit 0, which meant the steps returned success in 0 seconds without ever
 # looking at production — see DECISION_LOG 2026-09-18.
+#
+# 走るのは、週1回の定期・手動起動・**検出器自身を触る PR**（下の `pull_request` の paths）。
+# 「本番にドリフトが生まれてから気づくまで最大7日」は変わっていない
+# （OPEN_QUESTIONS 2026-10-16 の対策候補 (b)「毎日に上げる」は判断待ち）。
 
 on:
   schedule:
     - cron: "0 0 * * 1" # weekly, Monday 00:00 UTC
   workflow_dispatch: {}
+  # 検出器自身を触る PR では schema-drift だけ走らせる。
+  #
+  # なぜ: この検出器は週1回しか走らないので、**検出器を直した PR の CI では一度も動かない**。
+  # 2026-10-16 の #1363（storage のポリシーを対象に加えた）がそれで、ローカルで検証したきり
+  # 本番に対しては一度も実行されないままマージされた（MISTAKE_LEDGER
+  # M-20261016-promised-a-workflow-dispatch-i-cannot-send）。
+  #
+  # **`supabase/migrations/**` は入れない。** この検出器は逆向き（マイグレーションにあって本番に
+  # 無い列・一意制約・外部キー）で落とすが、本番への適用は `db-migrate.yml` が **main への push**
+  # で行うので、PR の時点では本番が必ず PR のマイグレーションより遅れている。入れると
+  # **列や表を足す PR が例外なく赤になる**（その赤は検出ではなく、適用順のずれ）。
+  pull_request:
+    paths:
+      - "scripts/check-schema-drift.mjs"
+      - "scripts/replay-migrations.mjs"
+      - "scripts/lib/dumpParse.mjs"
+      - "scripts/replay/**"
+      - ".github/workflows/supabase-advisors.yml"
 
 jobs:
   advisors:
     name: Database advisors
     runs-on: ubuntu-latest
+    # PR では走らせない。本番の advisor の棚卸しは PR の差分と関係が無く、
+    # 情報提供（--strict でない）なので、PR ごとに回す意味が無い。
+    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -40,11 +65,19 @@ jobs:
     # 本番にあるのにマイグレーションからは作られないオブジェクトを検出する。
     # 2026-09-06 に 69 個見つかった（うち関数5本を 26 本の RLS ポリシーが使っていた）。
     #
-    # なぜ PR の CI ではなくここに置くか:
-    #   本番の資格情報が要る。PR の `Migrations Replay` は空 DB しか持たないので
-    #   本番と比べようがなく、そちらへ本番トークンを渡す代償は検出の価値に見合わない。
-    #   この定期ジョブは既に本番を叩いており、置き場所として素直。
+    # なぜ PR の `Migrations Replay` ではなくここに置くか:
+    #   本番の資格情報が要る。`Migrations Replay` は空 DB しか持たないので本番と比べようがなく、
+    #   すべての PR に本番トークンを渡す代償は検出の価値に見合わない。この定期ジョブは既に
+    #   本番を叩いており、置き場所として素直。
+    #   2026-10-17 追記: ただし**検出器自身を触る PR では走らせる**（上の `pull_request` を参照）。
+    #   そうしないと、検出器を直した変更が本番に対して一度も動かないままマージされる。
     # 3〜5 分ほどかかる（マイグレーションを空 DB へ流し直すため）。
+    #
+    # fork からの PR はシークレットを受け取れず、`REQUIRE_SCHEMA_DRIFT=1` で必ず落ちるので
+    # 走らせない（skip と出る）。同じリポジトリのブランチからの PR は push 権限と同じ信頼なので走らせる。
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

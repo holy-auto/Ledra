@@ -4,6 +4,26 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-17 ドリフト検出を、検出器自身を触る PR でも走らせるようにした
+
+- 内容: `.github/workflows/supabase-advisors.yml` に `pull_request` トリガーを足した。paths は
+  `scripts/check-schema-drift.mjs` / `scripts/replay-migrations.mjs` / `scripts/lib/dumpParse.mjs` /
+  `scripts/replay/**` / 同ワークフロー自身の5つ。走るのは `schema-drift` ジョブだけで、
+  `advisors`（本番の advisor 棚卸し）は PR の差分と無関係なので `if` で止めてある。
+- なぜ: この検査は週1回しか走らないので、**検出器を直した PR の CI では一度も動かなかった**。
+  2026-10-16 の #1363（storage のポリシーを対象に加えた）がそれで、ローカル検証だけでマージされた
+  （MISTAKE_LEDGER `M-20261016-promised-a-workflow-dispatch-i-cannot-send`）。
+- **`supabase/migrations/**` は入れない。** 逆向き（マイグレーションにあって本番に無い列・一意制約・外部キー）でも
+  落ちる検査で、本番への適用は `db-migrate.yml` が main への push で行うため、PR の時点では本番が必ず遅れている。
+  入れると列や表を足す PR が例外なく赤になる（`M-20261017-proposed-a-paths-filter-that-would-redden-every-migration-pr`）。
+- fork からの PR は走らせない（シークレットが渡らず `REQUIRE_SCHEMA_DRIFT=1` で必ず落ちるため。skip と出る）。
+- 確認: ワークフローの YAML を PyYAML で解析し、トリガー3種・paths 5件・2つの `if` が意図どおりであることを確認。
+  本番の適用状況は `supabase_migrations.schema_migrations` が 534 本・最新 `20261016135012` で、
+  main の 534 ファイル・最新 `20261016135012` と一致（Supabase MCP で確認）。
+  **この変更自身が、この変更を入れた PR の CI で実際に走る**（paths に同ワークフローを含めてある）ので、
+  #1363 のときのような「本番に対して一度も動いていない」状態にはならない。
+- 変わっていないこと: 本番にドリフトが生まれてから気づくまで最大7日（毎日に上げるかは代表判断待ち）。
+
 ## 2026-10-16 Supabase の GitHub 連携による本番への自動適用を切った（本番の書き手が1本になった）
 
 - **代表がダッシュボードで操作**（Integrations → 「本番環境にデプロイする」を OFF）。2026-09-13 の判断の実施。

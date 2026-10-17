@@ -12,9 +12,26 @@
   `SUPABASE_PROJECT_ID`）が要る。fork の PR ではシークレットが渡らない。
 - 対策候補 (a): `supabase/migrations/**` と `scripts/{check-schema-drift,replay-migrations}.mjs` を触る PR でだけ走らせる
   （`paths` 条件）。触らない PR の時間は増えない。fork の PR では従来どおり skip する判断が別に要る。
-- 対策候補 (b): 毎日に上げる（`0 0 * * *`）。気づくまで最大1日。CI 時間は週7回分。
-- 対策候補 (c): 現状維持。検出器を直したときは workflow_dispatch で手動起動して確かめる（今回はそうした）。
-- 判断は代表（CI 時間の費用が絡む）。
+  - **→ 2026-10-17 訂正。`supabase/migrations/**` を入れるのは誤りだった。** この検出器は逆向き
+    （マイグレーションにあって本番に無い列・一意制約・外部キー）でも落ちるが、本番への適用は
+    `db-migrate.yml` が **main への push** で行うので、PR の時点では本番が必ず PR のマイグレーションより遅れている。
+    入れると**列や表を足す PR が例外なく赤になる**（検出ではなく適用順のずれ）。
+    `M-20261017-proposed-a-paths-filter-that-would-redden-every-migration-pr`。
+  - **→ 2026-10-17 実施（検出器自身のファイルだけに絞って採用）**: `scripts/check-schema-drift.mjs` /
+    `scripts/replay-migrations.mjs` / `scripts/lib/dumpParse.mjs` / `scripts/replay/**` /
+    `.github/workflows/supabase-advisors.yml` を触る PR で `schema-drift` ジョブだけ走らせる。
+    fork の PR は（シークレットが渡らず必ず落ちるので）`if` で走らせない。
+    これで「検出器を直した変更が本番に対して一度も動かないままマージされる」穴は閉じた。
+    **本番のドリフトに気づくまでの最大7日は変わっていない** —— それは (b) の話。
+- 対策候補 (b): 毎日に上げる（`0 0 * * *`）。気づくまで最大1日。CI 時間は週7回分。**ここが未解決。**
+  費用の前提: このリポジトリは **public**（2026-10-17 に `gh api repos/holy-auto/Ledra` の `private=false` で確認）。
+  実行時間は1回 3〜5 分。判断は代表。
+- 対策候補 (c): 現状維持。検出器を直したときは workflow_dispatch で手動起動して確かめる。
+  —— **2026-10-17 訂正: 「今回はそうした」と書いていたが、実際には起動できていない**（下の 403）。
+  (c) は Claude のセッションでは成立しない選択肢。
+- (b) の判断は代表。**費用の前提は確認できていない**: public リポジトリの GitHub-hosted 標準ランナーは
+  無料という理解だが、これは訓練データ時点の GitHub の方針で、請求情報はこのセッションから読めない
+  【要確認】。実行時間（1回 3〜5 分 × 週7回）だけは確かな入力。
 - **このセッションからは手動起動もできない**: `POST actions/workflows/supabase-advisors.yml/dispatches` が
   403 `Resource not accessible by integration`（2026-10-16 に GitHub MCP と `gh api` の両方で確認）。
   つまり「検出器を直したら手動で起動して確かめる」という運用は、Claude のセッションでは成立しない。
