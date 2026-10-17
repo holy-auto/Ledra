@@ -13,11 +13,11 @@ import fs from "fs";
 
 const BASE_URL = process.env.E2E_BASE_URL?.replace(/\/$/, "") || "http://localhost:3000";
 
-// Defaults match the seed scripts (setup-demo-tenant-user / setup-demo-insurer /
-// setup-demo-agent). Without these fallbacks, missing CI secrets caused entire
-// portals to silently skip and slides rendered as 📸 placeholders.
-const ADMIN_EMAIL      = process.env.DEMO_ADMIN_EMAIL    || "demo@ledra-motors.example";
-const ADMIN_PASSWORD   = process.env.DEMO_ADMIN_PASSWORD || "Demo1234!";
+// Defaults match the seed scripts (setup-demo-insurer / setup-demo-agent).
+// Without these fallbacks, missing CI secrets caused entire portals to silently
+// skip and slides rendered as 📸 placeholders.
+// The shop demo (setup-demo-tenant-user) has no known password: it is entered via
+// /demo/enter, which issues the session server-side.
 const INSURER_EMAIL    = process.env.DEMO_INSURER_EMAIL    || "demo@insurer.ledra.test";
 const INSURER_PASSWORD = process.env.DEMO_INSURER_PASSWORD || "Demo1234!";
 const AGENT_EMAIL      = process.env.DEMO_AGENT_EMAIL    || "demo@agent.ledra.test";
@@ -101,8 +101,11 @@ async function captureAdmin(browser: ReturnType<typeof chromium.launch> extends 
   await go(page, `${BASE_URL}/login`);
   await shot(page, "admin/login.png");
 
-  // Authenticate
-  await login(page, ADMIN_EMAIL, ADMIN_PASSWORD, "/login");
+  // Authenticate (password-less: /demo/enter signs in server-side and redirects to /admin/certificates)
+  await go(page, `${BASE_URL}/demo/enter`);
+  if (!new URL(page.url()).pathname.startsWith("/admin")) {
+    throw new Error(`/demo/enter did not land on /admin (current URL: ${page.url()})`);
+  }
 
   // Dashboard
   await go(page, `${BASE_URL}/admin`);

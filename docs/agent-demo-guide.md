@@ -61,9 +61,9 @@
 
 | 項目 | 値 |
 |---|---|
-| ログイン URL | `/login` |
+| ログイン URL | `/demo/enter`（パスワード不要。開くと自動でログインする） |
 | メール | `demo@ledra-motors.example` |
-| パスワード | `Demo1234!` |
+| パスワード | 公開しない（`/login` からは入れない） |
 | テナント名 | Ledra Motors（デモ） |
 | プラン | Pro |
 | ロール | owner（最大権限） |

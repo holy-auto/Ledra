@@ -5,7 +5,9 @@
  * によってサンプルデータ（証明書27件 / 車両11台 / 顧客9名）と共に作成される。
  *
  * デモアカウントは `scripts/setup-demo-tenant-user.ts` で作成される owner 権限の
- * ユーザーで、HP の「デモを見る」導線（/demo ページ）からログイン情報が案内される。
+ * ユーザーで、HP の「デモを見る」導線（/demo → /demo/enter）から入る。
+ * パスワードは公開しない（ソースにも置かない）。/demo/enter がサーバー側で
+ * service role の magic link を発行・検証してセッションを張る。
  *
  * リードオンリー化:
  *   - 入口: `src/lib/demoWriteGuard.ts`（proxy）が、デモテナントの利用者の書き込みメソッドを 403 にする。
@@ -25,8 +27,6 @@ export const DEMO_TENANT_ID = "00000000-0000-0000-0000-de0000000010";
 export const DEMO_TENANT_SLUG = "ledra-motors-demo";
 
 export const DEMO_EMAIL = "demo@ledra-motors.example";
-
-export const DEMO_PASSWORD = "Demo1234!";
 
 export function isDemoTenant(tenantId: string | null | undefined): boolean {
   return tenantId === DEMO_TENANT_ID;

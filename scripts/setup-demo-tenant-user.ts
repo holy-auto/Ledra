@@ -12,16 +12,23 @@
  *   npx tsx --env-file=.env.local scripts/setup-demo-tenant-user.ts
  *
  * 冪等性:
- *   - 既存のユーザーがあれば再利用（メールアドレスで同定）
+ *   - 既存のユーザーがあれば再利用（メールアドレスで同定）。パスワードは毎回ランダムに付け替える
  *   - tenant_memberships は upsert
  *   - 再実行しても重複レコードは作られない
  *
- * デモログイン情報（ここで作成されるアカウント）:
+ * デモアカウント（ここで作成されるアカウント）:
  *   Email   : demo@ledra-motors.example
- *   Password: Demo1234!
+ *   Password: なし（誰にも知らせないランダム値。表示もしない）
  *   Role    : owner (管理者権限最大)
+ *   入口    : /demo/enter（サーバー側で magic link を発行してログインさせる。src/app/(marketing)/demo/enter/route.ts）
+ *
+ * 以前は固定パスワードをソースと /demo ページに出していた。それだと誰でも Auth API から
+ * デモの JWT を取り、パスワードを変えて /demo/enter を止められた。既存ユーザーに対して
+ * 再実行すると、パスワードを新しいランダム値に付け替える（＝公開済みのパスワードを無効にする）。
+ * 付け替えると、そのユーザーの既存セッションは切れる。
  */
 
+import { randomBytes } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -41,7 +48,8 @@ const TENANT_ID = "00000000-0000-0000-0000-de0000000010";
 const TENANT_SLUG = "ledra-motors-demo";
 
 const DEMO_EMAIL = "demo@ledra-motors.example";
-const DEMO_PASSWORD = "Demo1234!";
+// 誰も使わない。Auth にパスワード無しのユーザーを作らせないために付けるだけ
+const DEMO_PASSWORD = randomBytes(32).toString("base64url");
 const DEMO_DISPLAY_NAME = "Ledra Motors オーナー";
 const DEMO_ROLE = "owner";
 
@@ -79,7 +87,12 @@ async function findOrCreateAuthUser(): Promise<string> {
 
   const existing = listed?.users?.find((u) => u.email?.toLowerCase() === DEMO_EMAIL.toLowerCase());
   if (existing) {
-    console.log(`✅ 既存の Auth ユーザーを再利用: ${DEMO_EMAIL} (${existing.id})`);
+    const { error: pwErr } = await admin.auth.admin.updateUserById(existing.id, { password: DEMO_PASSWORD });
+    if (pwErr) {
+      console.error("❌ パスワードの付け替えに失敗しました:", pwErr.message);
+      process.exit(1);
+    }
+    console.log(`✅ 既存の Auth ユーザーを再利用（パスワードをランダム値に付け替え）: ${DEMO_EMAIL} (${existing.id})`);
     return existing.id;
   }
 
@@ -166,9 +179,8 @@ async function main(): Promise<void> {
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   デモ施工店ユーザー セットアップ完了 🎉
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  ログイン URL : /login
+  ログイン URL : /demo/enter（パスワード不要）
   メール        : ${DEMO_EMAIL}
-  パスワード    : ${DEMO_PASSWORD}
 
   テナント      : Ledra Motors（デモ）
   tenant_slug   : ${TENANT_SLUG}
