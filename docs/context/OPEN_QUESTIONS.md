@@ -212,7 +212,34 @@ RPC エラーが記録されている以上:
 **代表に決めてもらうこと**（レバーは、設定を読む行だけでなく、**同じ設定を読む他の行まで `grep` で確認した**。
 初版は前者だけで「コードで確認済み」と書いていた —— `MISTAKE_LEDGER` の
 `M-20261017-handed-over-a-switch-without-grepping-its-other-readers`）:
-- (a) **アンカリングを続けるなら**: Vercel から名前解決できる RPC を設定する。**手順の順番が大事**:
+- (a) **アンカリングを続けるなら**: Vercel から名前解決できる RPC を設定する。
+  **まず「アンカーが1件成立する条件」の全部を見る**（2026-10-17 にコードから列挙。
+  Codex の指摘が5回に分けてこの穴を突いたので、手順を足すのをやめて条件の側を並べた。
+  経緯は `MISTAKE_LEDGER` の `M-20261017-handed-over-a-switch-without-grepping-its-other-readers`）。
+  **DNS を直すのは (4) だけで、残りが揃っていなければ1件も通らない**:
+  1. `POLYGON_ANCHOR_ENABLED = "true"`（`providers/polygonBatch.ts:67` の `isEnabled()`、
+     `api/cron/anchor-batch/route.ts:26`）
+  2. `CERT_RECORD_ANCHOR_ENABLED = "true"`（**証明書単位のアンカーだけに必要**。
+     `lib/anchoring/certificateAnchorService.ts:25` が enqueue を止め、
+     `api/cron/anchor-batch/route.ts:29` が日次バッチを provider に届く前に skip する）
+  3. `POLYGON_NETWORK` が運用するチェーンと一致（`resolveNetwork()`）
+  4. そのネットワークの RPC が **Vercel から名前解決でき、TLS 1.3 を話す `https`**
+     （`perNetworkEnv("POLYGON_RPC_URL", network)` / `lib/net/tls13Fetch.ts`）
+  5. そのネットワークの**コントラクトアドレス**。2系統:
+     `POLYGON_BATCH_CONTRACT_ADDRESS[_AMOY|_POLYGON]`（証明書バッチ）と
+     `POLYGON_CONTRACT_ADDRESS[_AMOY|_POLYGON]`（画像単位・ZKP）。無いと **no-op**
+  6. `POLYGON_PRIVATE_KEY` が `0x`+64桁hex に正規化できる
+  7. **署名アドレスに POL 残高がある**（監視は `critical` でも success を記録するので、監視では分からない）
+  8. **署名アドレスがコントラクトの `anchorers` に登録されている**
+     （`contracts/LedraBatchAnchor.sol:61-63` と `contracts/LedraAnchor.sol:50` の `onlyAnchorer`）
+  9. **コントラクトが `paused` でない**（同 `whenNotPaused`）
+
+  **(8)(9) は読み取り確認では絶対に検出できない**（Codex の P1 指摘。2026-10-17）——
+  `isAnchored()` は modifier の無い `view` なので、**既存のアンカーは `true` を返すのに
+  新規の書き込みだけ revert する**。`anchorers` と `paused` はどちらも `public` なので、
+  `anchorers(署名アドレス)` と `paused()` を読めば書き込み前に確かめられる。
+
+  **手順の順番**:
   1. **まず既存の値を見る。** `POLYGON_RPC_URL` / `POLYGON_RPC_URL_AMOY` / `POLYGON_RPC_URL_POLYGON` の
      3つと、**`POLYGON_NETWORK`** が今どうなっているか（この環境からは読めない）。
      **`POLYGON_NETWORK` も決める対象**（Codex の指摘。2026-10-17）—— cron はチェーンの指定を
@@ -279,6 +306,15 @@ RPC エラーが記録されている以上:
      cron の応答 JSON の `status` と `balance_pol` を見て、**選んだネットワークのウォレットに
      POL があること**を確かめる。空のままだと、ここまでの手順を全部満たしても
      **新規のアンカーは資金不足で失敗し続ける**。
+  10. **署名アドレスが書けるかをコントラクトで確かめる**（Codex の P1 指摘。2026-10-17）。
+     上の条件 (8)(9) —— `anchorers(署名アドレス)` が `true` で `paused()` が `false` か。
+     どちらも `public` の読み取りなのでガス代はかからない。**ここを飛ばすと、
+     ここまでの手順を全部満たし読み取り確認も `true` なのに、新規の書き込みだけ revert する。**
+  11. **証明書単位のアンカーを続けるなら `CERT_RECORD_ANCHOR_ENABLED` も見る**
+     （Codex の P1 指摘。2026-10-17。上の条件 2）。`"true"` でなければ
+     `enqueueCertificateAnchor()` は行を作らず、日次バッチも provider に届く前に skip するので、
+     **残高監視も画像単位の読み取り確認も通るのに、証明書の証明だけ完全に止まっている**状態になる。
+     日次バッチ（`api/cron/anchor-batch`）の応答が `skipped` でないことまで見る。
   **どのエンドポイントが生きているかはこの環境から確認できないので、候補をここに書かない**
   （確認せずに書けば、同じ形の失敗を1つ増やすだけになる）。
 - (b) **アンカリングを止めるなら**: `POLYGON_ANCHOR_ENABLED` を `"true"` 以外にする（削除でもよい）。

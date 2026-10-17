@@ -56,6 +56,13 @@
    `POLYGON_CONTRACT_ADDRESS[_AMOY|_POLYGON]`（画像単位・ZKP）。無いと**アンカーは静かに no-op**。
    **鍵の残高も別に確かめる** —— `recordCronSuccess()` は `critical`/`warning` でも呼ばれるので
    （`route.ts:225-226`、RPC 疎通と残高警告を分ける意図）、`last_success_at` の更新は残高を保証しない。
+   **最終的に、手順を足すのをやめて「アンカーが1件成立する条件」9項目をコードから列挙した**
+   （OPEN_QUESTIONS の (a) 冒頭。2026-10-17）。Codex が5巡に分けて同じ穴
+   （手順を全部終えても動かない）を突いたため、原因の裏返しを並べる形をやめた。
+   DNS はそのうち1項目にすぎず、他に `CERT_RECORD_ANCHOR_ENABLED`、ネットワーク別の
+   コントラクトアドレス2系統、鍵の残高、**コントラクトの `anchorers` 登録と `paused`** がある。
+   最後の2つは**読み取り確認では検出できない**（`isAnchored()` は modifier の無い `view` なので、
+   既存のアンカーは `true` を返すのに新規の書き込みだけ revert する）。
    `POST /api/admin/polygon/backfill` は1件の試し打ちではない（テナントの未アンカー全件をキューし、
    worker が 50件ずつ本物の tx を出す）ので、確認手段に使わない（Codex の P1 指摘。2026-10-17）。
    `POLYGON_NETWORK` と URL のチェーンが食い違っても `eth_getBalance` は照合しないので、
