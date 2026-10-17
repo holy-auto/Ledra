@@ -15,7 +15,7 @@ import { cookies } from "next/headers";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { CUSTOMER_COOKIE, getTenantIdBySlug, validateSession, phoneLast4Hash } from "@/lib/customerPortalServer";
+import { CUSTOMER_COOKIE, getTenantIdBySlug, validateSession } from "@/lib/customerPortalServer";
 import { GLOBAL_PORTAL_COOKIE, resolvePortalTenantAccessByGlobalToken } from "@/lib/customerPortalGlobal";
 import { generateCustomerLinkCode } from "@/lib/line/linkCode";
 
@@ -25,12 +25,9 @@ export const runtime = "nodejs";
 const bodySchema = z.object({ tenant_slug: z.string().trim().min(1).max(100) });
 
 /**
- * 連携コード発行先の (tenantId, customerId) をポータルセッションから一意に解決する。
- *
- * セッションに baked された customer_id を最優先で使う。無い場合は email 一致で
- * 引くが、複数候補があるとき（同一メールの家族・共有メール等）は下4桁が一意に
- * 一致した行だけを採用する。一意に特定できなければ null を返し、別人の顧客行に
- * line_user_id を書き込んでしまう事故を防ぐ。
+ * 連携コード発行先の (tenantId, customerId) をポータルセッションから解決する。
+ * どちらのセッションも本人と確定した customer_id を持つので、それだけを使う
+ * （別人の顧客行に line_user_id を書き込まないため、メール等で推測して引かない）。
  */
 async function resolvePortalCustomer(tenantSlug: string): Promise<{ tenantId: string; customerId: string } | null> {
   const tenantId = await getTenantIdBySlug(tenantSlug);
@@ -40,59 +37,15 @@ async function resolvePortalCustomer(tenantSlug: string): Promise<{ tenantId: st
   const tenantToken = c.get(CUSTOMER_COOKIE)?.value ?? "";
   const globalToken = c.get(GLOBAL_PORTAL_COOKIE)?.value ?? "";
 
-  let email = "";
-  let phoneHash = "";
-  let customerId: string | null = null;
-
   if (tenantToken) {
     const sess = await validateSession(tenantId, tenantToken);
-    if (sess) {
-      email = sess.email ?? "";
-      phoneHash = sess.phone_last4_hash ?? "";
-      customerId = sess.customer_id ?? null;
-    }
+    if (sess) return { tenantId, customerId: sess.customer_id };
   }
-  if (!email && !customerId && globalToken) {
+  if (globalToken) {
     const access = await resolvePortalTenantAccessByGlobalToken(tenantSlug, globalToken);
-    if (access) {
-      email = access.email;
-      phoneHash = access.phone_last4_hash ?? "";
-    }
+    if (access) return { tenantId, customerId: access.customer_id };
   }
-
-  if (!customerId && !email) return null;
-
-  // セッションに customer_id が baked されていればそれを最優先で使う。
-  if (customerId) return { tenantId, customerId };
-
-  // フォールバック: テナント内で email 一致の顧客を引く。
-  const { admin } = createTenantScopedAdmin(tenantId);
-  const { data: rows } = await admin
-    .from("customers")
-    .select("id, phone")
-    .eq("tenant_id", tenantId)
-    .ilike("email", email);
-  if (!rows || rows.length === 0) return null;
-
-  // 候補が 1 件だけなら一意。複数あるときは下4桁ハッシュが一意に一致した行のみ採用し、
-  // 曖昧（0 件 / 複数一致 / 下4桁不明）なら特定失敗として null を返す。
-  // 平文照合は廃止し、顧客電話の下4桁を同じ recipe でハッシュ化して session と比較する。
-  let chosen: { id: string } | null = null;
-  if (rows.length === 1) {
-    chosen = rows[0] as { id: string };
-  } else if (phoneHash) {
-    const last4 = (s: string | null) => {
-      const d = (s ?? "").replace(/\D/g, "");
-      return d.length >= 4 ? d.slice(-4) : null;
-    };
-    const matches = rows.filter((r) => {
-      const l4 = last4(r.phone);
-      return l4 !== null && phoneLast4Hash(tenantId, l4) === phoneHash;
-    });
-    if (matches.length === 1) chosen = matches[0] as { id: string };
-  }
-  if (!chosen) return null;
-  return { tenantId, customerId: chosen.id };
+  return null;
 }
 
 /** テナントの LINE 有効フラグと、この顧客が既に連携済みかを取得する。 */
