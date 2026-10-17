@@ -51,6 +51,11 @@
    読み取りが接尾辞無しに落ち、別ネットワークの RPC で照会して未検証に見える）。
    **cron の監視が緑でもアンカー本体が直った証拠にならない**（監視は接尾辞無しだけを読む）。
    確認は**ガス代のかからない読み取り**（`cert-verify` / `public/verify` の `on_chain_verified`）で行う。
+   **チェーンを変えるならコントラクトアドレスも2系統見る**（Codex の P1 指摘。2026-10-17）——
+   `POLYGON_BATCH_CONTRACT_ADDRESS[_AMOY|_POLYGON]`（証明書バッチ）と
+   `POLYGON_CONTRACT_ADDRESS[_AMOY|_POLYGON]`（画像単位・ZKP）。無いと**アンカーは静かに no-op**。
+   **鍵の残高も別に確かめる** —— `recordCronSuccess()` は `critical`/`warning` でも呼ばれるので
+   （`route.ts:225-226`、RPC 疎通と残高警告を分ける意図）、`last_success_at` の更新は残高を保証しない。
    `POST /api/admin/polygon/backfill` は1件の試し打ちではない（テナントの未アンカー全件をキューし、
    worker が 50件ずつ本物の tx を出す）ので、確認手段に使わない（Codex の P1 指摘。2026-10-17）。
    `POLYGON_NETWORK` と URL のチェーンが食い違っても `eth_getBalance` は照合しないので、
