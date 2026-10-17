@@ -7,23 +7,31 @@
 
 - **根本の状況（2026-10-17 に確定）**: `check:drift` は**どこでも成功していない**。
   週次の定期実行は **2026-09-21 / 09-28 / 10-05 / 10-12 と4回連続で failure**、最後の success は 2026-09-14
-  （`actions/workflows/supabase-advisors.yml/runs` で確認）。原因は**シークレット未登録**
-  （`SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID`）。LEDRA_CURRENT.md に 2026-09-19 時点で
-  「未登録なので週次ジョブが赤くなる。登録は代表の操作が要る」と書いてある。
+  （`actions/workflows/supabase-advisors.yml/runs` で確認）。原因はシークレットで、
+  **実測で言えるのは「`SUPABASE_ACCESS_TOKEN` と `SUPABASE_PROJECT_ID` の少なくとも一方が空」まで**
+  （ガードは `if (!token || !ref)` で、どちらが欠けても同じエラーになる。`actions/secrets` は proxy が 403 で
+  このセッションから数えられない）。**両方とも未登録**としているのは 2026-09-19 の記録
+  （LEDRA_CURRENT.md / DECISION_LOG 2026-09-19）。登録時は2つとも確認する。
   `REQUIRE_SCHEMA_DRIFT=1` があるので黙って skip せず赤くなる —— 設計どおりだが、**赤のまま放置された**。
-- **いま効いていないこと**: 2026-09-14 以降、本番とマイグレーションのずれは誰も見ていない。
-  2026-10-16 に #1363 で足した `storage_policy` の軸も、本番に対して一度も動いていない。
+- **いま効いていないこと**: **自動の**週次検出が 2026-09-14 以降1回も成功していない。
+  手で突き合わせた記録はこの期間にもある（2026-09-18 の全面比較、09-20 の列の md5 照合 3549 列一致、
+  09-29 の 280 表照合。LEDRA_CURRENT / RELEASE_LOG）。つまり**見ていないのは「自動で、継続的に」の部分**で、
+  「期間中ずっと誰も見ていない」は言い過ぎだった（Codex の指摘で訂正）。
+  一方 **2026-10-16 に #1363 で足した `storage_policy` の軸は、本番に対して一度も動いていない** —— これは確定。
 - **ブロッカーは1つだけ**: 代表が GitHub の Settings → Secrets and variables → Actions で
-  2つのシークレットを登録すること。**これが登録されるまで、走らせる場所を増やしても価値はゼロ**
+  `SUPABASE_ACCESS_TOKEN` と `SUPABASE_PROJECT_ID` が**両方**登録されている状態にすること。**これが登録されるまで、走らせる場所を増やしても価値はゼロ**
   （赤が増えるだけ）。Claude のセッションからは登録も手動起動もできない
   （`dispatches` が 403 `Resource not accessible by integration`。`actions/secrets` も proxy が 403）。
 - **登録された日に出す変更（設計は確定、実装は保留）**: 検出器自身のファイルを触る PR で `schema-drift` だけ走らせる
   （`scripts/check-schema-drift.mjs` / `scripts/replay-migrations.mjs` / `scripts/lib/dumpParse.mjs` /
   `scripts/replay/**` / 同ワークフロー自身）。2026-10-17 に実装したが、**シークレットが無いまま入れると
   恒久的に赤いチェックを PR に足すだけ**になるので取り下げた（#1366）。出すときに併せて要るもの:
-  - **`environment: production` ＋必須レビュアー。** paths の条件は「検出器のスクリプトを書き換えた PR」だけを選ぶので、
-    ゲート無しだと**本番の PAT を、その PR が書き換えたスクリプトに渡す**形になる。
-    `db-migrate.yml` が同じ対策を既に名指ししている。
+  - **`environment: production` ＋必須レビュアーを、PR 専用の別ジョブに付ける。** paths の条件は
+    「検出器のスクリプトを書き換えた PR」だけを選ぶので、ゲート無しだと**本番の PAT を、その PR が
+    書き換えたスクリプトに渡す**形になる。`db-migrate.yml` が同じ対策を既に名指ししている。
+    **ただし既存の `schema-drift` ジョブに付けてはいけない** —— Environment の保護規則はトリガーに関係なく
+    そのジョブ全体に掛かるので、**週次の定期実行まで人の承認待ちになり、無人の見張りが消える**
+    （Codex の指摘。2026-10-17）。PR 用のジョブを分けるか、environment を条件付きで選ぶ。
   - **Dependabot の除外。** `.github/dependabot.yml` の `github-actions` ecosystem が同ワークフローの
     action 版を上げる PR を出すが、Dependabot の実行は Actions シークレットを読めないので赤になる。
   - **`concurrency`（`cancel-in-progress: true`）と `timeout-minutes`（15〜20）。**
@@ -35,9 +43,10 @@
   （2026-09-19 に数日止まった実績がある）。根本は「逆向きを main に限る」か「base と比べる」で、
   paths の選び方では解けない。
 - **対策候補（頻度。シークレット登録後の話）**: (b) 毎日に上げる（`0 0 * * *`）。気づくまで最大1日。
-  費用の前提は未確認: このリポジトリは public（2026-10-17 に `private=false` で確認）だが、
-  GitHub-hosted 標準ランナーが無料かどうかは請求情報を読めないので【要確認】。
-  確かな入力は実行時間（1回 3〜5 分）だけ。判断は代表。
+  **この判断は費用の前提にほとんど依存しない。** 増えるのは週6回 ×（1回 3〜5 分）＝ 週 18〜30 分で、
+  仮に有料でもこの規模。推定: public リポジトリの GitHub-hosted 標準ランナー（このジョブは `ubuntu-latest`）は
+  無料 —— 根拠は GitHub の公開方針（Codex も同じ文書を引用）。**未検証**: `docs.github.com` はこの環境から
+  引けず（DNS 拒否）、請求情報も読めない。代表が確かめるなら Settings → Billing の1画面。
 ## OEM（トヨタ等）への再連絡の前に決めること（2026-10-16）
 
 JMS Bizweek 2026 で OEM が「バリューチェーン・入力の簡略化・データ利活用」に関心を示した。整理は `docs/oem-value-chain-exploration-2026-10.md`。
