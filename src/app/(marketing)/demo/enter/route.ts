@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { DEMO_EMAIL } from "@/lib/demo";
+import { DEMO_EMAIL, DEMO_TENANT_ID } from "@/lib/demo";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -43,6 +43,18 @@ export async function GET(req: NextRequest) {
     if (linkErr || !tokenHash) {
       lastError = linkErr ?? new Error("generateLink returned no hashed_token");
       continue;
+    }
+    // デモのメールが変えられて元のユーザーが居なくなると、generateLink が所属の無いユーザーを作ることがある。
+    // デモテナントの所属者でなければ入れずに /demo?e=1 に戻す（取り直しても同じなので打ち切る）
+    const { data: member, error: memberErr } = await admin
+      .from("tenant_memberships")
+      .select("user_id")
+      .eq("tenant_id", DEMO_TENANT_ID)
+      .eq("user_id", link.user.id)
+      .maybeSingle();
+    if (memberErr || !member) {
+      lastError = memberErr ?? new Error("demo link user is not a member of the demo tenant");
+      break;
     }
     const { error } = await supabase.auth.verifyOtp({ type: "magiclink", token_hash: tokenHash });
     if (!error) {

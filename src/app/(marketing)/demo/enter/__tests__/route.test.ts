@@ -8,11 +8,19 @@ const mocks = vi.hoisted(() => ({
   verifyOtp: vi.fn(),
   signInWithPassword: vi.fn(),
   cookieSet: vi.fn(),
+  member: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({ cookies: async () => ({ set: mocks.cookieSet }) }));
 vi.mock("@/lib/supabase/admin", () => ({
-  createServiceRoleAdmin: () => ({ auth: { admin: { generateLink: mocks.generateLink } } }),
+  createServiceRoleAdmin: () => ({
+    auth: { admin: { generateLink: mocks.generateLink } },
+    // tenant_memberships の所属確認: from().select().eq().eq().maybeSingle()
+    from: () => {
+      const q = { select: () => q, eq: () => q, maybeSingle: mocks.member };
+      return q;
+    },
+  }),
 }));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
@@ -26,9 +34,12 @@ import { GET } from "@/app/(marketing)/demo/enter/route";
 import { NextRequest } from "next/server";
 
 const req = () => new NextRequest("https://ledra.test/demo/enter");
-const link = (hash: string) => ({ data: { properties: { hashed_token: hash } }, error: null });
+const link = (hash: string) => ({ data: { properties: { hashed_token: hash }, user: { id: "u1" } }, error: null });
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.member.mockResolvedValue({ data: { user_id: "u1" }, error: null });
+});
 
 describe("GET /demo/enter", () => {
   it("magic link のトークンで verify し、パスワードでは入らない", async () => {
@@ -65,7 +76,18 @@ describe("GET /demo/enter", () => {
     expect(mocks.cookieSet).not.toHaveBeenCalled();
   });
 
-  it("トークンを発行できなければ verify せず /demo?e=1 に戻す（デモのメールが変えられた等）", async () => {
+  it("トークンのユーザーがデモテナントの所属者でなければ verify せず /demo?e=1 に戻す", async () => {
+    mocks.generateLink.mockResolvedValue(link("h1"));
+    mocks.member.mockResolvedValue({ data: null, error: null });
+
+    const res = await GET(req());
+
+    expect(res.headers.get("location")).toBe("https://ledra.test/demo?e=1");
+    expect(mocks.verifyOtp).not.toHaveBeenCalled();
+    expect(mocks.cookieSet).not.toHaveBeenCalled();
+  });
+
+  it("トークンを発行できなければ verify せず /demo?e=1 に戻す", async () => {
     mocks.generateLink.mockResolvedValue({ data: null, error: new Error("User not found") });
 
     const res = await GET(req());
