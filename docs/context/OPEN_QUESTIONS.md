@@ -17,13 +17,8 @@
 調査は3系統（認証なしのルート／ログイン後のテナント越え・一括取得／Supabase への直接アクセス）。
 下の項目はコードを読んで出た指摘で、**再確認したのは顧客一覧の一括取得だけ**。重い順に並べた。
 
-- Medium: `market_vehicles` の RLS が `status = 'listed'` の行を anon に**全列**開いている（仕入原価・仕入先・車台番号・買主情報）。
-  本番で listed の行は 0 件なので、今は漏れていない。出品が始まった時点で漏れる。
 - Medium: デモアカウントの認証情報がソースにある（`src/lib/demo.ts`）。これで JWT を取れば、「authenticated なら誰でも読める」ポリシーに届く。
   推定: その JWT でデモのパスワードを変えられる（未検証）。
-- Medium: 実証テスト（`ft_applications` / `ft_agreements` / `ft_jobs`）の RLS の UPDATE は tenant_id しか見ていない。
-  PostgREST を直接叩けば、メーカーの承認・契約本文・検査を飛ばせる。推定（本番の grant は未確認）。
-- Medium: 外注依頼の相手テナントを、`staff_members.linked_tenant_id` を直接更新することで、相手の同意なく指定できる。推定。
 - Medium〜Low: メーカーの研修・施工条件を作成する API が、プロジェクトの所有者を確かめていない。他社のプロジェクトに偽のリンクを入れられる。
 - Medium: 横断マイページの `request-code` が、該当なしなら 404・ありなら 200 を返す。応答の違いで、メールが Ledra の顧客かどうかが分かる。
   `verify-code` には試行回数の上限が無い。
@@ -31,7 +26,8 @@
   （1回で PostgREST の上限まで返る。本番の上限値【要確認】）。監査ログもレート制限も無い。自テナント内の閲覧権限者向けの話。
 - Low: `agent/apply` が、既存アカウントの有無を応答で返す（signup/join で直した列挙と同じ型）。
 - Low: 一般のレート制限は、`RATE_LIMIT_FAIL_CLOSED` が未設定なら Redis 障害時に fail-open になる。本番の値は【要確認】。
-- Low: `customer_inquiries` の `public_insert WITH CHECK (true)` がマイグレーションに残っている（本番には無い）。新しい環境では穴が復活する。
+- Low（2026-10-17 の RLS 修正の作業中に見つかった。未検証）: 施工店は応募の INSERT で、募集と食い違う `project_id` / `manufacturer_id` を入れられる（メーカーの承認は要るので、承認は飛ばせない）。
+  `customer_inquiries_tenant_members_update` はロールを見ていない。`GET /api/admin/market-vehicles?public=true` は呼び出し元が無いまま残っている。
 - Low: `/api/admin/integrations/api-keys` の発行に AAL2 が要らない。`*` キーは、将来 read 系のエンドポイントを足すと自動でその権限を持つ。
 - 問題なしと確認できたもの: Metabase など分析ツールの稼働痕跡は無い。本番の public 280 表はすべて RLS 有効、Storage 11 バケットはすべて非公開。
   サーバ側の依存に high/critical の脆弱性は無い（`npm audit --omit=dev`）。外部 API キーでは顧客・車両の個人情報を読めない。
