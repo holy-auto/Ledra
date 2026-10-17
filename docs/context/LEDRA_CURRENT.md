@@ -52,6 +52,19 @@
 > `certificate_anchor_batches` はいずれも 0 件（2026-10-07 に service role で件数確認）。ブロックチェーン証明は本番ではまだ1件も作られていない。
 > デモテナントには撮影用ヒーロー車両（LEDRA-DEMO-0017〜0027、NFC タグ付き）を追加した（RELEASE_LOG 2026-10-07）。
 
+> 2026-10-17 追記（**代表の判断: アンカリングは続け、amoy をやめてメインネットへ。ただし前提が未了**）:
+> 残高監視 cron の件（下記）について代表が **(a) 続ける** を選び、**本番のアンカーを amoy のままにはしない**と決めた。
+> **前提が欠けている: メインネットのコントラクトが未デプロイ。** リポジトリのメインネット向けチェックボックスは
+> すべて未チェック（`docs/polygon-amoy-dry-run.md:178`、`docs/toyota-poc-plan.md:97`・`:641`）で、
+> 事業ログにもアドレスの記録が無い（2026-10-17 に grep で確認）。
+> 必要なのは **`LedraAnchor`（画像単位）と `LedraBatchAnchor`（証明書バッチ）の2本**を Polygon mainnet に
+> デプロイ → Polygonscan で verify → **署名アドレスを `anchorers` に登録**（`setAnchorer`）。
+> 秘密鍵と実費の POL が要るので代表の操作。手順と条件9項目は OPEN_QUESTIONS 2.。
+> **`docs/tech-competitive-roadmap.md:308` は Phase 1 を「✅ 稼働中 | LedraAnchor.sol + Polygon」と
+> 書いているが実態と合わない**（冒頭の「アンカーを『本番稼働中』と表記」と同じ型。対外資料の整理と一緒に直す）。
+> 併せて、本番スキーマ検査（`supabase-advisors.yml`）の失敗を Slack に通知するようにし、**担当は代表**と決まった。
+> シークレット2つの登録は代表の操作で未了。
+
 > 2026-10-17 追記（**残高監視 cron の失敗原因は DNS。続けるか止めるかは代表判断で未決**）:
 > `polygon-signer`（毎時）の `cron_failure_streaks.last_error` に
 > `ENOTFOUND: getaddrinfo ENOTFOUND rpc-amoy.polygon.technology` が入っていた（2026-10-17 05:31 UTC 確認）。

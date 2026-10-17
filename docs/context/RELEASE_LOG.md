@@ -4,6 +4,28 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-17 本番スキーマの検査（advisors / schema-drift）が失敗したら Slack に通知するようにした
+
+- 内容: `.github/workflows/supabase-advisors.yml` に `notify` ジョブを追加。`advisors` /
+  `schema-drift` のどちらかが failure のときだけ Slack に送る（成功時は送らない）。
+  通知先は `db-migrate.yml` / `vercel-deploy-failure-notify.yml` と同じ `SLACK_WEBHOOK_URL` で、
+  **新しいシークレットは増やしていない**。
+- なぜ: この定期実行は 2026-09-21 以降4回連続で failure だったのに、2026-10-17 に人が気づくまで
+  **4週間誰も見ていなかった**（DECISION_LOG 2026-10-17）。シークレットを登録しても、
+  失敗が無音なら同じことが起きる。担当者は代表（2026-10-17 の判断）。
+- 文面に入れたこと: 失敗したジョブ名と両方の結果、起動種別（schedule / workflow_dispatch）、
+  実行ログへのボタン、そして**「該当ステップが数秒で落ちているならシークレット未登録」
+  「再生には 3〜5 分かかるので、それ未満なら本番に到達していない」**。
+  次に赤を見た人が、run の結論ではなく**ステップの所要時間**を見るようにするため
+  （`M-20261017-widened-where-a-check-runs-without-checking-it-ever-passed` の再発防止）。
+- 配信できなかったら赤くする（`set -euo pipefail` + `curl --fail-with-body`）。
+  ただし `SLACK_WEBHOOK_URL` 自体が未設定のときは警告と step summary を出して exit 0
+  （既存の通知ワークフローと同じ作り）。
+- **未検証**: この `notify` ジョブは実行していない。このセッションからは `workflow_dispatch` が
+  403（`Resource not accessible by integration`）で起動できないため、**初回の失敗時に実際に届くかは未確認**。
+  YAML の構文と `needs['schema-drift'].result` の参照（ハイフン入りの job id なのでブラケット記法）は確認済み。
+- 残り: シークレット（`SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID`）の登録は代表の操作。
+
 ## 2026-10-17 証明書 PDF が「刻印あり」と数える集合を1本化した（署名用 PDF への施工担当の追加は取り下げ）
 
 #1370 の `/code-review` で残りとして記録した2件を片付けた（どちらも #1370 の前からある挙動）。

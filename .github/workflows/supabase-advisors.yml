@@ -12,6 +12,12 @@ name: Supabase Advisors
 # When the secrets are absent both jobs FAIL in CI (REQUIRE_* below). They used to
 # skip with exit 0, which meant the steps returned success in 0 seconds without ever
 # looking at production — see DECISION_LOG 2026-09-18.
+#
+# 失敗したら Slack に通知する（notify ジョブ）。2026-09-21 以降この定期実行は4回連続で
+# failure だったのに、2026-10-17 に人が気づくまで4週間誰も見ていなかった
+# （DECISION_LOG 2026-10-17）。シークレットを登録しても、失敗が無音なら同じことが起きる。
+# 担当者は代表（2026-10-17 の判断）。通知先は db-migrate.yml / vercel-deploy.yml と同じ
+# SLACK_WEBHOOK_URL を流用し、新しいシークレットは増やさない。
 
 on:
   schedule:
@@ -59,3 +65,59 @@ jobs:
           # 数分かかるので、走っていれば 0 秒にはならない）＝ 一度も動いていなかった。
           REQUIRE_SCHEMA_DRIFT: "1"
         run: node scripts/check-schema-drift.mjs
+
+  notify:
+    name: 失敗を Slack に通知
+    needs: [advisors, schema-drift]
+    # どちらかが失敗したときだけ。成功時は送らない（定期実行のノイズにしない）。
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      # 配信できなかったら赤くする（vercel-deploy-failure-notify.yml と同じ理由:
+      # 通知の失敗が無音だと、この通知が直そうとしている「誰も気づかない」を再生産する）
+      - name: Slack に通知
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          ADVISORS_RESULT: ${{ needs.advisors.result }}
+          DRIFT_RESULT: ${{ needs['schema-drift'].result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TRIGGER: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+            echo "::warning::SLACK_WEBHOOK_URL が未設定のため、本番スキーマ検査の失敗を通知できませんでした。"
+            {
+              echo "⚠️ SLACK_WEBHOOK_URL 未設定のため通知していません。"
+              echo "advisors=${ADVISORS_RESULT} / schema-drift=${DRIFT_RESULT}"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          failed=""
+          [ "$ADVISORS_RESULT" = "failure" ] && failed="${failed}advisors "
+          [ "$DRIFT_RESULT" = "failure" ] && failed="${failed}schema-drift "
+          payload=$(jq -n \
+            --arg failed "${failed% }" \
+            --arg advisors "$ADVISORS_RESULT" \
+            --arg drift "$DRIFT_RESULT" \
+            --arg url "$RUN_URL" \
+            --arg trigger "$TRIGGER" \
+            '{
+              blocks: [
+                { type: "header",
+                  text: { type: "plain_text", text: "🔴 本番スキーマの検査が失敗しました" } },
+                { type: "section",
+                  text: { type: "mrkdwn",
+                    text: ("失敗: *" + $failed + "*（advisors=" + $advisors + " / schema-drift=" + $drift + " / 起動=" + $trigger + "）\n*本番と比べられていません。* 直すまで、本番だけにあるオブジェクトも、助言レベルの問題も検出されません。") } },
+                { type: "context", elements: [
+                  { type: "mrkdwn",
+                    text: "該当ステップが数秒で落ちているなら SUPABASE_ACCESS_TOKEN / SUPABASE_PROJECT_ID の未登録（OPEN_QUESTIONS「スキーマのドリフト検出が、本番に対して一度も成功していない」）。再生には 3〜5 分かかるので、それ未満で落ちたら本番に到達していない。" }
+                ] },
+                { type: "actions", elements: [
+                  { type: "button", style: "danger",
+                    text: { type: "plain_text", text: "実行ログを開く" }, url: $url }
+                ] }
+              ]
+            }')
+          curl -sS --fail-with-body -X POST -H 'Content-type: application/json' \
+            --data "$payload" "$SLACK_WEBHOOK_URL"
