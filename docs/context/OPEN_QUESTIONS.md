@@ -18,20 +18,32 @@
   09-29 の 280 表照合。LEDRA_CURRENT / RELEASE_LOG）。つまり**見ていないのは「自動で、継続的に」の部分**で、
   「期間中ずっと誰も見ていない」は言い過ぎだった（Codex の指摘で訂正）。
   一方 **2026-10-16 に #1363 で足した `storage_policy` の軸は、本番に対して一度も動いていない** —— これは確定。
-- **ブロッカーは1つだけ**: 代表が GitHub の Settings → Secrets and variables → Actions で
-  `SUPABASE_ACCESS_TOKEN` と `SUPABASE_PROJECT_ID` が**両方**登録されている状態にすること。**これが登録されるまで、走らせる場所を増やしても価値はゼロ**
-  （赤が増えるだけ）。Claude のセッションからは登録も手動起動もできない
+- **最初のブロッカー（代表の操作）**: GitHub の Settings → Secrets and variables → Actions で
+  `SUPABASE_ACCESS_TOKEN` と `SUPABASE_PROJECT_ID` が**両方**登録されている状態にすること。
+  **これが登録されるまで、走らせる場所を増やしても価値はゼロ**（赤が増えるだけ）。
+  Claude のセッションからは登録も手動起動もできない
   （`dispatches` が 403 `Resource not accessible by integration`。`actions/secrets` も proxy が 403）。
+- **ただしシークレットだけでは「見張り」は戻らない**（Codex の指摘。2026-10-17）。登録は**実行**を戻すが、
+  **気づく仕組み**は別に要る。`supabase-advisors.yml` には通知も担当も無く、**赤を4回無視した実績がそれを証明している**
+  （09-21 / 09-28 / 10-05 / 10-12）。シークレットが入った翌週に本物のドリフトが出ても、同じ4回と同じ経路で埋もれる。
+  要るもの: 失敗したら誰かに届く通知（このリポジトリの他のワークフローに `notify` ジョブが在るので、その形を流用できる）と、
+  **赤を見る担当を1人決めること**。これは「登録したら終わり」ではなく、登録と同時に決める話。
 - **登録された日に出す変更（設計は確定、実装は保留）**: 検出器自身のファイルを触る PR で `schema-drift` だけ走らせる
   （`scripts/check-schema-drift.mjs` / `scripts/replay-migrations.mjs` / `scripts/lib/dumpParse.mjs` /
   `scripts/replay/**` / 同ワークフロー自身）。2026-10-17 に実装したが、**シークレットが無いまま入れると
   恒久的に赤いチェックを PR に足すだけ**になるので取り下げた（#1366）。出すときに併せて要るもの:
-  - **`environment: production` ＋必須レビュアーを、PR 専用の別ジョブに付ける。** paths の条件は
-    「検出器のスクリプトを書き換えた PR」だけを選ぶので、ゲート無しだと**本番の PAT を、その PR が
-    書き換えたスクリプトに渡す**形になる。`db-migrate.yml` が同じ対策を既に名指ししている。
-    **ただし既存の `schema-drift` ジョブに付けてはいけない** —— Environment の保護規則はトリガーに関係なく
-    そのジョブ全体に掛かるので、**週次の定期実行まで人の承認待ちになり、無人の見張りが消える**
-    （Codex の指摘。2026-10-17）。PR 用のジョブを分けるか、environment を条件付きで選ぶ。
+  - **本番の資格情報を PR の実行に渡さないこと。これがこの設計の一番難しい点で、`environment` では解けない。**
+    paths の条件は「検出器のスクリプトを書き換えた PR」だけを選ぶので、ゲート無しだと**本番の PAT を、
+    その PR が書き換えたスクリプトに渡す**形になる。`db-migrate.yml` は `environment: production` ＋必須レビュアーを
+    対策として名指ししているが、**`pull_request` ではワークフローの定義も PR 側から来るので、
+    PR が `environment:` の行を消せばレビュアー要求は消え、シークレットは解決される**（Codex の指摘。2026-10-17）。
+    つまり `environment` は PR に対する境界にならない。さらに、既存の共有 `schema-drift` ジョブに付けると
+    Environment の保護規則がトリガーに関係なくジョブ全体に掛かり、**週次の定期実行まで人の承認待ちになる**。
+    解ける形は3つ: (i) **PR では本番と比べない** —— 検出器の変更は、マージ後に main で `workflow_dispatch` を
+    1回回して確かめる（新しいシークレットも新しいゲートも要らない。いまの実装可能性としてはこれが本線）。
+    (ii) ワークフロー定義を既定ブランチに固定して走らせる（`workflow_run` など）。ただし**PR のコードを
+    トークンのある環境で実行しない**形にしないと意味が無い。
+    (iii) PR 用に**権限を絞った別の資格情報**を用意する（読み取り専用のロール等）。(iii) は作る手間が本体より大きい。
   - **Dependabot の除外。** `.github/dependabot.yml` の `github-actions` ecosystem が同ワークフローの
     action 版を上げる PR を出すが、Dependabot の実行は Actions シークレットを読めないので赤になる。
   - **`concurrency`（`cancel-in-progress: true`）と `timeout-minutes`（15〜20）。**

@@ -113,7 +113,11 @@ LEDRA_CURRENT」と定めている。今回それを更新していなかった�
 
 **再発防止**: 仕組み無し（判断に依存）。
 - 習慣: **検査の走らせ方を変える前に、その検査の直近の実行結果を見る。**
-  `gh api "repos/<o>/<r>/actions/workflows/<file>/runs?per_page=5" --jq '.workflow_runs[]|"\(.conclusion) \(.event) \(.created_at)"'` の1行。
+  **ただし run の `conclusion` だけでは足りない**（Codex の指摘。2026-10-17）。このワークフローは `advisors` と
+  `schema-drift` の2ジョブなので、赤でもどちらが落ちたか分からず、**緑でも「0 秒で skip」が混ざりうる**
+  （2026-09-18 まで実際そうだった）。見るのは**ジョブのステップの結果と所要時間**:
+  `gh api "repos/<o>/<r>/actions/runs/<run_id>/jobs" --jq '.jobs[]|select(.name=="Schema drift")|.steps[]|"\(.conclusion) \(.name) \(.started_at)→\(.completed_at)"'`。
+  **本来数分かかる処理が1秒で終わっていないか**を、結論と一緒に見る。今回それで分かった。
   「頻度が足りない」と「そもそも動いていない」は見た目が同じで、直し方が正反対（前者は実装、後者は設定）。
 - 習慣: 事業ログを**書く前に読む**。とくに `LEDRA_CURRENT.md` の該当節。CLAUDE.md が更新を求めている節は、
   同時に**その話題の最新の事実が置いてある節**でもある。更新しないことは、読まないことと同じ。
