@@ -39,6 +39,7 @@
     "check:context-dates": "node scripts/check-context-dates.mjs",
     "check:ledger-ids": "node scripts/check-ledger-ids.mjs",
     "check:db-writes": "node scripts/check-unchecked-db-writes.mjs",
+    "check:lib-cycles": "node scripts/check-lib-cycles.mjs",
     "check:audit-actions": "node scripts/check-audit-action-vocab.mjs",
     "check:ox-override": "node scripts/check-ox-override.mjs",
     "check:resurrected": "bash scripts/check-resurrected-files.sh",

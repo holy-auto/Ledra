@@ -3,6 +3,16 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## src/lib の 19 モジュールの循環をどう解くか（2026-10-17 起票）
+
+- 現状: certificates / parts / anchoring / signature / line / ai / documents / customers / vehicles / passport など 19 モジュールが互いに呼び合っている。
+  増やさない検査は入れた（DECISION_LOG 2026-10-17、`npm run check:lib-cycles`）が、解いてはいない。
+- 主な原因: 下の層が AI 自動化を直接呼んでいる（`src/lib/line/client.ts` → `ai/automation/inboundAuto`、
+  `src/lib/certificateImages/uploadHandler.ts` → `ai/automation/*Auto` 5種、`src/lib/documents/statusEffects.ts` → `ai/automation/documentAuto`）。
+  `ai/automation` を別の箱として数えても循環は残るので、箱の切り方ではなく依存の向きの問題。
+- 決めること: 呼び出しを「起きたことの通知」に変え、AI 自動化側が受け取る形（既存の `src/lib/outbox` に載せる等）にするか。
+  その場合、今は同期で走っている自動化が非同期になり、画面に結果が出るタイミングが変わる。【要確認】どの自動化が同期である必要があるか。
+
 ## 本番では、顧客ポータルの OTP ログインを使える顧客が1人もいない（2026-10-17 起票）
 
 - 事実: 本番の証明書 70 件（無効化済みを含む）すべてで `customer_phone_last4_hash` が空（2026-10-17 に読み取りで集計）。
