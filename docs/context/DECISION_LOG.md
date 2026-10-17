@@ -24,7 +24,8 @@
    ここの名前解決は許可リストで、実在する `docs.github.com` も `polygon-rpc.com` も引けない（実測）。
    つまり「このホストは消えた」も「この RPC なら動く」も、私からは言えない。
 5. 決めたこと: **RPC の URL を当てずに、代表へレバー2つで渡す。**
-   (a) 続けるなら、**まず3つの環境変数の現状を見てから**、Vercel から解決できる RPC を設定し、**再デプロイする**。
+   (a) 続けるなら、**まず4つの環境変数（`POLYGON_RPC_URL` と接尾辞付き2つ、`POLYGON_NETWORK`）の現状を
+   見てから**、Vercel から解決できる RPC を設定し、**再デプロイする**。
    cron の監視は `POLYGON_RPC_URL` だけを読み、アンカー本体は `_AMOY` / `_POLYGON` を先に見る
    （接尾辞付きが設定済みなら `POLYGON_RPC_URL` を変えてもアンカー側は変わらない）。
    環境変数の差し替えだけでは既存のデプロイに効かない（`docs/polygon-anchoring-deployment.md:100`）。
@@ -39,12 +40,21 @@
    `api/cert-verify/[public_id]/route.ts:105` が `verifyBatchAnchor()` をこのフラグで囲っているので、
    **既存の証明書の `on_chain_verified` も `null` になる**。`polygon-signer` のアラート文
    （`route.ts:116`）が「既存のアンカーは引き続き検証可能」と書いている約束と衝突する。
-   (b) は「検証も止まることを承知で止める」か「書き込みと読み取りをフラグで分けるコード変更を先に入れる」
-   の2択になる（OPEN_QUESTIONS の b-1 / b-2）。
+   **止まるのはこの1経路だけ**（Codex の指摘で範囲を訂正。2026-10-17。当初「オンチェーンの裏取りが
+   消える」と書いたのは広すぎた）—— `verifyAnchor()` を呼ぶ `api/public/verify:114`・
+   `api/insurer/anchor-verify/[sha256]:91`・`lib/zkp/verifier.ts:85` はフラグを見ないので動き続ける。
+   (b) は「証明書ページのオンチェーン表示が止まることを承知で止める」か
+   「`cert-verify` の1行を書き込みフラグから切り離すコード変更を先に入れる」の2択
+   （OPEN_QUESTIONS の b-1 / b-2）。影響が1か所なので後者は1行の変更で足りる。
    (a) 側も2点訂正: **接尾辞付きは「消す」ではなく「そのネットワーク向けに直す」**
    （両プロバイダの `getReadConfig(networkOverride)` も `perNetworkEnv` を通るので、消すと過去のアンカーの
    読み取りが接尾辞無しに落ち、別ネットワークの RPC で照会して未検証に見える）。
    **cron の監視が緑でもアンカー本体が直った証拠にならない**（監視は接尾辞無しだけを読む）。
+   確認は**ガス代のかからない読み取り**（`cert-verify` / `public/verify` の `on_chain_verified`）で行う。
+   `POST /api/admin/polygon/backfill` は1件の試し打ちではない（テナントの未アンカー全件をキューし、
+   worker が 50件ずつ本物の tx を出す）ので、確認手段に使わない（Codex の P1 指摘。2026-10-17）。
+   `POLYGON_NETWORK` と URL のチェーンが食い違っても `eth_getBalance` は照合しないので、
+   「healthy」が別チェーンの残高である可能性も残る。
    **候補の RPC をログに書かない**。確認せずに書けば、検証していない断定を1つ増やすだけになる
    （`M-20261017-wrote-absolutes-about-mechanisms-i-had-not-traced` の直後に同じことをしない）。
 6. 捨てた選択肢: (1) 既定値 `DEFAULT_RPC.amoy` を別の URL に変える —— どれが生きているか確認できないので当て推量になる。
