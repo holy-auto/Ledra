@@ -21,6 +21,42 @@ describe("MARKET_LISTING_COLUMNS", () => {
     expect(cols).not.toContain("*");
   });
 
+  it("列の一覧そのものを固定する（足すときは、他テナントに見せてよい列かを確かめてからここも直す）", () => {
+    expect([...cols].sort()).toEqual(
+      [
+        "id",
+        "tenant_id",
+        "maker",
+        "model",
+        "grade",
+        "year",
+        "mileage",
+        "color",
+        "color_code",
+        "engine_type",
+        "displacement",
+        "transmission",
+        "drive_type",
+        "fuel_type",
+        "door_count",
+        "seating_capacity",
+        "body_type",
+        "inspection_date",
+        "repair_history",
+        "condition_grade",
+        "condition_note",
+        "asking_price",
+        "wholesale_price",
+        "status",
+        "listed_at",
+        "description",
+        "features",
+        "created_at",
+        "updated_at",
+      ].sort(),
+    );
+  });
+
   it("/market の画面が出す列は含む", () => {
     for (const shown of ["id", "maker", "model", "asking_price", "wholesale_price", "status", "listed_at"]) {
       expect(cols).toContain(shown);

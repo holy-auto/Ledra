@@ -26,8 +26,7 @@
   （1回で PostgREST の上限まで返る。本番の上限値【要確認】）。監査ログもレート制限も無い。自テナント内の閲覧権限者向けの話。
 - Low: `agent/apply` が、既存アカウントの有無を応答で返す（signup/join で直した列挙と同じ型）。
 - Low: 一般のレート制限は、`RATE_LIMIT_FAIL_CLOSED` が未設定なら Redis 障害時に fail-open になる。本番の値は【要確認】。
-- Low（2026-10-17 の RLS 修正の作業中に見つかった。未検証）: 施工店は応募の INSERT で、募集と食い違う `project_id` / `manufacturer_id` を入れられる（メーカーの承認は要るので、承認は飛ばせない）。
-  `customer_inquiries_tenant_members_update` はロールを見ていない。`GET /api/admin/market-vehicles?public=true` は呼び出し元が無いまま残っている。
+- Low（2026-10-17 の RLS 修正の作業中に見つかった。未検証）: `customer_inquiries` の UPDATE ポリシー `tenant_members_update`（20260409000000）はロールを見ていない。
 - Low: `/api/admin/integrations/api-keys` の発行に AAL2 が要らない。`*` キーは、将来 read 系のエンドポイントを足すと自動でその権限を持つ。
 - 問題なしと確認できたもの: Metabase など分析ツールの稼働痕跡は無い。本番の public 280 表はすべて RLS 有効、Storage 11 バケットはすべて非公開。
   サーバ側の依存に high/critical の脆弱性は無い（`npm audit --omit=dev`）。外部 API キーでは顧客・車両の個人情報を読めない。

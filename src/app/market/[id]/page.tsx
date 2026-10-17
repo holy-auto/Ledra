@@ -54,11 +54,13 @@ export default async function MarketVehicleDetailPage({ params }: { params: Prom
   // 他テナントの出品中の車両は RLS では読めない（自テナントの行だけ。20261017103611）。
   // service role で、出品中の行と他テナントに見せてよい列だけを読む。
   const admin = createServiceRoleAdmin("market detail — a listed vehicle of any tenant, public columns only");
-  const { data: vehicles } = await admin
+  const { data: vehicles, error } = await admin
     .from("market_vehicles")
     .select(MARKET_LISTING_COLUMNS)
     .eq("id", id)
     .eq("status", "listed");
+  // 列を指定して読むので、列の改名・削除は照会エラーになる。404 に見せずエラーにする
+  if (error) throw new Error(`market detail query failed: ${error.message}`);
 
   if (!vehicles || vehicles.length === 0) notFound();
   const vehicle = vehicles[0];

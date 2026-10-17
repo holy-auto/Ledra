@@ -34,7 +34,9 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
     query = query.or(`maker.ilike.%${sq}%,model.ilike.%${sq}%`);
   }
 
-  const { data: vehicles } = await query;
+  const { data: vehicles, error } = await query;
+  // 列を指定して読むので、列の改名・削除は照会エラーになる。空の一覧に見せずエラーにする
+  if (error) throw new Error(`market list query failed: ${error.message}`);
 
   // Fetch images for all vehicles
   const vehicleIds = (vehicles ?? []).map((v: any) => v.id);

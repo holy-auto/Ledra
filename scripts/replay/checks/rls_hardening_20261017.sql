@@ -3,6 +3,7 @@
 --   2. customer_inquiries: 利用者のクライアントから直接は挿入できない（20261017103612）
 --   3. ft_applications / ft_agreements / ft_jobs: 施工店はアプリの正規操作の範囲しか書けない（20261017103613）
 --   4. staff_members.linked_tenant_id: 利用者のクライアントからは連携先を設定・変更できない（20261017103614）
+--   5. ft_applications: 作成・再応募は受付中の募集にだけ、募集どおりの内容で、本人名義で（20261017103615）
 -- [攻撃] は拒否（または0行）、[正規] はアプリの正規の画面操作と同じ SQL で、通ること（陽性対照）を見る。
 --
 -- なぜ要るか: どれもポリシーやトリガーの1行で止めていて、消えても構文も型も通る。壊れたことが分かるのは
@@ -60,11 +61,13 @@ INSERT INTO auth.users (id) VALUES
 INSERT INTO public.tenants (id, name, slug) VALUES
   ('00000000-0000-4000-8000-0000000000aa', 'A', 'rls-hardening-a'),
   ('00000000-0000-4000-8000-0000000000bb', 'B', 'rls-hardening-b'),
-  ('00000000-0000-4000-8000-0000000000cc', 'S', 'rls-hardening-s');
+  ('00000000-0000-4000-8000-0000000000cc', 'S', 'rls-hardening-s'),
+  ('00000000-0000-4000-8000-0000000000dd', 'A2', 'rls-hardening-a2');  -- A の owner がもう1つ持つ店
 INSERT INTO public.tenant_memberships (tenant_id, user_id, role) VALUES
   ('00000000-0000-4000-8000-0000000000aa', '00000000-0000-4000-8000-00000000a001', 'owner'),
   ('00000000-0000-4000-8000-0000000000bb', '00000000-0000-4000-8000-00000000b001', 'owner'),
-  ('00000000-0000-4000-8000-0000000000cc', '00000000-0000-4000-8000-00000000c001', 'owner');
+  ('00000000-0000-4000-8000-0000000000cc', '00000000-0000-4000-8000-00000000c001', 'owner'),
+  ('00000000-0000-4000-8000-0000000000dd', '00000000-0000-4000-8000-00000000a001', 'owner');
 
 INSERT INTO public.market_vehicles (id, tenant_id, maker, model, status, cost_price, supplier_name, buyer_info, chassis_number) VALUES
   ('00000000-0000-4000-8000-0000000a0001', '00000000-0000-4000-8000-0000000000aa', 'トヨタ', 'プリウス', 'listed', 1000000, '仕入先X', '{"name":"買主"}', 'ZVW30-0000001'),
@@ -80,13 +83,17 @@ INSERT INTO public.ft_recruitments (id, project_id, manufacturer_id, title, is_o
   ('00000000-0000-4000-8000-0000000d0001', '00000000-0000-4000-8000-0000000e0001', '00000000-0000-4000-8000-00000000f001', 'R1', true),
   ('00000000-0000-4000-8000-0000000d0002', '00000000-0000-4000-8000-0000000e0001', '00000000-0000-4000-8000-00000000f001', 'R2', true),
   ('00000000-0000-4000-8000-0000000d0003', '00000000-0000-4000-8000-0000000e0001', '00000000-0000-4000-8000-00000000f001', 'R3', true);
+INSERT INTO public.ft_recruitments (id, project_id, manufacturer_id, title, is_open, deadline) VALUES
+  ('00000000-0000-4000-8000-0000000d0004', '00000000-0000-4000-8000-0000000e0001', '00000000-0000-4000-8000-00000000f001', 'R4 締切済み', false, NULL),
+  ('00000000-0000-4000-8000-0000000d0005', '00000000-0000-4000-8000-0000000e0001', '00000000-0000-4000-8000-00000000f001', 'R5 期限切れ', true, now() - interval '1 day');
 INSERT INTO public.ft_applications (id, recruitment_id, project_id, manufacturer_id, tenant_id, status, review_notes) VALUES
   ('00000000-0000-4000-8000-0000000c0001', '00000000-0000-4000-8000-0000000d0001', '00000000-0000-4000-8000-0000000e0001', '00000000-0000-4000-8000-00000000f001', '00000000-0000-4000-8000-0000000000bb', 'pending', NULL),
   ('00000000-0000-4000-8000-0000000c0002', '00000000-0000-4000-8000-0000000d0002', '00000000-0000-4000-8000-0000000e0001', '00000000-0000-4000-8000-00000000f001', '00000000-0000-4000-8000-0000000000bb', 'rejected', '書類不足');
 INSERT INTO public.ft_agreements (id, project_id, manufacturer_id, tenant_id, agreement_type, document_text) VALUES
   ('00000000-0000-4000-8000-0000000b0001', '00000000-0000-4000-8000-0000000e0001', '00000000-0000-4000-8000-00000000f001', '00000000-0000-4000-8000-0000000000bb', 'nda', 'メーカーの契約本文');
 INSERT INTO public.ft_jobs (id, project_id, manufacturer_id, tenant_id, title, status) VALUES
-  ('00000000-0000-4000-8000-0000000a1001', '00000000-0000-4000-8000-0000000e0001', '00000000-0000-4000-8000-00000000f001', '00000000-0000-4000-8000-0000000000bb', 'J', 'assigned');
+  ('00000000-0000-4000-8000-0000000a1001', '00000000-0000-4000-8000-0000000e0001', '00000000-0000-4000-8000-00000000f001', '00000000-0000-4000-8000-0000000000bb', 'J', 'assigned'),
+  ('00000000-0000-4000-8000-0000000a1002', '00000000-0000-4000-8000-0000000e0001', '00000000-0000-4000-8000-00000000f001', '00000000-0000-4000-8000-0000000000bb', 'J2', 'in_progress');
 
 INSERT INTO public.staff_members (id, tenant_id, name, kind, linked_tenant_id) VALUES
   ('00000000-0000-4000-8000-000000051001', '00000000-0000-4000-8000-0000000000aa', '外注（未連携）', 'external', NULL),
@@ -128,7 +135,14 @@ SELECT label, result, expected FROM (VALUES
  ('29 [正規] A owner: 職人の名前・メモを更新（/api/admin/staff PATCH）', public.__try('authenticated', :A, $q$UPDATE public.staff_members SET name = '改名', note = 'メモ', updated_at = now() WHERE id = '00000000-0000-4000-8000-000000051002'$q$), 'OK rows=1'),
  ('30 [正規] A owner: 職人の新規作成（/api/admin/staff POST）', public.__try('authenticated', :A, $q$INSERT INTO public.staff_members (tenant_id, name, kind) VALUES ('00000000-0000-4000-8000-0000000000aa', '新しい外注', 'external')$q$), 'OK rows=1'),
  ('31 [正規] service role: 連携コードの引き換え（redeemStaffLinkInvite）', public.__try('service_role', NULL, $q$UPDATE public.staff_members SET linked_tenant_id = '00000000-0000-4000-8000-0000000000cc' WHERE id = '00000000-0000-4000-8000-000000051001' AND tenant_id = '00000000-0000-4000-8000-0000000000aa'$q$), 'OK rows=1'),
- ('32 [正規] service role: 連携の解除（unlinkStaffTenant）', public.__try('service_role', NULL, $q$UPDATE public.staff_members SET linked_tenant_id = NULL WHERE id = '00000000-0000-4000-8000-000000051002' AND tenant_id = '00000000-0000-4000-8000-0000000000aa'$q$), 'OK rows=1')
+ ('32 [正規] service role: 連携の解除（unlinkStaffTenant）', public.__try('service_role', NULL, $q$UPDATE public.staff_members SET linked_tenant_id = NULL WHERE id = '00000000-0000-4000-8000-000000051002' AND tenant_id = '00000000-0000-4000-8000-0000000000aa'$q$), 'OK rows=1'),
+ ('33 [攻撃] B: 締め切った募集に応募する', public.__try('authenticated', :B, $q$INSERT INTO public.ft_applications (recruitment_id, project_id, manufacturer_id, tenant_id, applied_by) VALUES ('00000000-0000-4000-8000-0000000d0004', '00000000-0000-4000-8000-0000000e0001', '00000000-0000-4000-8000-00000000f001', '00000000-0000-4000-8000-0000000000bb', '00000000-0000-4000-8000-00000000b001')$q$), 'ERR 42501'),
+ ('34 [攻撃] B: 締切を過ぎた募集に応募する', public.__try('authenticated', :B, $q$INSERT INTO public.ft_applications (recruitment_id, project_id, manufacturer_id, tenant_id, applied_by) VALUES ('00000000-0000-4000-8000-0000000d0005', '00000000-0000-4000-8000-0000000e0001', '00000000-0000-4000-8000-00000000f001', '00000000-0000-4000-8000-0000000000bb', '00000000-0000-4000-8000-00000000b001')$q$), 'ERR 42501'),
+ ('35 [攻撃] B: 募集と食い違うメーカーで応募する', public.__try('authenticated', :B, $q$INSERT INTO public.ft_applications (recruitment_id, project_id, manufacturer_id, tenant_id, applied_by) VALUES ('00000000-0000-4000-8000-0000000d0003', '00000000-0000-4000-8000-0000000e0001', '00000000-0000-4000-8000-00000000f002', '00000000-0000-4000-8000-0000000000bb', '00000000-0000-4000-8000-00000000b001')$q$), 'ERR 42501'),
+ ('36 [攻撃] B: 応募者を A の利用者に偽って応募 → 本人で残る', public.__try_keep('authenticated', :B, $q$INSERT INTO public.ft_applications (recruitment_id, project_id, manufacturer_id, tenant_id, applied_by) VALUES ('00000000-0000-4000-8000-0000000d0003', '00000000-0000-4000-8000-0000000e0001', '00000000-0000-4000-8000-00000000f001', '00000000-0000-4000-8000-0000000000bb', '00000000-0000-4000-8000-00000000a001')$q$, $q$SELECT applied_by::text FROM public.ft_applications WHERE recruitment_id = '00000000-0000-4000-8000-0000000d0003'$q$), 'OK stored=00000000-0000-4000-8000-00000000b001'),
+ ('37 [攻撃] B: 取り下げと一緒に応募メモも書き換える', public.__try('authenticated', :B, $q$UPDATE public.ft_applications SET status = 'withdrawn', notes = '書き換え' WHERE id = '00000000-0000-4000-8000-0000000c0001'$q$), 'ERR 42501'),
+ ('38 [正規] B: 案件を in_progress → evidence_submitted（updateTenantFtJobStatus）', public.__try('authenticated', :B, $q$UPDATE public.ft_jobs SET status = 'evidence_submitted' WHERE id = '00000000-0000-4000-8000-0000000a1002' AND tenant_id = '00000000-0000-4000-8000-0000000000bb' AND status = 'in_progress'$q$), 'OK rows=1'),
+ ('39 [攻撃] A owner: S と連携済みの職人を、自分のもう1つの店へ移す', public.__try('authenticated', :A, $q$UPDATE public.staff_members SET tenant_id = '00000000-0000-4000-8000-0000000000dd' WHERE id = '00000000-0000-4000-8000-000000051002'$q$), 'ERR 42501')
 ) t(label, result, expected);
 
 DO $$
@@ -141,8 +155,8 @@ BEGIN
   IF bad IS NOT NULL THEN
     RAISE EXCEPTION E'RLS の境界が期待と違う:\n  %', bad;
   END IF;
-  IF (SELECT count(*) FROM __rls_results) <> 32 THEN
-    RAISE EXCEPTION '検査の件数が 32 ではない（%）', (SELECT count(*) FROM __rls_results);
+  IF (SELECT count(*) FROM __rls_results) <> 39 THEN
+    RAISE EXCEPTION '検査の件数が 39 ではない（%）', (SELECT count(*) FROM __rls_results);
   END IF;
 END $$;
 
