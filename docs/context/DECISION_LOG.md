@@ -18,9 +18,12 @@
    ここの名前解決は許可リストで、実在する `docs.github.com` も `polygon-rpc.com` も引けない（実測）。
    つまり「このホストは消えた」も「この RPC なら動く」も、私からは言えない。
 5. 決めたこと: **RPC の URL を当てずに、代表へレバー2つで渡す。**
-   (a) 続けるなら **`POLYGON_RPC_URL`** に、Vercel から解決できる RPC を設定
-   （**`_AMOY` では直らない**。この cron の `getConfig()` は `POLYGON_RPC_URL` だけを読む。
-   ネットワーク別に対応しているのはアンカー側の `polygonBatch.ts` の方で、別の関数。Codex の P1 指摘で訂正）。
+   (a) 続けるなら、**まず3つの環境変数の現状を見てから**、Vercel から解決できる RPC を設定し、**再デプロイする**。
+   cron の監視は `POLYGON_RPC_URL` だけを読み、アンカー本体は `_AMOY` / `_POLYGON` を先に見る
+   （接尾辞付きが設定済みなら `POLYGON_RPC_URL` を変えてもアンカー側は変わらない）。
+   環境変数の差し替えだけでは既存のデプロイに効かない（`docs/polygon-anchoring-deployment.md:100`）。
+   いずれも Codex の P1 指摘で訂正 —— 当初「`_AMOY` では直らない」「`POLYGON_RPC_URL` なら両方に効く」と
+   2段階で間違えた。
    (b) 止めるなら `POLYGON_ANCHOR_ENABLED` を `"true"` 以外にする —— route はその判定で `skipped` を返し、
    RPC に触らず失敗の連鎖も止まる（`route.ts` の判定順を読んで確認）。
    **候補の RPC をログに書かない**。確認せずに書けば、検証していない断定を1つ増やすだけになる

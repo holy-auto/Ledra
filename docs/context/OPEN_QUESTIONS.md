@@ -152,9 +152,11 @@ JMS Bizweek 2026 で OEM が「バリューチェーン・入力の簡略化・�
 `UPDATE stripe_processed_events SET processed_at = now() WHERE event_id IN (...3件)` で閉じる、(b) 追いついていなければ Stripe から Resend する。
 本番データの書き換えなので、このセッションでは実行していない。閉じない限り 288 回/日 Sentry とログに出続け、本物の詰まりが埋もれる。
 
-**2. `polygon-signer` は一度も成功していない。** → **2026-10-17 に原因を特定（DNS）。残りは代表判断。**
+**2. `polygon-signer` は一度も成功していない。** → **2026-10-17、最新の失敗の原因は DNS と判明。残りは代表判断。**
 
-**原因は DNS。** 本番の `cron_failure_streaks.last_error` に cause 連鎖が入っていた（2026-10-17 05:31 UTC に Supabase MCP で確認）:
+**最新の失敗の原因は DNS。**（**3か月半の失敗すべてが同じ原因とは言えない** —— `recordCronFailure()` は
+`last_error` を毎回上書きし、履歴を残さない。読めるのは最後の1件だけ。Codex の指摘で限定。2026-10-17）
+本番の `cron_failure_streaks.last_error`（2026-10-17 05:31 UTC に Supabase MCP で確認）:
 
 ```
 [cause: fetch failed <- ENOTFOUND: getaddrinfo ENOTFOUND rpc-amoy.polygon.technology] HTTP request failed.
@@ -195,18 +197,30 @@ RPC エラーが記録されている以上:
   書いてある。**POST でもこの経路は動く**（当初「GET しか export していないので 405」と書いたのは誤り。
   `M-20261017-grepped-one-export-form-and-read-a-same-named-function-from-another-module`）。
 - 残っている疑問は「その POST を出しているのは何か」。**出所は未確認。**
-- 探し方: Vercel のランタイムログで `/api/cron/polygon-signer` を1時間分見て、2件のメソッド・user-agent・送信元 IP を比べる。
+- **「毎時ちょうど2回」とは言えない**（Codex の指摘で限定。2026-10-17）。`recordCronFailure()` は
+  読み取り→upsert が非原子的で、同時に走った呼び出しが同じ `prevCount + 1` を書きうるし、
+  書き込みの結果は best-effort で捨てている。**カウンタは下限**。
+  実測の 1.804 件/時 から言えるのは「**毎時1回より多い**」まで。
+- 探し方: Vercel のランタイムログで `/api/cron/polygon-signer` を1時間分見て、**その区間のリクエストを全部数える**
+  （2件だけ比べて終わりにしない）。メソッド・user-agent・送信元 IP を並べる。
 
 **代表に決めてもらうこと（どちらもレバーはコードで確認済み）**:
-- (a) **アンカリングを続けるなら**: Vercel の環境変数 **`POLYGON_RPC_URL`** に、Vercel から名前解決できる RPC を設定する。
-  **`POLYGON_RPC_URL_AMOY` では直らない** —— この cron の `getConfig()`（route.ts:62-68）は `POLYGON_RPC_URL` だけを読み、
-  ネットワーク別の `_AMOY` / `_POLYGON` に対応しているのはアンカー側の `providers/polygonBatch.ts` の方
-  （`perNetworkEnv`）。2つは別の関数で、名前が似ている（Codex の P1 指摘で訂正。2026-10-17）。
-  `POLYGON_RPC_URL` を設定すれば両方に効く。
+- (a) **アンカリングを続けるなら**: Vercel から名前解決できる RPC を設定する。**手順の順番が大事**:
+  1. **まず既存の値を見る。** `POLYGON_RPC_URL` / `POLYGON_RPC_URL_AMOY` / `POLYGON_RPC_URL_POLYGON` の
+     3つが今どうなっているか（この環境からは読めない）。
+  2. cron の監視（`route.ts:62-68` の `getConfig()`）は **`POLYGON_RPC_URL` だけ**を読む。`_AMOY` は見ない。
+  3. アンカー本体（`providers/polygonBatch.ts` の `perNetworkEnv`、74-80行）は **`_AMOY` / `_POLYGON` を先に見て、
+     無ければ `POLYGON_RPC_URL` に落ちる**。したがって**接尾辞付きが既に設定されていると、
+     `POLYGON_RPC_URL` を変えてもアンカー側は古い値を使い続ける**（Codex の P1 指摘で訂正。2026-10-17。
+     当初「`POLYGON_RPC_URL` を設定すれば両方に効く」と書いたのは、接尾辞付きが無い場合だけの話だった）。
+     → 接尾辞付きがあるなら、そちらを直すか消す。
+  4. **変更後に再デプロイする。** 環境変数を替えただけでは、既にデプロイ済みの関数は古い環境のまま動く。
+     `docs/polygon-anchoring-deployment.md:100` も「環境変数を差し替え、再デプロイ」と書いている。
   **どのエンドポイントが生きているかはこの環境から確認できないので、候補をここに書かない**
   （確認せずに書けば、同じ形の失敗を1つ増やすだけになる）。
 - (b) **アンカリングを止めるなら**: `POLYGON_ANCHOR_ENABLED` を `"true"` 以外にする（削除でもよい）。
   route はその判定で `skipped` を返すので、**RPC に触らず、失敗の連鎖も止まる**。
+  **こちらも再デプロイが要る**（同上）。
 - 併せて: 本番のアンカーを **amoy（テストネット）** に打つ運用のままで良いのかは、2026-10-09 から未決のまま。
 
 **コードは変えていない。** DNS の失敗を `skip` に変える案は採らない —— 既存の skip は
