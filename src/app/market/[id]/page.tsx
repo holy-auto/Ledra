@@ -8,6 +8,7 @@ import ImageGallery from "./ImageGallery";
 import InquiryForm from "./InquiryForm";
 import { signAssetPaths } from "@/lib/signedUrl";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { MARKET_LISTING_COLUMNS } from "@/lib/market/listingColumns";
 
 export const dynamic = "force-dynamic";
 
@@ -50,22 +51,29 @@ export default async function MarketVehicleDetailPage({ params }: { params: Prom
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) redirect(`/login?next=/market/${id}`);
 
-  const { data: vehicles } = await supabase.from("market_vehicles").select("*").eq("id", id).eq("status", "listed");
+  // 他テナントの出品中の車両は RLS では読めない（自テナントの行だけ。20261017103611）。
+  // service role で、出品中の行と他テナントに見せてよい列だけを読む。
+  const admin = createServiceRoleAdmin("market detail — a listed vehicle of any tenant, public columns only");
+  const { data: vehicles } = await admin
+    .from("market_vehicles")
+    .select(MARKET_LISTING_COLUMNS)
+    .eq("id", id)
+    .eq("status", "listed");
 
   if (!vehicles || vehicles.length === 0) notFound();
   const vehicle = vehicles[0];
 
-  // Fetch images
-  const { data: images } = await supabase
+  // 画像は上で出品中と確かめた車両の分だけ読む
+  const { data: images } = await admin
     .from("market_vehicle_images")
     .select("*")
     .eq("vehicle_id", id)
     .order("sort_order", { ascending: true });
 
   // 保存パスはそのままでは画像として開けないので、署名 URL にして渡す。
-  // market の objects には読み取りポリシーが無いので service-role で署名する（RLS 越しに読めた出品中の車両の画像だけ）
+  // market の objects には読み取りポリシーが無いので service-role で署名する（出品中の車両の画像だけ）
   const urls = await signAssetPaths(
-    createServiceRoleAdmin("market detail — sign images of a listed vehicle"),
+    admin,
     (images ?? []).map((img) => img.storage_path),
     "market",
   );
@@ -109,7 +117,6 @@ export default async function MarketVehicleDetailPage({ params }: { params: Prom
           <div>
             <div className="flex items-center gap-2 mb-1">
               <Badge variant={statusVariant(vehicle.status)}>{statusLabel(vehicle.status)}</Badge>
-              {vehicle.tenant_name && <span className="text-xs text-muted">{vehicle.tenant_name}</span>}
             </div>
             <div className="text-xs text-muted">{vehicle.maker}</div>
             <h1 className="text-2xl font-bold text-primary">
