@@ -84,9 +84,21 @@ export async function getLatestGlobalCodeRow(email: string, last4: string) {
   return data ?? null;
 }
 
-export async function markGlobalCodeAttempt(id: string, attempts: number) {
-  const { error } = await admin().from("customer_global_login_codes").update({ attempts }).eq("id", id);
+/**
+ * 試行を1回分予約する（照合の前に呼ぶ）。読んだ回数 `prevAttempts` のままで未使用の行だけを +1 する。
+ * 同時に来たリクエストは同じ回数を読むが、更新できるのは1つだけなので、上限を超えて照合されない。
+ * false なら予約できなかった（別の試行に負けた・使用済み）。照合せずに失敗として返す。
+ */
+export async function markGlobalCodeAttempt(id: string, prevAttempts: number): Promise<boolean> {
+  const { data, error } = await admin()
+    .from("customer_global_login_codes")
+    .update({ attempts: prevAttempts + 1 })
+    .eq("id", id)
+    .eq("attempts", prevAttempts)
+    .is("used_at", null)
+    .select("id");
   if (error) throw new Error(`markGlobalCodeAttempt failed: ${error.message}`);
+  return (data ?? []).length === 1;
 }
 
 export async function markGlobalCodeUsed(id: string) {

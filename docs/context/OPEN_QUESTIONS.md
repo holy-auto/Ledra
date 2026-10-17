@@ -15,15 +15,21 @@
 - Medium: 実証テスト（`ft_applications` / `ft_agreements` / `ft_jobs`）の RLS の UPDATE は tenant_id しか見ていない。
   PostgREST を直接叩けば、メーカーの承認・契約本文・検査を飛ばせる。推定（本番の grant は未確認）。
 - Medium: 外注依頼の相手テナントを、`staff_members.linked_tenant_id` を直接更新することで、相手の同意なく指定できる。推定。
-- Medium〜Low: メーカーの研修・施工条件を作成する API が、プロジェクトの所有者を確かめていない。他社のプロジェクトに偽のリンクを入れられる。
-- Medium: 横断マイページの `request-code` が、該当なしなら 404・ありなら 200 を返す。応答の違いで、メールが Ledra の顧客かどうかが分かる。
-  `verify-code` には試行回数の上限が無い。
 - Low: `/api/admin/customers`・`/api/admin/vehicles` は `page` を付けないと件数を絞らない
   （1回で PostgREST の上限まで返る。本番の上限値【要確認】）。監査ログもレート制限も無い。自テナント内の閲覧権限者向けの話。
+  **単純に上限を掛けると壊れる**: `DocumentForm`・`WalkinJobClient`・`ReservationsClient` などが page 無しで全件を取り、ドロップダウンに出している。先に検索型の選択へ変える必要がある（#1374 で確認）。
 - Low: `agent/apply` が、既存アカウントの有無を応答で返す（signup/join で直した列挙と同じ型）。
+  **応答を揃えるだけでは直らない**: 未ログインで既存代理店のメールを入れた申請を承認すると、`approve_agent_application` が同じユーザーに2つ目の代理店を作る。
+  #1374 で一度直したが、この回帰が /code-review で分かって取り下げた。先に**承認時に「すでに代理店か」を確かめる**（RPC 側）を入れる。
+  あわせて、申請時の既存ユーザー検索（`auth.admin.listUsers()`）が最初の1ページしか見ていない。
+- Low: 横断マイページの request-code / verify-code には、1アカウントあたりの回数制限が無い（IP ごとだけ。店ごとの版にはある）。
+  request-code は、顧客のときだけメール送信を待つので、応答時間で顧客かどうかが分かりうる（店ごとの版も同じ）。
+- Low: 外部 API の月間クォータ（`checkPassportMonthlyQuota`。verify・marketplace-info・accident-match が共用）は、ログの件数を数えてから通す。
+  上限の直前に同時に来たリクエストは全部通るので、上限を少し超えうる（分あたりの制限の範囲まで）。直すには原子的に数える関数（マイグレーション）が要る。
+  課金の上限として厳密にしたくなった時点で直す（#1374 の Codex の指摘。2026-10-17）。
 - Low: 一般のレート制限は、`RATE_LIMIT_FAIL_CLOSED` が未設定なら Redis 障害時に fail-open になる。本番の値は【要確認】。
 - Low: `customer_inquiries` の `public_insert WITH CHECK (true)` がマイグレーションに残っている（本番には無い）。新しい環境では穴が復活する。
-- Low: `/api/admin/integrations/api-keys` の発行に AAL2 が要らない。`*` キーは、将来 read 系のエンドポイントを足すと自動でその権限を持つ。
+- Low: `*` の API キーは、将来 read 系のエンドポイントを足すと自動でその権限を持つ。（発行時の AAL2 は proxy で必須になっていた。指摘は誤り。#1374 でテストに固定）
 - 問題なしと確認できたもの: Metabase など分析ツールの稼働痕跡は無い。本番の public 280 表はすべて RLS 有効、Storage 11 バケットはすべて非公開。
   サーバ側の依存に high/critical の脆弱性は無い（`npm audit --omit=dev`）。外部 API キーでは顧客・車両の個人情報を読めない。
 

@@ -18,7 +18,12 @@ export const dynamic = "force-dynamic";
 const patchSchema = z.object({
   title: z.string().trim().min(1).max(500).optional(),
   description: z.string().max(5000).nullable().optional(),
-  content_url: z.string().url().max(2048).nullable().optional(),
+  content_url: z
+    .string()
+    .url({ protocol: /^https?$/ })
+    .max(2048)
+    .nullable()
+    .optional(),
   sort_order: z.number().int().min(0).optional(),
   is_required: z.boolean().optional(),
 });

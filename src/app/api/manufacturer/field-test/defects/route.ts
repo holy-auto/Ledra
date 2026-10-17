@@ -3,7 +3,14 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+} from "@/lib/api/response";
 import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { APPLICATION_REQUIRED_MESSAGE, hasApprovedApplication } from "@/lib/fieldTest/applicationGate";
 
@@ -79,6 +86,26 @@ export async function POST(req: NextRequest) {
   try {
     const admin = createServiceRoleAdmin("ft defects create — admin caller");
     const manufacturerId = caller.manufacturerId;
+
+    // 自社のプロジェクトか確かめる（training / conditions / jobs と同じ）。確かめないと他社のプロジェクトに書ける。
+    const { data: project, error: projErr } = await admin
+      .from("ft_projects")
+      .select("id")
+      .eq("id", parsed.data.project_id)
+      .eq("manufacturer_id", manufacturerId)
+      .maybeSingle();
+    if (projErr) return apiInternalError(projErr, "ft defects POST project lookup");
+    if (!project) return apiNotFound("指定されたプロジェクトが見つかりません。");
+    if (parsed.data.job_id) {
+      const { data: job, error: jobErr } = await admin
+        .from("ft_jobs")
+        .select("id")
+        .eq("id", parsed.data.job_id)
+        .eq("project_id", parsed.data.project_id)
+        .maybeSingle();
+      if (jobErr) return apiInternalError(jobErr, "ft defects POST job lookup");
+      if (!job) return apiNotFound("指定された案件が見つかりません。");
+    }
 
     // 施工店を指定する報告は、その施工店の応募が承認済みのときだけ受け付ける（管理者へメールが出る）。
     if (parsed.data.tenant_id) {

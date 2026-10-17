@@ -105,7 +105,8 @@ export default function TrainingScreen() {
               </View>
             </View>
 
-            {item.content_url && (
+            {/* http(s) 以外（javascript: やアプリのスキーム）は開かない。Web の施工店画面と同じ */}
+            {item.content_url && /^https?:\/\//i.test(item.content_url) && (
               <Pressable
                 style={styles.materialLink}
                 onPress={() => Linking.openURL(item.content_url!)}
