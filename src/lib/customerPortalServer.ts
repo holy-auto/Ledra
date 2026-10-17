@@ -130,9 +130,10 @@ export async function markCodeUsed(id: string) {
  * 氏名・メール・電話 (全桁)・問い合わせが読めた (監査 2026-10-17 Critical)。
  *
  * 下4桁は衝突するので「下4桁の一致する顧客が1人」は求めない。登録メールの一致する顧客を
- * 先に引き、その中で下4桁の一致する証明書を持つ者に確定する。同じ人が重複登録されて
- * いる（同じメール・同じ下4桁の行が複数）ときは、いちばん新しい証明書の行を採る ——
- * どの行も同じメールの持ち主のものなので、他人には広がらない。
+ * 先に引き、その中で下4桁の一致する証明書を持つ者がちょうど1人のときに確定する。
+ * 2人以上なら確定しない（fail-closed）。同じメールを家族で共有し下4桁も同じなら、
+ * 2人のログイン要素は完全に同じで区別できない —— 片方を選ぶと、もう片方のデータを渡す。
+ * 同じ人の重複登録もここで締め出されるが、それは店側で顧客を統合して解く（LINE ログインは使える）。
  * メール未登録の顧客はここでは確定できない (LINE ログインの経路は別にある)。
  */
 export async function resolveUniqueCustomerId(
@@ -149,17 +150,15 @@ export async function resolveUniqueCustomerId(
   const ids = (customers ?? []).map((c) => c.id as string);
   if (ids.length === 0) return null;
 
-  const { data: cert } = await db
+  const { data: certs } = await db
     .from("certificates")
     .select("customer_id")
     .eq("tenant_id", tenantId)
     .in("customer_id", ids)
     .neq("status", "void")
-    .eq("customer_phone_last4_hash", phoneHash)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return (cert?.customer_id as string | undefined) ?? null;
+    .eq("customer_phone_last4_hash", phoneHash);
+  const matched = new Set((certs ?? []).map((c) => c.customer_id as string));
+  return matched.size === 1 ? [...matched][0] : null;
 }
 
 export async function createSession(tenantId: string, email: string, phoneHash: string) {

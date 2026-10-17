@@ -200,25 +200,28 @@ export async function listPortalMemberships(email: string, last4: string, prefer
       );
       // 証明書は必ず customer_id で引く。下4桁ハッシュだけで引くと、同じ下4桁の他人
       // （10⁴ 通りしかない）の証明書が出る。メール（OTP 済み）で引いた顧客のうち、
-      // 電話の下4桁が一致する者、居なければ下4桁の一致する証明書を持つ者を本人とする。
+      // 電話の下4桁が一致する者、または下4桁の一致する証明書を持つ者が**ちょうど1人**のときだけ
+      // 本人とする。2人以上（家族でメールを共有し下4桁も同じ等）は区別できないので、この店は出さない。
       const phoneHash = phoneLast4Hash(String(tenantId), last4Norm);
-      let customer =
-        tenantCustomers.find((c: { phone: string | null }) => customerPhoneMatchesLast4(c?.phone, last4Norm)) ?? null;
-      if (!customer) {
-        const { data: hashCerts } = await db
-          .from("certificates")
-          .select("customer_id")
-          .eq("tenant_id", tenantId)
-          .neq("status", "void")
-          .eq("customer_phone_last4_hash", phoneHash)
-          .in(
-            "customer_id",
-            tenantCustomers.map((c: { id: string }) => c.id),
-          )
-          .limit(1);
-        const hitId = hashCerts?.[0]?.customer_id;
-        customer = tenantCustomers.find((c: { id: string }) => c.id === hitId) ?? null;
-      }
+      const { data: hashCerts } = await db
+        .from("certificates")
+        .select("customer_id")
+        .eq("tenant_id", tenantId)
+        .neq("status", "void")
+        .eq("customer_phone_last4_hash", phoneHash)
+        .in(
+          "customer_id",
+          tenantCustomers.map((c: { id: string }) => c.id),
+        );
+      const matchedIds = new Set<string>([
+        ...tenantCustomers
+          .filter((c: { phone: string | null }) => customerPhoneMatchesLast4(c?.phone, last4Norm))
+          .map((c: { id: string }) => String(c.id)),
+        ...(hashCerts ?? []).map((r) => String(r.customer_id)),
+      ]);
+      if (matchedIds.size !== 1) return null;
+      const [matchedId] = [...matchedIds];
+      const customer = tenantCustomers.find((c: { id: string }) => String(c.id) === matchedId);
       if (!customer) return null;
       const certs = await listCertificatesForCustomer(String(tenantId), String(customer.id));
 

@@ -83,7 +83,7 @@ describe("resolveUniqueCustomerId", () => {
     expect(await portal.resolveUniqueCustomerId(T, H, "victim@example.com")).toBe("victim");
     expect(await portal.resolveUniqueCustomerId(T, H, "other@example.com")).toBe("other");
   });
-  it("同じ人の重複登録（同じメール・同じ下4桁）でも締め出さず、新しい証明書の行に確定する", async () => {
+  it("同じメール・同じ下4桁の顧客が2人いれば確定しない（家族の共有メール。片方を選ぶともう片方のデータを渡す）", async () => {
     db.customers.push({ id: "victim-dup", tenant_id: T, email: "victim@example.com", phone: "090-0000-1234" });
     db.certificates.push({
       public_id: "p3",
@@ -92,7 +92,7 @@ describe("resolveUniqueCustomerId", () => {
       customer_phone_last4_hash: H,
       status: "active",
     });
-    expect(await portal.resolveUniqueCustomerId(T, H, "victim@example.com")).not.toBeNull();
+    expect(await portal.resolveUniqueCustomerId(T, H, "victim@example.com")).toBeNull();
   });
   it("メールの `_` はワイルドカードにならない（ta_o@ で taro@ を引かない）", async () => {
     expect(await portal.resolveUniqueCustomerId(T, H, "victi_@example.com")).toBeNull();
