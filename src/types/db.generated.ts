@@ -7326,6 +7326,9 @@ isOneToOne: false
 "is_agent_admin":
 { Args: Record<PropertyKey, never>; Returns: boolean
                            },
+"is_demo_member":
+{ Args: Record<PropertyKey, never>; Returns: boolean
+                           },
 "is_insurer_admin":
 { Args: Record<PropertyKey, never>; Returns: boolean
                            },
