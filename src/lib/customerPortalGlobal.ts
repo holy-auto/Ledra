@@ -6,6 +6,7 @@ import {
   listCertificatesForCustomer,
   normalizeEmail,
   normalizeLast4,
+  phoneLast4,
   phoneLast4Hash,
   randomHex,
   sha256Hex,
@@ -40,15 +41,6 @@ function assertEnv() {
 function admin() {
   assertEnv();
   return createServiceRoleAdmin("customer portal global — cross-tenant customer identity");
-}
-
-function digitsOnly(v: string | null | undefined) {
-  return String(v ?? "").replace(/\D+/g, "");
-}
-
-function customerPhoneMatchesLast4(phone: string | null | undefined, last4: string) {
-  const d = digitsOnly(phone);
-  return d.length >= 4 && d.slice(-4) === last4;
 }
 
 export function globalIdentityHash(email: string, last4: string) {
@@ -200,30 +192,13 @@ export async function listPortalMemberships(email: string, last4: string, prefer
       );
       // 証明書は必ず customer_id で引く。下4桁ハッシュだけで引くと、同じ下4桁の他人
       // （10⁴ 通りしかない）の証明書が出る。メール（OTP 済み）で引いた顧客のうち、
-      // 電話の下4桁が一致する者、または下4桁の一致する証明書を持つ者が**ちょうど1人**のときだけ
-      // 本人とする。2人以上（家族でメールを共有し下4桁も同じ等）は区別できないので、この店は出さない。
+      // 顧客台帳の電話の下4桁が一致する者が**ちょうど1人**のときだけ本人とする（店ごとの
+      // resolveUniqueCustomerId と同じ規則）。2人以上（家族でメールを共有し下4桁も同じ等）は
+      // 区別できないので、この店は出さない。
       const phoneHash = phoneLast4Hash(String(tenantId), last4Norm);
-      const { data: hashCerts, error: hashCertsError } = await db
-        .from("certificates")
-        .select("customer_id")
-        .eq("tenant_id", tenantId)
-        .neq("status", "void")
-        .eq("customer_phone_last4_hash", phoneHash)
-        .in(
-          "customer_id",
-          tenantCustomers.map((c: { id: string }) => c.id),
-        );
-      // 照会に失敗したまま進むと、証明書側の候補だけが消えて「1人」に見えてしまう。
-      if (hashCertsError) throw new Error(`listPortalMemberships certificates failed: ${hashCertsError.message}`);
-      const matchedIds = new Set<string>([
-        ...tenantCustomers
-          .filter((c: { phone: string | null }) => customerPhoneMatchesLast4(c?.phone, last4Norm))
-          .map((c: { id: string }) => String(c.id)),
-        ...(hashCerts ?? []).map((r) => String(r.customer_id)),
-      ]);
-      if (matchedIds.size !== 1) return null;
-      const [matchedId] = [...matchedIds];
-      const customer = tenantCustomers.find((c: { id: string }) => String(c.id) === matchedId);
+      const matched = tenantCustomers.filter((c: { phone: string | null }) => phoneLast4(c?.phone) === last4Norm);
+      if (matched.length !== 1) return null;
+      const customer = matched[0];
       if (!customer) return null;
       const certs = await listCertificatesForCustomer(String(tenantId), String(customer.id));
 

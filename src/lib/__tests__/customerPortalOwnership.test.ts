@@ -97,6 +97,19 @@ describe("resolveUniqueCustomerId", () => {
   it("メールの `_` はワイルドカードにならない（ta_o@ で taro@ を引かない）", async () => {
     expect(await portal.resolveUniqueCustomerId(T, H, "victi_@example.com")).toBeNull();
   });
+  it("証明書に下4桁ハッシュが無くても、顧客台帳の電話の下4桁で確定する（本番の証明書はこの形）", async () => {
+    for (const c of db.certificates) c.customer_phone_last4_hash = null;
+    expect(await portal.resolveUniqueCustomerId(T, H, "victim@example.com")).toBe("victim");
+    expect(await portal.resolveUniqueCustomerId(T, H, "attacker@evil.example")).toBeNull();
+  });
+  it("台帳の電話の全角数字も下4桁として扱う（店の入力フォームは正規化しない）", async () => {
+    db.customers[0].phone = "０９０－００００－１２３４";
+    expect(await portal.resolveUniqueCustomerId(T, H, "victim@example.com")).toBe("victim");
+  });
+  it("台帳の電話を直したら、証明書に残った古い下4桁では入れない", async () => {
+    db.customers[0].phone = "090-0000-9999";
+    expect(await portal.resolveUniqueCustomerId(T, H, "victim@example.com")).toBeNull();
+  });
   it("メールが合っても下4桁が違えば確定しない", async () => {
     expect(await portal.resolveUniqueCustomerId(T, portal.phoneLast4Hash(T, "9999"), "victim@example.com")).toBeNull();
   });
