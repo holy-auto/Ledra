@@ -42,6 +42,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 import { POST as trainingPOST } from "../route";
 import { POST as conditionsPOST } from "../../conditions/route";
+import { POST as defectsPOST } from "../../defects/route";
 
 const req = (body: unknown) => new Request("http://localhost/x", { method: "POST", body: JSON.stringify(body) }) as any;
 
@@ -67,6 +68,12 @@ describe("field-test 研修・施工条件の作成 — プロジェクト所有
       expect(inserts[0].row).toMatchObject({ project_id: MY_PROJECT, manufacturer_id: ME });
     });
   }
+
+  it("defects: 他社のプロジェクトには作らない", async () => {
+    const res = await defectsPOST(req({ title: "不具合", project_id: OTHER_PROJECT }));
+    expect(res.status).toBe(404);
+    expect(inserts).toEqual([]);
+  });
 
   it("training: content_url は http(s) だけを通す", async () => {
     for (const url of ["javascript:alert(1)", "data:text/html,x"]) {

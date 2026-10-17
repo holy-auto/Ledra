@@ -101,10 +101,8 @@ export async function POST(req: Request) {
       await markCodeAttempt(row.id, nextAttempts);
       if (nextAttempts >= OTP_MAX_ATTEMPTS) {
         await markCodeUsed(row.id);
-        return apiJson(
-          { error: "too_many_attempts", message: "試行回数の上限に達しました。再度コードを送信してください。" },
-          { status: 429 },
-        );
+        // 上限でも応答は他の失敗と同じにする。429 を返すと「コードが実在する＝顧客である」と分かる。
+        return invalidCodeResponse;
       }
       return invalidCodeResponse;
     }

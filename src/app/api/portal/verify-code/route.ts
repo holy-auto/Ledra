@@ -57,10 +57,8 @@ export async function POST(req: Request) {
       // 数えるだけでは総当たりを止めない。上限で使用済みにする（店ごとの verify-code と同じ）。
       if (nextAttempts >= OTP_MAX_ATTEMPTS) {
         await markGlobalCodeUsed(row.id);
-        return apiJson(
-          { error: "too_many_attempts", message: "試行回数の上限に達しました。再度コードを送信してください。" },
-          { status: 429 },
-        );
+        // 上限でも応答は他の失敗と同じにする。429 を返すと「コードが実在する＝顧客である」と分かる。
+        return invalidCodeResponse;
       }
       return invalidCodeResponse;
     }

@@ -88,7 +88,10 @@ describe("POST /api/portal/verify-code", () => {
       attempts: 2,
     });
     const res = await verifyCode(req(wrong));
-    expect(res.status).toBe(429);
+    // 上限でも応答は「コードが無い」ときと同じ（429 だとコードの実在＝顧客であることが分かる）
+    m.getLatestGlobalCodeRow.mockResolvedValueOnce(null);
+    const none = await verifyCode(req(wrong));
+    expect([res.status, await res.json()]).toEqual([none.status, await none.json()]);
     expect(m.markGlobalCodeAttempt).toHaveBeenCalledWith("r", 3);
     expect(m.markGlobalCodeUsed).toHaveBeenCalledWith("r");
   });

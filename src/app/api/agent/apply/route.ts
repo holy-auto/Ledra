@@ -58,19 +58,18 @@ export async function POST(req: NextRequest) {
   // -----------------------------------------------------------------------
   // Step 1: ログイン済みユーザーかどうかを確認
   // -----------------------------------------------------------------------
-  let sessionUserId: string | null = null;
+  let currentUserId: string | null = null;
   try {
     const serverClient = await createClient();
     const {
       data: { user },
     } = await serverClient.auth.getUser();
     if (user) {
-      sessionUserId = user.id;
+      currentUserId = user.id;
     }
   } catch {
     // 未ログイン or セッション取得失敗はスキップ
   }
-  let currentUserId = sessionUserId;
 
   // -----------------------------------------------------------------------
   // Step 2: ログイン済みでなければ、メールで auth.users を検索
@@ -87,16 +86,12 @@ export async function POST(req: NextRequest) {
 
   // -----------------------------------------------------------------------
   // Step 3: すでに代理店として登録済みでないか確認（agent_users テーブルで確認）
-  //   ログイン本人のときだけ。メールで引いた既存アカウントについて 409 や agent_status・
-  //   linked_existing_account を返すと、任意のメールを送るだけでアカウント・代理店の有無を
-  //   列挙できる（signup / join/send-code の B-M3 是正と同じ考え方）。未ログインの応答は
-  //   既存アカウントの有無にかかわらず同じにする。
   // -----------------------------------------------------------------------
-  if (sessionUserId) {
+  if (currentUserId) {
     const { data: existingAgentUser } = await adminClient
       .from("agent_users")
       .select("agent_id, agents(id, status)")
-      .eq("user_id", sessionUserId)
+      .eq("user_id", currentUserId)
       .eq("is_active", true)
       .maybeSingle();
 
@@ -165,7 +160,7 @@ export async function POST(req: NextRequest) {
           {
             ok: true,
             application_number: retryNumber,
-            linked_existing_account: !!sessionUserId,
+            linked_existing_account: !!currentUserId,
           },
           { status: 201 },
         );
@@ -189,8 +184,8 @@ export async function POST(req: NextRequest) {
     {
       ok: true,
       application_number: applicationNumber,
-      // フロントエンドに「ログイン中のアカウントに紐付けられた」ことを伝える（メール一致では伝えない）
-      linked_existing_account: !!sessionUserId,
+      // フロントエンドに「既存アカウントに紐付けられた」ことを伝える
+      linked_existing_account: !!currentUserId,
     },
     { status: 201 },
   );

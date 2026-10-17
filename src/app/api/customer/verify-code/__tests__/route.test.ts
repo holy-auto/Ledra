@@ -131,7 +131,8 @@ describe("POST /api/customer/verify-code", () => {
     otpCodeHashMock.mockReturnValueOnce("wrong-hash");
 
     const res = await POST(jsonReq(validBody));
-    expect(res.status).toBe(429);
+    // 上限でも応答は他の失敗と同じ 400（429 だと「コードが実在する＝顧客」と分かる）
+    expect(res.status).toBe(400);
     // markCodeAttempt called with attempts=3, then markCodeUsed to lock the row
     expect(markCodeAttemptMock).toHaveBeenCalledWith("row-1", 3);
     expect(markCodeUsedMock).toHaveBeenCalledWith("row-1");
